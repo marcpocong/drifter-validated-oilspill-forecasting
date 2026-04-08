@@ -1,0 +1,42 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*.DS_Store
+Thumbs.db
+*~
+
+# Data files (keep structure with .gitkeep)
+data/*
+
+# Output files
+output/
+
+# Python testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+logs/*.log
+
+# Environment files
+.env
+
+# Markdown
+md/
+
+# Openclaw
+openclaw/
+.agents/

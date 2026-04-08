@@ -1,0 +1,25 @@
+# Git
+.git
+.gitignore
+
+# Python/Poetry
+__pycache__
+*.pyc
+.venv
+poetry.lock
+
+# Data/Output (don't bake into image, use volumes)
+data/
+output/
+mock/
+
+# Environment Variables (Keep secrets out of image)
+.env
+.env.template
+
+# Docker/Build config (exclude from COPY . .)
+docker-compose.yml
+# Exclude docker directory, but whitelist project files needed for install
+docker/
+!docker/pipeline/pyproject.toml
+!docker/gnome/pyproject.toml

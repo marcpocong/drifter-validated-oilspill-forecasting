@@ -1,0 +1,48 @@
+workflow_mode: mindoro_retro_2023
+case_id: CASE_MINDORO_RETRO_2023
+description: "Official thesis-aligned retrospective Mindoro spill case"
+mode_label: "Official Mindoro retrospective workflow"
+region: [115.0, 122.0, 6.0, 14.5]
+
+initialization_mode: initialization_polygon
+release_mode: instantaneous_polygon
+release_reference: initialization_polygon
+source_point_role: provenance_only
+source_point_layer_usage: provenance_only
+validation_target: validation_polygon
+
+release_start_utc: "2023-03-03T09:59:00Z"
+release_end_utc: "2023-03-03T09:59:00Z"
+simulation_start_utc: "2023-03-03T09:59:00Z"
+simulation_end_utc: "2023-03-06T09:59:00Z"
+forcing_start_utc: "2023-03-03T09:59:00Z"
+forcing_end_utc: "2023-03-06T09:59:00Z"
+
+drifter:
+  required: false
+  mode: frozen_phase1_baseline
+
+arcgis:
+  feature_server_url: "https://services1.arcgis.com/RTK5Unh1Z71JKIiR/ArcGIS/rest/services/Mindoro_Oil_Spills_Monitoring_Map_WFL1/FeatureServer"
+  layers:
+    initialization_polygon:
+      layer_id: 3
+      name: seed_polygon_mar3
+      local_name: seed_polygon_mar3
+      geometry_type: polygon
+      role: initialization_polygon
+      event_time_utc: "2023-03-03T09:59:00Z"
+    validation_polygon:
+      layer_id: 1
+      name: validation_polygon_mar6
+      local_name: validation_polygon_mar6
+      geometry_type: polygon
+      role: validation_polygon
+      event_time_utc: "2023-03-06T09:59:00Z"
+    provenance_source_point:
+      layer_id: 0
+      name: source_point_metadata
+      local_name: source_point_metadata
+      geometry_type: point
+      role: provenance_only
+      event_time_utc: "2023-03-03T09:59:00Z"

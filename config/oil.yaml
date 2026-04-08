@@ -1,0 +1,118 @@
+# Phase 3: Oil Weathering & Fate Configuration
+# Simulates oil lifespan along the validated drift path using two representative ADIOS oil types.
+
+oils:
+  light:
+    # Light, highly evaporative distillate (Marine Gas Oil)
+    # Using generic name instead of ADIOS ID (AD03160) for OpenDrift compatibility
+    adios_id: "GENERIC DIESEL"
+    gnome_oil_type: "oil_diesel"
+    display_name: "Light Oil (Marine Gas Oil / Diesel)"
+    color: "#FF8C00"
+    # Approximate density at 285 K (kg/m³) — used to convert desired total
+    # mass M₀ into the m3_per_hour parameter that OpenOil requires for seeding.
+    density_kg_m3: 850
+    # OpenOil config overrides – light oil disperses naturally, so defaults are acceptable
+    openoil_overrides:
+      # Vertical mixing OFF: keeps transport on the sea surface, consistent with
+      # the Phase 1 drifter validation (surface-only Lagrangian trackers).
+      drift:vertical_mixing: false
+      # Deterministic forcing (no stochastic noise on wind/currents)
+      drift:wind_uncertainty: 0.0
+      drift:current_uncertainty: 0.0
+      # Weathering modules ON: evaporation, dispersion, emulsification, spreading
+      processes:dispersion: true
+      processes:evaporation: true
+      processes:emulsification: true
+      processes:update_oilfilm_thickness: true     # spreading
+      # Beaching / Stranding ON
+      general:coastline_action: "stranding"
+      wave_entrainment:droplet_size_distribution: "Johansen et al. (2015)"
+      seed:droplet_diameter_min_subsea: 0.0005   # 0.5 mm
+      seed:droplet_diameter_max_subsea: 0.005    # 5.0 mm
+
+  heavy:
+    # Heavy, persistent fuel (Bunker / IFO 380)
+    # Using generic name instead of ADIOS ID (AD00256) for OpenDrift compatibility
+    adios_id: "GENERIC HEAVY FUEL OIL"
+    # Using 'oil_6' (Fuel Oil #6) as the closest standard PyGNOME equivalent for Heavy Fuel Oil
+    gnome_oil_type: "oil_6"
+    display_name: "Heavy Oil (IFO 380 / Bunker Fuel)"
+    color: "#4B0082"
+    # Approximate density at 285 K (kg/m³) — used to convert desired total
+    # mass M₀ into the m3_per_hour parameter that OpenOil requires for seeding.
+    density_kg_m3: 990
+    # OpenOil config overrides – CRITICAL for realistic heavy oil behaviour.
+    # Heavy bunker fuel (IFO 380) has high viscosity and density, resisting
+    # natural dispersion. Without these overrides, OpenOil's defaults produce
+    # unrealistic 100% dispersion by hour 20.
+    openoil_overrides:
+      # Vertical mixing OFF: keeps transport on the sea surface, consistent with
+      # the Phase 1 drifter validation (surface-only Lagrangian trackers).
+      drift:vertical_mixing: false
+      # Deterministic forcing (no stochastic noise on wind/currents)
+      drift:wind_uncertainty: 0.0
+      drift:current_uncertainty: 0.0
+      # Weathering modules ON: evaporation, dispersion, emulsification, spreading
+      processes:dispersion: true
+      processes:evaporation: true
+      processes:emulsification: true
+      processes:update_oilfilm_thickness: true     # spreading
+      # Beaching / Stranding ON
+      general:coastline_action: "stranding"
+      wave_entrainment:droplet_size_distribution: "Johansen et al. (2015)"
+      # Larger minimum droplet diameter for heavy oil = less entrainment
+      seed:droplet_diameter_min_subsea: 0.001    # 1.0 mm (vs 0.5 mm for light)
+      seed:droplet_diameter_max_subsea: 0.01     # 10.0 mm (vs 5.0 mm for light)
+
+simulation:
+  # 72-hour forecast window (standard operational period)
+  duration_hours: 72
+  time_step_minutes: 30
+
+  # Number of Lagrangian particles per run (100,000 as per methodology)
+  num_particles: 100000
+
+  # Hypothetical but realistic initial total oil mass M₀
+  # M₀ = 50,000 kg = 50 tonnes; each particle mᵢ(t₀) = M₀ / N
+  initial_mass_tonnes: 50.0
+
+  # Release radius (metres) matching ensemble setup
+  radius_m: 500
+
+  # Mass-balance QC threshold: |100% − Σ%X(t)| ≤ this value
+  mass_balance_tolerance_pct: 2.0
+
+# PyGNOME cross-comparison (supplementary)
+gnome_comparison:
+  # Run only for the two most contrasting scenarios
+  enabled: true
+  scenarios:
+    - light
+    - heavy
+  duration_hours: 72
+  time_step_minutes: 60
+
+# Stage 3b: Refined Oil Run
+# Performed after the specific oil type is identified from a manifest or sample.
+# Set enabled: true and fill in the adios_id to trigger a refined single-oil rerun.
+refined_oil:
+  enabled: false
+  adios_id: ""               # e.g. "ALASKA NORTH SLOPE (MIDDLE PIPELINE)"
+  display_name: "Refined Oil (ADIOS-Confirmed)"
+  color: "#228B22"
+
+# Shoreline impact analysis
+shoreline:
+  enabled: true
+  segment_length_km: 1.0       # pre-segment the vector shoreline into ~1 km sections
+  segment_prefix: "PWN"        # segment IDs: PWN-001, PWN-002, …
+
+# Diagnostics (Phase 3 Enhancement)
+diagnostics:
+  # Run pre-flight checks before weathering simulations
+  enabled: true
+  # Warn if max wind speed exceeds this threshold (m/s)
+  wind_speed_warn_threshold: 12.0
+  # Warn if max wave height exceeds this threshold (m)
+  wave_height_warn_threshold: 8.0

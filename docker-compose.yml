@@ -1,0 +1,88 @@
+services:
+  # Phase 1: Ingestion & Transport Validation (OpenDrift)
+  pipeline:
+    build:
+      context: .
+      dockerfile: docker/pipeline/Dockerfile
+    image: oil-spill-phase1:latest
+    container_name: phase1
+    
+    # Keep container running for exec usage
+    command: tail -f /dev/null
+
+    # Volume mounts
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+      - ./config:/app/config
+      - ./src:/app/src
+    
+    # Load environment variables from .env file
+    env_file:
+      - .env
+
+    # Environment variables (overrides .env)
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - PIPELINE_ROLE=pipeline
+      - PIPELINE_PHASE=1_2
+    
+    # Resource limits (adjust as needed)
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Phase 3: Oil Spill Modeling (PyGNOME)
+  gnome:
+    build:
+      context: .
+      dockerfile: docker/gnome/Dockerfile
+    image: oil-spill-phase3:latest
+    container_name: phase3
+    
+    # Keep container running for exec usage
+    command: tail -f /dev/null
+
+    # Volume mounts
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+      - ./config:/app/config
+      - ./src:/app/src
+    
+    # Load environment variables from .env file
+    env_file:
+      - .env
+
+    # Environment variables (overrides .env)
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - PIPELINE_ROLE=gnome
+      - PIPELINE_PHASE=3
+    
+    # Resource limits (adjust as needed)
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

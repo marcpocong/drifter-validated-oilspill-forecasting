@@ -1,0 +1,32 @@
+recipes:
+  hycom_ncep:
+    description: "HYCOM currents + NCEP winds"
+    currents_file: "hycom_curr.nc"
+    wind_file: "ncep_wind.nc"
+    wave_file: "cmems_wave.nc"
+    duration_hours: 72
+    time_step_minutes: 60
+  
+  hycom_era5:
+    description: "HYCOM currents + ERA5 winds"
+    currents_file: "hycom_curr.nc"
+    wind_file: "era5_wind.nc"
+    wave_file: "cmems_wave.nc"
+    duration_hours: 72
+    time_step_minutes: 60
+
+  cmems_ncep:
+    description: "CMEMS currents + NCEP winds"
+    currents_file: "cmems_curr.nc"
+    wind_file: "ncep_wind.nc"
+    wave_file: "cmems_wave.nc"
+    duration_hours: 72
+    time_step_minutes: 60
+
+  cmems_era5:
+    description: "CMEMS currents + ERA5 winds"
+    currents_file: "cmems_curr.nc"
+    wind_file: "era5_wind.nc"
+    wave_file: "cmems_wave.nc"
+    duration_hours: 72
+    time_step_minutes: 60

@@ -1,0 +1,775 @@
+"""
+I/O utilities for loading drifter data and forcing configuration.
+"""
+
+from dataclasses import dataclass
+import logging
+import os
+import json
+from pathlib import Path
+from typing import Any, Dict
+
+import pandas as pd
+import xarray as xr
+import yaml
+
+from src.core.case_context import get_case_context
+
+logger = logging.getLogger(__name__)
+
+ALLOW_UNVALIDATED_FALLBACK_ENV = "ALLOW_UNVALIDATED_FALLBACK"
+BASELINE_SELECTION_PATH_ENV = "BASELINE_SELECTION_PATH"
+BASELINE_RECIPE_OVERRIDE_ENV = "BASELINE_RECIPE_OVERRIDE"
+DEFAULT_VALIDATED_FALLBACK_RECIPE = "cmems_era5"
+DEFAULT_BASELINE_SELECTION_PATH = Path("config/phase1_baseline_selection.yaml")
+
+
+@dataclass(frozen=True)
+class RecipeSelection:
+    recipe: str
+    source_kind: str
+    source_path: str | None
+    status_flag: str
+    valid: bool
+    provisional: bool
+    rerun_required: bool
+    note: str = ""
+
+
+def _load_settings(settings_path: str | Path = "config/settings.yaml") -> dict:
+    """Load application settings from the canonical settings file."""
+    with open(settings_path, "r") as f:
+        return yaml.safe_load(f) or {}
+
+
+def _load_recipes_config(config_path: str | Path = "config/recipes.yaml") -> dict:
+    """Load the canonical recipe configuration file."""
+    with open(config_path, "r") as f:
+        return yaml.safe_load(f) or {}
+
+
+def allow_unvalidated_fallback() -> bool:
+    """Return whether downstream phases may continue without validated Phase 1 output."""
+    return os.environ.get(ALLOW_UNVALIDATED_FALLBACK_ENV, "").strip() == "1"
+
+
+def _default_baseline_selection_path() -> Path:
+    """Return the configured baseline-selection artifact path."""
+    settings = _load_settings()
+    configured_path = settings.get("phase1_baseline_selection_path", str(DEFAULT_BASELINE_SELECTION_PATH))
+    return Path(os.environ.get(BASELINE_SELECTION_PATH_ENV, configured_path))
+
+
+def _infer_source_name(filename: str | None) -> str | None:
+    """Infer a short source label from a configured forcing filename."""
+    if not filename:
+        return None
+
+    stem = Path(filename).stem.lower()
+    for suffix in ("_curr", "_wind", "_wave"):
+        if stem.endswith(suffix):
+            stem = stem[: -len(suffix)]
+            break
+
+    return stem.upper() if stem else None
+
+
+def get_recipe_definition(recipe_name: str, config_path: str | Path = "config/recipes.yaml") -> dict:
+    """Return the canonical recipe config entry for a recipe name."""
+    config = _load_recipes_config(config_path)
+    recipes = config.get("recipes") or {}
+    if recipe_name not in recipes:
+        raise ValueError(f"Recipe '{recipe_name}' not found in {config_path}")
+    return dict(recipes[recipe_name])
+
+
+def _validate_recipe_name(recipe_name: str, source_label: str) -> str:
+    """Validate that a recipe exists in the canonical recipe config."""
+    recipe = str(recipe_name).strip()
+    if not recipe:
+        raise RuntimeError(f"{source_label} did not provide a non-empty recipe name.")
+
+    get_recipe_definition(recipe)
+    return recipe
+
+
+def _normalize_selection_status(
+    source_kind: str,
+    status_flag: str | None = None,
+    valid: bool | None = None,
+    provisional: bool | None = None,
+    rerun_required: bool | None = None,
+) -> tuple[str, bool, bool, bool]:
+    """Normalize recipe-selection status flags to a consistent representation."""
+    default_status = "valid" if source_kind in {"phase1_ranking", "frozen_historical_artifact"} else "provisional"
+    normalized_status = str(status_flag or default_status).strip().lower()
+    if normalized_status not in {"valid", "provisional", "rerun_required"}:
+        normalized_status = default_status
+
+    normalized_valid = bool(valid) if valid is not None else normalized_status == "valid"
+    normalized_provisional = bool(provisional) if provisional is not None else normalized_status in {"provisional", "rerun_required"}
+    normalized_rerun_required = bool(rerun_required) if rerun_required is not None else normalized_status == "rerun_required"
+    return normalized_status, normalized_valid, normalized_provisional, normalized_rerun_required
+
+
+def _build_recipe_selection(
+    recipe: str,
+    source_kind: str,
+    source_path: str | None = None,
+    note: str = "",
+    status_flag: str | None = None,
+    valid: bool | None = None,
+    provisional: bool | None = None,
+    rerun_required: bool | None = None,
+) -> RecipeSelection:
+    """Build a normalized recipe-selection record."""
+    normalized_recipe = _validate_recipe_name(recipe, source_path or source_kind)
+    normalized_status, normalized_valid, normalized_provisional, normalized_rerun_required = _normalize_selection_status(
+        source_kind=source_kind,
+        status_flag=status_flag,
+        valid=valid,
+        provisional=provisional,
+        rerun_required=rerun_required,
+    )
+    return RecipeSelection(
+        recipe=normalized_recipe,
+        source_kind=source_kind,
+        source_path=source_path,
+        status_flag=normalized_status,
+        valid=normalized_valid,
+        provisional=normalized_provisional,
+        rerun_required=normalized_rerun_required,
+        note=note,
+    )
+
+
+def load_baseline_selection(selection_path: str | Path | None = None) -> tuple[Path, dict]:
+    """Load the frozen Phase 1 baseline-selection artifact."""
+    path = Path(selection_path) if selection_path else _default_baseline_selection_path()
+    if not path.exists():
+        raise FileNotFoundError(
+            "Official workflow mode requires a frozen Phase 1 baseline selection file. "
+            f"Missing: {path}. Provide {BASELINE_SELECTION_PATH_ENV}=<path> or "
+            f"{BASELINE_RECIPE_OVERRIDE_ENV}=<recipe>."
+        )
+
+    with open(path, "r") as f:
+        data = yaml.safe_load(f) or {}
+    return path, data
+
+
+def resolve_frozen_baseline_recipe(selection_path: str | Path | None = None) -> str:
+    """Resolve the recipe for official workflows from an explicit frozen baseline artifact."""
+    return resolve_recipe_selection().recipe
+
+
+def resolve_recipe_selection(
+    ranking_csv: str | Path = None,
+    default: str = DEFAULT_VALIDATED_FALLBACK_RECIPE,
+    allow_fallback: bool | None = None,
+    selection_path: str | Path | None = None,
+) -> RecipeSelection:
+    """Resolve the active recipe and its provenance/status metadata."""
+    case = get_case_context()
+    if allow_fallback is None:
+        allow_fallback = allow_unvalidated_fallback()
+
+    if case.is_official:
+        override_recipe = os.environ.get(BASELINE_RECIPE_OVERRIDE_ENV, "").strip()
+        if override_recipe:
+            selection = _build_recipe_selection(
+                recipe=override_recipe,
+                source_kind="override_recipe",
+                source_path=None,
+                note=f"Manual override from {BASELINE_RECIPE_OVERRIDE_ENV}.",
+                status_flag="provisional",
+                valid=False,
+                provisional=True,
+                rerun_required=True,
+            )
+            logger.warning("Using baseline recipe override '%s' from %s.", selection.recipe, BASELINE_RECIPE_OVERRIDE_ENV)
+            return selection
+
+        try:
+            path, selection = load_baseline_selection(selection_path)
+        except FileNotFoundError:
+            if allow_fallback:
+                selection = _build_recipe_selection(
+                    recipe=default,
+                    source_kind="provisional_fallback",
+                    source_path=None,
+                    note=(
+                        "Baseline artifact missing; using provisional fallback because "
+                        f"{ALLOW_UNVALIDATED_FALLBACK_ENV}=1."
+                    ),
+                    status_flag="rerun_required",
+                    valid=False,
+                    provisional=True,
+                    rerun_required=True,
+                )
+                logger.warning("%s", selection.note)
+                return selection
+            raise
+
+        selected_recipe = selection.get("selected_recipe") or selection.get("recipe") or selection.get("baseline_recipe")
+        if not selected_recipe:
+            if allow_fallback:
+                fallback_selection = _build_recipe_selection(
+                    recipe=default,
+                    source_kind="provisional_fallback",
+                    source_path=str(path),
+                    note=(
+                        f"{path} is missing 'selected_recipe'; using provisional fallback because "
+                        f"{ALLOW_UNVALIDATED_FALLBACK_ENV}=1."
+                    ),
+                    status_flag="rerun_required",
+                    valid=False,
+                    provisional=True,
+                    rerun_required=True,
+                )
+                logger.warning("%s", fallback_selection.note)
+                return fallback_selection
+            raise RuntimeError(
+                f"{path} is missing 'selected_recipe'. "
+                f"Set {BASELINE_RECIPE_OVERRIDE_ENV}=<recipe> or update the baseline artifact."
+            )
+
+        resolved_selection = _build_recipe_selection(
+            recipe=selected_recipe,
+            source_kind=str(selection.get("source_kind") or selection.get("source_type") or "frozen_historical_artifact"),
+            source_path=str(path),
+            note=str(selection.get("note") or selection.get("selection_basis") or ""),
+            status_flag=selection.get("status_flag") or selection.get("selection_status"),
+            valid=selection.get("valid"),
+            provisional=selection.get("provisional"),
+            rerun_required=selection.get("rerun_required"),
+        )
+        logger.info(
+            "Loaded official recipe selection from %s: %s [%s]",
+            path,
+            resolved_selection.recipe,
+            resolved_selection.status_flag,
+        )
+        return resolved_selection
+
+    from src.core.constants import BASE_OUTPUT_DIR
+
+    if ranking_csv is None:
+        ranking_csv = BASE_OUTPUT_DIR / "validation" / "validation_ranking.csv"
+
+    path = Path(ranking_csv)
+    fallback_reason = None
+
+    if path.exists():
+        df = pd.read_csv(path)
+        if df.empty:
+            fallback_reason = f"{path} exists but contains no valid recipes."
+        elif "recipe" not in df.columns:
+            fallback_reason = f"{path} is missing the required 'recipe' column."
+        else:
+            recipe = str(df.iloc[0]["recipe"]).strip()
+            if recipe:
+                selection = _build_recipe_selection(
+                    recipe=recipe,
+                    source_kind="phase1_ranking",
+                    source_path=str(path),
+                    note="Resolved from Phase 1 validation ranking.",
+                    status_flag="valid",
+                    valid=True,
+                    provisional=False,
+                    rerun_required=False,
+                )
+                logger.info("Loaded best recipe from %s: %s", path, selection.recipe)
+                return selection
+            fallback_reason = f"{path} contains a blank winning recipe."
+    else:
+        fallback_reason = f"{path} not found."
+
+    message = (
+        f"{fallback_reason} Phase 1 must produce a non-empty validation_ranking.csv "
+        f"before downstream phases can continue."
+    )
+
+    if allow_fallback:
+        selection = _build_recipe_selection(
+            recipe=default,
+            source_kind="provisional_fallback",
+            source_path=str(path) if path.exists() else None,
+            note=f"{message} Falling back because {ALLOW_UNVALIDATED_FALLBACK_ENV}=1.",
+            status_flag="rerun_required",
+            valid=False,
+            provisional=True,
+            rerun_required=True,
+        )
+        logger.warning("%s Falling back to unvalidated recipe '%s' because %s=1.", message, selection.recipe, ALLOW_UNVALIDATED_FALLBACK_ENV)
+        return selection
+
+    if path.exists():
+        raise RuntimeError(message)
+    raise FileNotFoundError(message)
+
+
+def resolve_frozen_baseline_recipe(selection_path: str | Path | None = None) -> str:
+    """Resolve the recipe for official workflows from an explicit frozen baseline artifact."""
+    return resolve_recipe_selection(selection_path=selection_path).recipe
+
+
+def load_drifter_data(path: str | Path) -> pd.DataFrame:
+    """
+    Load drifter data from a CSV or NetCDF file.
+    Returns a cleaned DataFrame with columns: [time, lat, lon, ID]
+    """
+    path = Path(path)
+    if path.suffix == ".csv":
+        df = pd.read_csv(path, parse_dates=["time"])
+
+        # Ensure ID column exists (ERDDAP usually provides "ID", forcing files might use "drifter_id")
+        if "ID" not in df.columns and "id" in df.columns:
+            df = df.rename(columns={"id": "ID"})
+
+        # Strip timezone info to avoid offset mismatches with NetCDF readers.
+        if hasattr(df["time"].dt, "tz") and df["time"].dt.tz is not None:
+            df["time"] = df["time"].dt.tz_localize(None)
+
+    elif path.suffix == ".nc":
+        with xr.open_dataset(path) as ds:
+            df = ds.to_dataframe().reset_index()
+    else:
+        raise ValueError(f"Unsupported file format: {path.suffix}")
+
+    required_cols = ["time", "lat", "lon"]
+    if not all(col in df.columns for col in required_cols):
+        raise ValueError(f"Data missing required columns: {required_cols}. Found: {df.columns}")
+
+    cols_to_keep = ["time", "lat", "lon"]
+    if "ID" in df.columns:
+        cols_to_keep.append("ID")
+
+    return df[cols_to_keep].sort_values("time").reset_index(drop=True)
+
+
+def get_forcing_files(recipe_name: str, config_path: str = "config/recipes.yaml") -> Dict[str, Any]:
+    """
+    Read recipes.yaml and return the canonical forcing files for a given recipe.
+    """
+    recipe = get_recipe_definition(recipe_name, config_path)
+    from src.core.constants import RUN_NAME
+
+    data_dir = Path("data/forcing") / RUN_NAME
+    wave_file = recipe.get("wave_file")
+
+    return {
+        "recipe": recipe_name,
+        "currents": data_dir / recipe["currents_file"],
+        "wind": data_dir / recipe["wind_file"],
+        "wave": data_dir / wave_file if wave_file else None,
+        "duration_hours": recipe["duration_hours"],
+        "time_step_minutes": recipe["time_step_minutes"],
+        "description": recipe.get("description", recipe_name),
+        "current_source": recipe.get("current_source") or _infer_source_name(recipe.get("currents_file")),
+        "wind_source": recipe.get("wind_source") or _infer_source_name(recipe.get("wind_file")),
+        "wave_source": recipe.get("wave_source") or _infer_source_name(wave_file),
+    }
+
+
+def get_prepared_input_manifest_path(run_name: str | None = None) -> Path:
+    """Return the case-local prepared-input manifest path."""
+    case = get_case_context()
+    active_run_name = run_name or case.run_name
+    return Path("data") / "prepared" / active_run_name / "prepared_input_manifest.csv"
+
+
+def get_download_manifest_path() -> Path:
+    """Return the shared ingestion download manifest path."""
+    return Path("data") / "download_manifest.json"
+
+
+def get_prepared_input_specs(
+    recipe_name: str | None = None,
+    require_drifter: bool = False,
+    include_all_transport_forcing: bool = False,
+    run_name: str | None = None,
+) -> list[dict[str, str]]:
+    """Return the canonical prepared-input requirements for the active workflow case."""
+    case = get_case_context()
+    active_run_name = run_name or case.run_name
+    specs: list[dict[str, str]] = []
+
+    def add_spec(label: str, path: Path, source: str):
+        specs.append(
+            {
+                "label": label,
+                "path": str(path),
+                "source": source,
+            }
+        )
+
+    add_spec(
+        "prepared_input_manifest",
+        get_prepared_input_manifest_path(active_run_name),
+        "Generated prepared-input manifest",
+    )
+    add_spec(
+        "download_manifest",
+        get_download_manifest_path(),
+        "Generated ingestion download manifest",
+    )
+
+    arcgis_registry_path = Path("data") / "arcgis" / active_run_name / "arcgis_registry.csv"
+    add_spec("arcgis_registry", arcgis_registry_path, "Generated ArcGIS layer registry")
+
+    for layer in case.arcgis_layers:
+        layer_source = f"ArcGIS FeatureServer layer {layer.layer_id}: {layer.service_url}"
+        add_spec(
+            f"{layer.role}_geojson",
+            layer.geojson_path(active_run_name),
+            layer_source,
+        )
+        if layer.geometry_type == "polygon":
+            add_spec(
+                f"{layer.role}_mask",
+                layer.mask_path(active_run_name),
+                f"Rasterized mask from {layer_source}",
+            )
+
+    if require_drifter:
+        add_spec(
+            "drifter_observations",
+            Path("data") / "drifters" / active_run_name / "drifters_noaa.csv",
+            "NOAA ERDDAP drifter_6hour_qc",
+        )
+
+    if include_all_transport_forcing:
+        recipe_config = _load_recipes_config()
+        recipes = recipe_config.get("recipes") or {}
+        forcing_entries: dict[tuple[str, str], dict[str, str]] = {}
+        forcing_dir = Path("data") / "forcing" / active_run_name
+        for recipe in recipes.values():
+            currents_file = recipe.get("currents_file")
+            wind_file = recipe.get("wind_file")
+            if currents_file:
+                forcing_entries.setdefault(
+                    ("forcing_currents", currents_file),
+                    {
+                        "label": f"forcing_currents_{Path(currents_file).name}",
+                        "path": str(forcing_dir / currents_file),
+                        "source": recipe.get("current_source") or _infer_source_name(currents_file) or "Currents forcing",
+                    },
+                )
+            if wind_file:
+                forcing_entries.setdefault(
+                    ("forcing_wind", wind_file),
+                    {
+                        "label": f"forcing_wind_{Path(wind_file).name}",
+                        "path": str(forcing_dir / wind_file),
+                        "source": recipe.get("wind_source") or _infer_source_name(wind_file) or "Wind forcing",
+                    },
+                )
+        specs.extend(forcing_entries.values())
+    elif recipe_name:
+        forcing = get_forcing_files(recipe_name)
+        add_spec(
+            f"recipe_currents_{recipe_name}",
+            Path(forcing["currents"]),
+            forcing.get("current_source") or "Currents forcing",
+        )
+        add_spec(
+            f"recipe_wind_{recipe_name}",
+            Path(forcing["wind"]),
+            forcing.get("wind_source") or "Wind forcing",
+        )
+
+    return specs
+
+
+def find_missing_prepared_inputs(
+    recipe_name: str | None = None,
+    require_drifter: bool = False,
+    include_all_transport_forcing: bool = False,
+    run_name: str | None = None,
+) -> list[dict[str, str]]:
+    """Return the prepared-input specs that are currently missing on disk."""
+    missing = []
+    for spec in get_prepared_input_specs(
+        recipe_name=recipe_name,
+        require_drifter=require_drifter,
+        include_all_transport_forcing=include_all_transport_forcing,
+        run_name=run_name,
+    ):
+        if not Path(spec["path"]).exists():
+            missing.append(spec)
+    return missing
+
+
+def get_case_output_dir(run_name: str | None = None) -> Path:
+    """Return the case-local output directory."""
+    case = get_case_context()
+    active_run_name = run_name or case.run_name
+    return Path("output") / active_run_name
+
+
+def get_forecast_output_dir(run_name: str | None = None) -> Path:
+    """Return the case-local deterministic forecast directory."""
+    return get_case_output_dir(run_name) / "forecast"
+
+
+def get_forecast_manifest_path(run_name: str | None = None) -> Path:
+    """Return the case-local spill-forecast manifest path."""
+    return get_forecast_output_dir(run_name) / "forecast_manifest.json"
+
+
+def get_deterministic_control_output_path(recipe_name: str, run_name: str | None = None) -> Path:
+    """Return the deterministic control output path for a recipe."""
+    return get_forecast_output_dir(run_name) / f"deterministic_control_{recipe_name}.nc"
+
+
+def get_phase3b_forecast_candidates(
+    recipe_name: str,
+    run_name: str | None = None,
+) -> list[dict[str, str]]:
+    """Return the forecast outputs that Phase 3B may score."""
+    case = get_case_context()
+    active_run_name = run_name or case.run_name
+    case_dir = get_case_output_dir(active_run_name)
+
+    candidates = []
+    if case.is_official:
+        candidates.append(
+            {
+                "label": f"deterministic_control_{recipe_name}",
+                "type": f"deterministic_control_{recipe_name}",
+                "path": str(get_deterministic_control_output_path(recipe_name, active_run_name)),
+                "source": "Official deterministic control spill forecast",
+            }
+        )
+    else:
+        candidates.append(
+            {
+                "label": f"deterministic_best_{recipe_name}",
+                "type": f"deterministic_best_{recipe_name}",
+                "path": str(case_dir / "validation" / f"{recipe_name}_validation.nc"),
+                "source": "Phase 1 deterministic validation artifact",
+            }
+        )
+
+    candidates.append(
+        {
+            "label": "ensemble_prob_72h",
+            "type": "ensemble_prob_72h",
+            "path": str(case_dir / "ensemble" / "probability_72h.nc"),
+            "source": "Phase 2 ensemble probability product at T+72h",
+        }
+    )
+    return candidates
+
+
+def find_missing_phase3b_forecast_outputs(
+    recipe_name: str,
+    run_name: str | None = None,
+) -> list[dict[str, str]]:
+    """Return the expected Phase 3B forecast outputs that are missing."""
+    case = get_case_context()
+    active_run_name = run_name or case.run_name
+    missing = []
+
+    if case.is_official:
+        forecast_manifest = get_forecast_manifest_path(active_run_name)
+        if not forecast_manifest.exists():
+            missing.append(
+                {
+                    "label": "forecast_manifest",
+                    "path": str(forecast_manifest),
+                    "source": "Official spill forecast manifest",
+                }
+            )
+
+    for spec in get_phase3b_forecast_candidates(recipe_name, active_run_name):
+        if not Path(spec["path"]).exists():
+            missing.append(spec)
+    return missing
+
+
+def resolve_best_recipe(
+    ranking_csv: str | Path = None,
+    default: str = DEFAULT_VALIDATED_FALLBACK_RECIPE,
+    allow_fallback: bool | None = None,
+) -> str:
+    """
+    Return the winning recipe name from Phase 1 output.
+    Fail fast when Phase 1 did not produce a validated ranking unless
+    ALLOW_UNVALIDATED_FALLBACK=1 (or allow_fallback=True) explicitly allows
+    a fallback recipe.
+    """
+    selection = resolve_recipe_selection(
+        ranking_csv=ranking_csv,
+        default=default,
+        allow_fallback=allow_fallback,
+    )
+    return selection.recipe
+
+
+def resolve_spill_origin(
+    drifter_csv: str | Path = None,
+) -> tuple[float, float, str]:
+    """
+    Resolve the active spill origin reference (lat, lon, time_str).
+    Prototype mode preserves the old Layer 0 / drifter fallback behavior.
+    Official Mindoro mode uses the initialization polygon as the active release
+    geometry and never uses the provenance Layer 0 point as the release origin.
+    """
+    from src.core.constants import RUN_NAME
+
+    case = get_case_context()
+    if case.is_official:
+        init_path = resolve_initialization_polygon_path()
+        lat, lon = _resolve_polygon_reference_point(init_path)
+        logger.info(
+            "Loaded official release reference from initialization polygon: (%.4f, %.4f)",
+            lat,
+            lon,
+        )
+        return lat, lon, case.release_start_utc
+
+    provenance_point = resolve_provenance_source_point()
+    if provenance_point is not None:
+        lat, lon = provenance_point
+        logger.info(f"Loaded prototype spill origin from Layer 0: ({lat:.4f}, {lon:.4f})")
+        return lat, lon, case.phase_1_start_date_value
+
+    if drifter_csv is None:
+        drifter_csv = Path(f"data/drifters/{RUN_NAME}/drifters_noaa.csv")
+
+    path = Path(drifter_csv)
+    if not path.exists():
+        raise FileNotFoundError(f"Cannot resolve spill origin: '{path}' not found. Drifter data is required.")
+
+    df = load_drifter_data(path)
+    if "ID" in df.columns:
+        best_id = df["ID"].value_counts().idxmax()
+        row = df[df["ID"] == best_id].sort_values("time").iloc[0]
+    else:
+        row = df.sort_values("time").iloc[0]
+
+    return float(row["lat"]), float(row["lon"]), str(row["time"])
+
+
+def resolve_polygon_seeding(num_elements: int) -> tuple[list[float], list[float], str]:
+    """
+    Uniformly scatters points inside the authoritative Layer 3 initialization polygon.
+    Returns (lons, lats, time_str) for models to ingest during seeding.
+    """
+    case = get_case_context()
+    import geopandas as gpd
+
+    seed_geojson = resolve_initialization_polygon_path()
+    if not seed_geojson.exists():
+        raise FileNotFoundError(f"Missing initialization polygon: {seed_geojson}")
+
+    gdf = gpd.read_file(seed_geojson)
+    valid_gdf = gdf.dropna(subset=["geometry"])
+    if valid_gdf.empty:
+        raise ValueError(f"No valid geometry found in {seed_geojson}")
+
+    united = valid_gdf.geometry.buffer(0).unary_union
+    temp_series = gpd.GeoSeries([united], crs=valid_gdf.crs)
+    pts = temp_series.sample_points(num_elements).explode(index_parts=False)
+
+    lons = pts.x.tolist()
+    lats = pts.y.tolist()
+
+    seed_time = case.release_start_utc if case.is_official else str(case.phase_1_start_date_value)
+    return lons, lats, seed_time
+
+
+def resolve_initialization_polygon_path(run_name: str | None = None) -> Path:
+    """Return the local GeoJSON path for the configured initialization polygon."""
+    case = get_case_context()
+    active_run_name = run_name or case.run_name
+    return case.initialization_layer.geojson_path(active_run_name)
+
+
+def resolve_validation_polygon_path(run_name: str | None = None) -> Path:
+    """Return the local GeoJSON path for the configured validation polygon."""
+    case = get_case_context()
+    active_run_name = run_name or case.run_name
+    return case.validation_layer.geojson_path(active_run_name)
+
+
+def resolve_provenance_source_point() -> tuple[float, float] | None:
+    """Return the provenance Layer 0 point when available."""
+    case = get_case_context()
+    point_path = case.provenance_layer.geojson_path(case.run_name)
+    if not point_path.exists():
+        return None
+
+    try:
+        import geopandas as gpd
+
+        gdf = gpd.read_file(point_path)
+        if gdf.empty or not gdf.geometry.notnull().any():
+            return None
+        pt = gdf.geometry.dropna().iloc[0]
+        return float(pt.y), float(pt.x)
+    except Exception as e:
+        logger.warning(f"Failed to read provenance source point {point_path}: {e}")
+        return None
+
+
+def _resolve_polygon_reference_point(path: str | Path) -> tuple[float, float]:
+    """Resolve a stable representative point from a polygon geometry file."""
+    import geopandas as gpd
+
+    polygon_path = Path(path)
+    if not polygon_path.exists():
+        raise FileNotFoundError(f"Initialization polygon not found: {polygon_path}")
+
+    gdf = gpd.read_file(polygon_path)
+    valid_gdf = gdf.dropna(subset=["geometry"])
+    if valid_gdf.empty:
+        raise ValueError(f"No valid geometry found in {polygon_path}")
+
+    representative = valid_gdf.geometry.unary_union.representative_point()
+    return float(representative.y), float(representative.x)
+
+
+def find_wind_vars(ds: xr.Dataset) -> tuple[str, str]:
+    """Detect U/V wind variable names."""
+    candidates = [
+        ("x_wind", "y_wind"),
+        ("u10", "v10"),
+        ("uwnd", "vwnd"),
+        ("U10M", "V10M"),
+    ]
+    for u, v in candidates:
+        if u in ds and v in ds:
+            return u, v
+    raise KeyError(f"No wind variables found. Available: {list(ds.data_vars)}")
+
+
+def find_current_vars(ds: xr.Dataset) -> tuple[str, str]:
+    """Detect U/V current variable names."""
+    candidates = [
+        ("x_sea_water_velocity", "y_sea_water_velocity"),
+        ("uo", "vo"),
+        ("water_u", "water_v"),
+        ("u", "v"),
+    ]
+    for u, v in candidates:
+        if u in ds and v in ds:
+            return u, v
+    raise KeyError(f"No current variables found. Available: {list(ds.data_vars)}")
+
+
+def select_nearest_point(ds: xr.Dataset, lat: float, lon: float) -> xr.Dataset:
+    """Select nearest grid point, handling different coord names."""
+    lat_names = ["latitude", "lat", "Latitude", "LATITUDE"]
+    lon_names = ["longitude", "lon", "Longitude", "LONGITUDE"]
+
+    lat_dim = next((n for n in lat_names if n in ds.coords or n in ds.dims), None)
+    lon_dim = next((n for n in lon_names if n in ds.coords or n in ds.dims), None)
+
+    if lat_dim and lon_dim:
+        return ds.sel(**{lat_dim: lat, lon_dim: lon}, method="nearest")
+
+    logger.warning("Could not identify lat/lon coordinates - using full spatial extent.")
+    return ds

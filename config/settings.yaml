@@ -1,0 +1,84 @@
+# Settings and Core Application Constants
+
+# Region of Interest: Palawan, Philippines
+# [min_lon, max_lon, min_lat, max_lat]
+region: [115.0, 122.0, 6.0, 14.5]
+
+# Workflow mode:
+# - prototype_2016       keeps the original multi-date debugging workflow
+# - mindoro_retro_2023   runs the fixed official thesis-aligned case
+workflow_mode: prototype_2016
+
+# Official workflow case file mappings
+workflow_case_files:
+  mindoro_retro_2023: config/case_mindoro_retro_2023.yaml
+
+# Frozen Phase 1 baseline selection artifact for official spill-case workflows.
+phase1_baseline_selection_path: config/phase1_baseline_selection.yaml
+
+# Prototype-only Phase 1 test date window (Golden Test)
+# You can provide a single date string like "2016-09-17" 
+# or a list of dates to scan: ["2020-03-05", "2021-06-10", "2022-09-15"]
+phase_1_start_date: ["2016-09-01", "2016-09-06", "2016-09-17"]
+
+# Standard Grid Resolution for Phase 2/3 (Degrees)
+grid_resolution: 0.05
+
+# Friendly names for visualization
+recipe_component_names:
+  hycom: "HYCOM Ocean Currents"
+  ncep: "NCEP Reanalysis Winds"
+  cmems: "CMEMS Global Ocean"
+  era5: "ERA5 Reanalysis"
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 – Oil Weathering Constants
+# ---------------------------------------------------------------------------
+
+# ADIOS oil identifiers used in config/oil.yaml
+oil_adios_light: "AD03160"   # Marine Gas Oil  (light, highly evaporative)
+oil_adios_heavy: "AD00256"   # IFO 380 / Bunker Fuel (heavy, persistent)
+
+# Human-readable labels for charts and reports
+oil_display_names:
+  light: "Light Oil (Marine Gas Oil / Diesel)"
+  heavy: "Heavy Oil (IFO 380 / Bunker Fuel)"
+
+# Palette applied to mass-budget plots
+oil_colors:
+  light: "#FF8C00"   # dark orange
+  heavy: "#4B0082"   # indigo
+
+# Mass-budget component colours (shared across all oil types)
+budget_colors:
+  surface: "#1f77b4"     # blue
+  evaporated: "#ff7f0e"  # orange
+  dispersed: "#2ca02c"   # green
+  beached: "#d62728"     # red
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 – Diagnostics Constants
+# ---------------------------------------------------------------------------
+
+# NOAA operational defaults for OpenOil (from NOAA ERR / ADIOS guidance)
+noaa_defaults:
+  "seed:droplet_diameter_min_subsea": 0.0005   # 0.5 mm
+  "seed:droplet_diameter_max_subsea": 0.005    # 5.0 mm
+  "vertical_mixing:TSprofiles": false
+  "wave_entrainment:droplet_size_distribution": "Johansen et al. (2015)"
+  "wave_entrainment:entrainment_rate": "Li et al. (2017)"
+  "drift:vertical_mixing": false               # OFF – surface-only transport
+  "drift:wind_uncertainty": 0.0
+  "drift:current_uncertainty": 0.0
+  "processes:dispersion": true                 # ON – weathering
+  "processes:evaporation": true                # ON – weathering
+  "processes:emulsification": true             # ON – weathering
+  "processes:update_oilfilm_thickness": true   # ON – spreading
+  "general:use_auto_landmask": true
+
+# Physically expected ranges for the South China Sea / Sulu Sea region
+wind_speed_realistic_max_ms: 25.0     # m/s (typhoon threshold)
+wave_height_realistic_max_m: 8.0      # m (severe storm)
+wind_speed_moderate_ms: 12.0          # above this, heavy dispersion expected

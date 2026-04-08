@@ -1,0 +1,318 @@
+"""
+Centralized workflow and case loading.
+"""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
+
+import pandas as pd
+import yaml
+
+SETTINGS_PATH = Path(__file__).resolve().parent.parent.parent / "config" / "settings.yaml"
+DEFAULT_MINDORO_FEATURE_SERVER = (
+    "https://services1.arcgis.com/RTK5Unh1Z71JKIiR/ArcGIS/rest/services/"
+    "Mindoro_Oil_Spills_Monitoring_Map_WFL1/FeatureServer"
+)
+
+
+def load_settings(settings_path: str | Path = SETTINGS_PATH) -> dict:
+    with open(settings_path, "r") as f:
+        return yaml.safe_load(f) or {}
+
+
+def _load_yaml(path: str | Path) -> dict:
+    with open(path, "r") as f:
+        return yaml.safe_load(f) or {}
+
+
+def _parse_env_or_default(name: str, default):
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+
+    try:
+        parsed = yaml.safe_load(raw)
+    except Exception:
+        parsed = raw
+    return parsed
+
+
+@dataclass(frozen=True)
+class CaseLayerConfig:
+    key: str
+    role: str
+    layer_id: int
+    name: str
+    local_name: str
+    service_url: str
+    geometry_type: str
+    event_time_utc: str | None = None
+
+    def geojson_path(self, run_name: str) -> Path:
+        return Path("data") / "arcgis" / run_name / f"{self.local_name}.geojson"
+
+    def mask_path(self, run_name: str) -> Path:
+        return Path("data") / "arcgis" / run_name / f"{self.local_name}.tif"
+
+
+@dataclass(frozen=True)
+class CaseContext:
+    workflow_mode: str
+    mode_label: str
+    case_id: str
+    run_name: str
+    description: str
+    region: list[float]
+    is_prototype: bool
+    initialization_mode: str
+    source_point_role: str
+    release_mode: str
+    release_reference: str
+    validation_target: str
+    release_start_utc: str
+    release_end_utc: str
+    simulation_start_utc: str
+    simulation_end_utc: str
+    forcing_start_utc: str
+    forcing_end_utc: str
+    drifter_required: bool
+    drifter_mode: str
+    prototype_case_dates: tuple[str, ...]
+    current_case_date: str | None
+    case_definition_path: str | None
+    initialization_layer: CaseLayerConfig
+    validation_layer: CaseLayerConfig
+    provenance_layer: CaseLayerConfig
+
+    @property
+    def is_official(self) -> bool:
+        return not self.is_prototype
+
+    @property
+    def forcing_start_date(self) -> str:
+        return str(pd.to_datetime(self.forcing_start_utc).date())
+
+    @property
+    def forcing_end_date(self) -> str:
+        return str(pd.to_datetime(self.forcing_end_utc).date())
+
+    @property
+    def phase_1_start_date_value(self):
+        if self.is_prototype:
+            if self.current_case_date:
+                return self.current_case_date
+            if len(self.prototype_case_dates) == 1:
+                return self.prototype_case_dates[0]
+            return list(self.prototype_case_dates)
+        return self.forcing_start_date
+
+    @property
+    def orchestration_dates(self) -> list[str]:
+        if self.is_prototype and self.current_case_date is None and len(self.prototype_case_dates) > 1:
+            return list(self.prototype_case_dates)
+        return []
+
+    @property
+    def active_case_date(self) -> str:
+        if self.current_case_date:
+            return self.current_case_date
+        if self.prototype_case_dates:
+            return self.prototype_case_dates[0]
+        return self.forcing_start_date
+
+    @property
+    def workflow_flavor(self) -> str:
+        return "prototype mode" if self.is_prototype else "official mode"
+
+    @property
+    def transport_track(self) -> str:
+        if self.is_prototype:
+            return "historical transport calibration"
+        return "official spill case"
+
+    @property
+    def recipe_resolution_mode(self) -> str:
+        if self.is_prototype:
+            return "case-local Phase 1 validation ranking"
+        return "frozen Phase 1 baseline selection"
+
+    @property
+    def arcgis_layers(self) -> list[CaseLayerConfig]:
+        return [self.initialization_layer, self.validation_layer, self.provenance_layer]
+
+
+def _default_prototype_layer_specs(
+    start_time_utc: str,
+    end_time_utc: str,
+) -> tuple[CaseLayerConfig, CaseLayerConfig, CaseLayerConfig]:
+    init_layer = CaseLayerConfig(
+        key="initialization_polygon",
+        role="initialization_polygon",
+        layer_id=3,
+        name="seed_polygon_mar3",
+        local_name="seed_polygon_mar3",
+        service_url=DEFAULT_MINDORO_FEATURE_SERVER,
+        geometry_type="polygon",
+        event_time_utc=start_time_utc,
+    )
+    validation_layer = CaseLayerConfig(
+        key="validation_polygon",
+        role="validation_polygon",
+        layer_id=1,
+        name="validation_polygon_mar6",
+        local_name="validation_polygon_mar6",
+        service_url=DEFAULT_MINDORO_FEATURE_SERVER,
+        geometry_type="polygon",
+        event_time_utc=end_time_utc,
+    )
+    provenance_layer = CaseLayerConfig(
+        key="provenance_source_point",
+        role="active_release_fallback",
+        layer_id=0,
+        name="source_point_metadata",
+        local_name="source_point_metadata",
+        service_url=DEFAULT_MINDORO_FEATURE_SERVER,
+        geometry_type="point",
+        event_time_utc=start_time_utc,
+    )
+    return init_layer, validation_layer, provenance_layer
+
+
+def _load_official_context(settings: dict, workflow_mode: str) -> CaseContext:
+    case_files = settings.get("workflow_case_files") or {}
+    case_path = Path(os.environ.get("CASE_CONFIG_PATH") or case_files.get(workflow_mode, ""))
+    if not case_path.exists():
+        raise FileNotFoundError(
+            f"Workflow mode '{workflow_mode}' requires a case config file. Missing: {case_path}"
+        )
+
+    cfg = _load_yaml(case_path)
+    arcgis_cfg = cfg.get("arcgis") or {}
+    layers_cfg = arcgis_cfg.get("layers") or {}
+    service_url = arcgis_cfg.get("feature_server_url", DEFAULT_MINDORO_FEATURE_SERVER)
+
+    def build_layer(layer_key: str) -> CaseLayerConfig:
+        layer_cfg = layers_cfg[layer_key]
+        return CaseLayerConfig(
+            key=layer_key,
+            role=layer_cfg.get("role", layer_key),
+            layer_id=int(layer_cfg["layer_id"]),
+            name=layer_cfg.get("name", layer_key),
+            local_name=layer_cfg.get("local_name", layer_cfg.get("name", layer_key)),
+            service_url=layer_cfg.get("service_url", service_url),
+            geometry_type=layer_cfg.get("geometry_type", "polygon"),
+            event_time_utc=layer_cfg.get("event_time_utc"),
+        )
+
+    run_name = os.environ.get("RUN_NAME", cfg["case_id"])
+    return CaseContext(
+        workflow_mode=workflow_mode,
+        mode_label=cfg.get("mode_label", "Official workflow"),
+        case_id=cfg["case_id"],
+        run_name=run_name,
+        description=cfg.get("description", cfg["case_id"]),
+        region=cfg.get("region", settings["region"]),
+        is_prototype=False,
+        initialization_mode=cfg.get("initialization_mode", "initialization_polygon"),
+        source_point_role=cfg.get("source_point_role", "provenance_only"),
+        release_mode=cfg.get("release_mode", "instantaneous_polygon"),
+        release_reference=cfg.get("release_reference", "initialization_polygon"),
+        validation_target=cfg.get("validation_target", "validation_polygon"),
+        release_start_utc=cfg["release_start_utc"],
+        release_end_utc=cfg["release_end_utc"],
+        simulation_start_utc=cfg["simulation_start_utc"],
+        simulation_end_utc=cfg["simulation_end_utc"],
+        forcing_start_utc=cfg.get("forcing_start_utc", cfg["simulation_start_utc"]),
+        forcing_end_utc=cfg.get("forcing_end_utc", cfg["simulation_end_utc"]),
+        drifter_required=bool((cfg.get("drifter") or {}).get("required", True)),
+        drifter_mode=(cfg.get("drifter") or {}).get("mode", "fixed_case_window"),
+        prototype_case_dates=(),
+        current_case_date=None,
+        case_definition_path=str(case_path),
+        initialization_layer=build_layer("initialization_polygon"),
+        validation_layer=build_layer("validation_polygon"),
+        provenance_layer=build_layer("provenance_source_point"),
+    )
+
+
+def _load_prototype_context(settings: dict) -> CaseContext:
+    prototype_dates_raw = _parse_env_or_default("PHASE_1_START_DATE", settings["phase_1_start_date"])
+    if isinstance(prototype_dates_raw, list):
+        prototype_dates = tuple(str(item) for item in prototype_dates_raw)
+        current_case_date = None
+    else:
+        current_case_date = str(prototype_dates_raw)
+        prototype_dates = (current_case_date,)
+
+    if not prototype_dates:
+        raise ValueError("Prototype workflow requires at least one phase_1_start_date.")
+
+    active_date = current_case_date or prototype_dates[0]
+    start_ts = pd.to_datetime(active_date)
+    end_ts = start_ts + pd.Timedelta(hours=72)
+    start_time_utc = start_ts.strftime("%Y-%m-%dT00:00:00Z")
+    end_time_utc = end_ts.strftime("%Y-%m-%dT00:00:00Z")
+    init_layer, validation_layer, provenance_layer = _default_prototype_layer_specs(
+        start_time_utc,
+        end_time_utc,
+    )
+    run_name = os.environ.get("RUN_NAME", f"CASE_{active_date}")
+
+    return CaseContext(
+        workflow_mode="prototype_2016",
+        mode_label="Prototype 2016 debugging workflow",
+        case_id=run_name,
+        run_name=run_name,
+        description="Prototype debugging workflow preserving the original 2016 multi-date behavior",
+        region=settings["region"],
+        is_prototype=True,
+        initialization_mode="initialization_polygon",
+        source_point_role="active_release_fallback",
+        release_mode="prototype_debug",
+        release_reference="provenance_source_point_or_drifter",
+        validation_target="validation_polygon",
+        release_start_utc=start_time_utc,
+        release_end_utc=start_time_utc,
+        simulation_start_utc=start_time_utc,
+        simulation_end_utc=end_time_utc,
+        forcing_start_utc=start_time_utc,
+        forcing_end_utc=end_time_utc,
+        drifter_required=True,
+        drifter_mode="prototype_scan",
+        prototype_case_dates=prototype_dates,
+        current_case_date=current_case_date,
+        case_definition_path=None,
+        initialization_layer=init_layer,
+        validation_layer=validation_layer,
+        provenance_layer=provenance_layer,
+    )
+
+
+@lru_cache(maxsize=1)
+def get_case_context() -> CaseContext:
+    settings = load_settings()
+    workflow_mode = os.environ.get("WORKFLOW_MODE", settings.get("workflow_mode", "prototype_2016"))
+    if workflow_mode == "mindoro_retro_2023":
+        return _load_official_context(settings, workflow_mode)
+    if workflow_mode == "prototype_2016":
+        return _load_prototype_context(settings)
+    raise ValueError(f"Unsupported workflow_mode '{workflow_mode}'.")
+
+
+def get_case_log_lines() -> list[str]:
+    case = get_case_context()
+    return [
+        f"workflow_mode      : {case.workflow_mode}",
+        f"case_id            : {case.case_id}",
+        f"transport_track    : {case.transport_track}",
+        f"recipe_resolution  : {case.recipe_resolution_mode}",
+        f"initialization_mode: {case.initialization_mode}",
+        f"source_point_role  : {case.source_point_role}",
+        f"simulation_start   : {case.simulation_start_utc}",
+        f"simulation_end     : {case.simulation_end_utc}",
+        f"workflow_flavor    : {case.workflow_flavor}",
+    ]
