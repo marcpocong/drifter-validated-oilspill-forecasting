@@ -432,6 +432,36 @@ def get_prepared_input_specs(
                 f"Rasterized mask from {layer_source}",
             )
 
+    if case.is_official:
+        from src.helpers.scoring import get_scoring_grid_artifact_paths
+
+        scoring_grid_paths = get_scoring_grid_artifact_paths()
+        add_spec(
+            "scoring_grid_metadata",
+            scoring_grid_paths["metadata_yaml"],
+            "Generated official scoring-grid metadata",
+        )
+        add_spec(
+            "scoring_grid_template",
+            scoring_grid_paths["template_tif"],
+            "Generated official scoring-grid template raster",
+        )
+        add_spec(
+            "scoring_grid_extent",
+            scoring_grid_paths["extent_gpkg"],
+            "Generated official scoring-grid extent polygon",
+        )
+        add_spec(
+            "land_mask",
+            scoring_grid_paths["land_mask_tif"],
+            "Generated land-mask scaffold aligned to the official scoring grid",
+        )
+        add_spec(
+            "sea_mask",
+            scoring_grid_paths["sea_mask_tif"],
+            "Generated sea-mask scaffold aligned to the official scoring grid",
+        )
+
     if require_drifter:
         add_spec(
             "drifter_observations",
@@ -523,6 +553,28 @@ def get_deterministic_control_output_path(recipe_name: str, run_name: str | None
     return get_forecast_output_dir(run_name) / f"deterministic_control_{recipe_name}.nc"
 
 
+def get_deterministic_control_score_raster_dir(recipe_name: str, run_name: str | None = None) -> Path:
+    """Return the canonical raster output directory for a deterministic control forecast."""
+    return get_forecast_output_dir(run_name) / f"deterministic_control_{recipe_name}_rasters"
+
+
+def get_deterministic_control_score_raster_path(
+    recipe_name: str,
+    hour: int = 72,
+    run_name: str | None = None,
+    raster_kind: str = "hits",
+) -> Path:
+    """Return the canonical deterministic-control score raster path."""
+    if raster_kind not in {"hits", "p"}:
+        raise ValueError(f"Unsupported raster_kind '{raster_kind}'. Expected 'hits' or 'p'.")
+    return get_deterministic_control_score_raster_dir(recipe_name, run_name) / f"{raster_kind}_{hour}.tif"
+
+
+def get_ensemble_probability_score_raster_path(hour: int = 72, run_name: str | None = None) -> Path:
+    """Return the canonical ensemble probability score raster path."""
+    return get_case_output_dir(run_name) / "ensemble" / f"probability_{hour}h.tif"
+
+
 def get_phase3b_forecast_candidates(
     recipe_name: str,
     run_name: str | None = None,
@@ -537,9 +589,9 @@ def get_phase3b_forecast_candidates(
         candidates.append(
             {
                 "label": f"deterministic_control_{recipe_name}",
-                "type": f"deterministic_control_{recipe_name}",
-                "path": str(get_deterministic_control_output_path(recipe_name, active_run_name)),
-                "source": "Official deterministic control spill forecast",
+                "type": f"deterministic_control_{recipe_name}_hits_72h",
+                "path": str(get_deterministic_control_score_raster_path(recipe_name, 72, active_run_name, raster_kind="hits")),
+                "source": "Official deterministic control score raster at T+72h",
             }
         )
     else:
@@ -556,8 +608,16 @@ def get_phase3b_forecast_candidates(
         {
             "label": "ensemble_prob_72h",
             "type": "ensemble_prob_72h",
-            "path": str(case_dir / "ensemble" / "probability_72h.nc"),
-            "source": "Phase 2 ensemble probability product at T+72h",
+            "path": str(
+                get_ensemble_probability_score_raster_path(72, active_run_name)
+                if case.is_official
+                else case_dir / "ensemble" / "probability_72h.nc"
+            ),
+            "source": (
+                "Phase 2 ensemble probability score raster at T+72h"
+                if case.is_official
+                else "Phase 2 ensemble probability product at T+72h"
+            ),
         }
     )
     return candidates

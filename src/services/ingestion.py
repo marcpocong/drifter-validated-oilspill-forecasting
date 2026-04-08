@@ -83,7 +83,7 @@ class DataIngestionService(BaseService):
         # Pad bounding box heavily to prevent edge-clipping during interpolation for low-res models like NCEP
         pad = 3.0
         self.bbox = [REGION[0]-pad, REGION[1]+pad, REGION[2]-pad, REGION[3]+pad] 
-        self.grid = GridBuilder()
+        self.grid = GridBuilder() if self.case_context.is_prototype else None
 
     @staticmethod
     def _assert_pipeline_role():
@@ -541,6 +541,7 @@ class DataIngestionService(BaseService):
     def download_arcgis_layers(self) -> str:
         """ArcGIS ingestion resolved directly from Mindoro authoritative map."""
         from src.services.arcgis import get_configured_arcgis_layers
+        from src.helpers.scoring import build_official_scoring_grid
 
         workflow_layers = get_configured_arcgis_layers()
         layer_lookup = {layer.local_name: layer for layer in self.case_context.arcgis_layers}
@@ -551,6 +552,7 @@ class DataIngestionService(BaseService):
 
         records = []
         registry_rows = []
+        pending_layers = []
         for layer in workflow_layers:
             try:
                 url = layer.service_url.rstrip("/")
@@ -579,23 +581,43 @@ class DataIngestionService(BaseService):
 
                 out_geojson = self.arcgis_dir / f"{name}.geojson"
                 gdf.to_file(out_geojson, driver="GeoJSON")
-
-                mask_path = self.arcgis_dir / f"{name}.tif"
-                rasterize_observation_layer(gdf, self.grid, mask_path)
-
-                registry_rows.append({
-                    "name": name,
-                    "layer_id": layer_id,
-                    "role": layer_meta.role if layer_meta else "",
-                    "event_time_utc": layer_meta.event_time_utc if layer_meta else "",
-                    "feature_count": int(len(gdf)),
-                    "geojson": str(out_geojson),
-                    "mask": str(mask_path),
-                })
-                records.append(name)
+                pending_layers.append(
+                    {
+                        "name": name,
+                        "layer_id": layer_id,
+                        "role": layer_meta.role if layer_meta else "",
+                        "event_time_utc": layer_meta.event_time_utc if layer_meta else "",
+                        "feature_count": int(len(gdf)),
+                        "geojson": str(out_geojson),
+                        "gdf": gdf,
+                    }
+                )
             except Exception as e:
                 logger.error(f"ArcGIS ingestion failed for layer {layer.name}: {e}")
                 raise ArcGISLayerIngestionError(str(e)) from e
+
+        if self.case_context.is_official:
+            build_official_scoring_grid(force_refresh=True)
+            self.grid = GridBuilder()
+        elif self.grid is None:
+            self.grid = GridBuilder()
+
+        for layer_data in pending_layers:
+            mask_path = self.arcgis_dir / f"{layer_data['name']}.tif"
+            rasterize_observation_layer(layer_data["gdf"], self.grid, mask_path)
+
+            registry_rows.append(
+                {
+                    "name": layer_data["name"],
+                    "layer_id": layer_data["layer_id"],
+                    "role": layer_data["role"],
+                    "event_time_utc": layer_data["event_time_utc"],
+                    "feature_count": layer_data["feature_count"],
+                    "geojson": layer_data["geojson"],
+                    "mask": str(mask_path),
+                }
+            )
+            records.append(layer_data["name"])
 
         pd.DataFrame(registry_rows).to_csv(self.arcgis_dir / "arcgis_registry.csv", index=False)
         return ",".join(records) if records else "SKIPPED_NO_DATA"

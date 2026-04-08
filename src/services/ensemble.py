@@ -16,12 +16,17 @@ import yaml
 from opendrift.models.oceandrift import OceanDrift
 from opendrift.readers import reader_constant, reader_netCDF_CF_generic
 
+from src.core.case_context import get_case_context
 from src.core.constants import BASE_OUTPUT_DIR, RUN_NAME
-from src.helpers.plotting import plot_probability_map
 from src.helpers.scoring import get_scoring_grid_spec
+from src.helpers.plotting import plot_probability_map
+from src.helpers.raster import GridBuilder, project_points_to_grid, rasterize_model_output, save_raster
 from src.utils.io import (
     RecipeSelection,
     get_deterministic_control_output_path,
+    get_deterministic_control_score_raster_dir,
+    get_deterministic_control_score_raster_path,
+    get_ensemble_probability_score_raster_path,
     get_forcing_files,
     get_forecast_manifest_path,
     resolve_spill_origin,
@@ -105,6 +110,13 @@ class EnsembleForecastService:
             time_step=timedelta(minutes=60),
             outfile=str(output_file),
         )
+        rasterize_model_output(
+            grid=GridBuilder(),
+            nc_path=output_file,
+            model_type="opendrift",
+            out_dir=get_deterministic_control_score_raster_dir(recipe_name),
+            hours=[24, 48, 72],
+        )
         logger.info("Deterministic control forecast saved to %s", output_file)
         return output_file
 
@@ -174,16 +186,15 @@ class EnsembleForecastService:
         Generate gridded NetCDF probability fields and PNG snapshots for 24h, 48h, and 72h.
         """
         snapshots = [24, 48, 72]
-        grid = get_scoring_grid_spec()
-        lon_bins = grid.lon_bins
-        lat_bins = grid.lat_bins
+        case = get_case_context()
+        grid = GridBuilder()
         written_files: list[Path] = []
 
         metadata = {
             "ensemble_size": self.ensemble_size,
-            "grid": grid.to_metadata(),
+            "grid": grid.spec.to_metadata(),
             "snapshots_hours": snapshots,
-            "variables": ["probability_density"],
+            "variables": ["probability"],
         }
 
         metadata_path = self.output_dir / "metadata.json"
@@ -212,27 +223,44 @@ class EnsembleForecastService:
                     logger.warning("Could not process %s for %sh: %s", Path(file_path).name, hr, e)
 
             if not all_lons:
-                continue
+                raise RuntimeError(
+                    f"Ensemble probability snapshot T+{hr}h could not be generated because "
+                    "no valid particle positions were found."
+                )
 
-            hist, _, _ = np.histogram2d(all_lons, all_lats, bins=[lon_bins, lat_bins])
-            prob_density = hist.T / len(all_lons)
+            x_vals, y_vals = project_points_to_grid(grid, np.asarray(all_lons), np.asarray(all_lats))
+            hist, _, _ = np.histogram2d(y_vals, x_vals, bins=[grid.y_bins, grid.x_bins])
+            hist = np.flipud(hist)
+            prob_density = (hist / len(all_lons)).astype(np.float32)
+
+            dims = ["time", grid.y_name, grid.x_name]
+            coords = {
+                "time": [hr],
+                grid.y_name: grid.y_centers,
+                grid.x_name: grid.x_centers,
+            }
+            attrs = {
+                "description": f"Probability field at T+{hr}h",
+                "units": "decimal_fraction",
+                "crs": grid.crs,
+                "resolution": grid.resolution,
+                "grid_metadata_path": str(grid.spec.metadata_path or ""),
+                "display_bounds_wgs84": json.dumps(grid.display_bounds_wgs84 or case.region),
+            }
 
             ds_prob = xr.Dataset(
-                data_vars={"probability": (["lat", "lon"], prob_density)},
-                coords={
-                    "lat": lat_bins[:-1],
-                    "lon": lon_bins[:-1],
-                    "time": hr,
-                },
-                attrs={
-                    "description": f"Probability field at T+{hr}h",
-                    "units": "decimal_fraction",
-                },
+                data_vars={"probability": (dims, prob_density[np.newaxis, :, :])},
+                coords=coords,
+                attrs=attrs,
             )
 
             nc_out = self.output_dir / f"probability_{hr}h.nc"
             ds_prob.to_netcdf(nc_out)
             written_files.append(nc_out)
+
+            tif_out = get_ensemble_probability_score_raster_path(hr)
+            save_raster(grid, prob_density, tif_out)
+            written_files.append(tif_out)
 
             img_out = self.output_dir / f"probability_{hr}h.png"
             plot_probability_map(
@@ -241,7 +269,7 @@ class EnsembleForecastService:
                 all_lats=np.array(all_lats),
                 start_lon=start_lon,
                 start_lat=start_lat,
-                corners=grid.region,
+                corners=grid.display_bounds_wgs84 or case.region,
                 title=f"Ensemble Forecast: T+{hr}h\nProbability Distribution (N={self.ensemble_size})",
             )
             written_files.append(img_out)
@@ -316,8 +344,12 @@ class EnsembleForecastService:
             "start_time": str(start_time),
             "artifacts": {
                 "deterministic_control_nc": str(deterministic_control),
+                "deterministic_control_hits_72h_tif": str(
+                    get_deterministic_control_score_raster_path(selection.recipe, 72, raster_kind="hits")
+                ),
                 "ensemble_manifest": ensemble_manifest.get("manifest"),
                 "ensemble_probability_72h_nc": str(self.output_dir / "probability_72h.nc"),
+                "ensemble_probability_72h_tif": str(get_ensemble_probability_score_raster_path(72)),
             },
             "status_flags": {
                 "valid": selection.valid,
@@ -340,6 +372,8 @@ class EnsembleForecastService:
             return "legacy_alias"
         if path.name.startswith("member_") and path.suffix == ".nc":
             return "member_trace"
+        if path.name.startswith("probability_") and path.suffix == ".tif":
+            return "probability_tif"
         if path.name.startswith("probability_") and path.suffix == ".png":
             return "probability_png"
         if path.name.startswith("probability_") and path.suffix == ".nc":

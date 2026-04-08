@@ -8,9 +8,9 @@ import yaml
 import pandas as pd
 from pathlib import Path
 
-from src.core.constants import REGION, GRID_RESOLUTION
-from src.helpers.raster import GridBuilder, rasterize_model_output
 from src.helpers.metrics import calculate_fss, calculate_kl_divergence
+from src.helpers.raster import GridBuilder, rasterize_model_output
+from src.helpers.scoring import precheck_same_grid
 from src.utils.io import get_forcing_files
 
 # We will import the weathering implementations so we can run them directly
@@ -43,7 +43,7 @@ class BenchmarkPipeline:
         for sub in ["grid", "opendrift", "pygnome", "metrics", "logs"]:
             os.makedirs(self.base_dir / sub, exist_ok=True)
 
-    def generate_config_snapshot(self, best_recipe: str, start_lat: float, start_lon: float, start_time: str, oil_cfg: dict):
+    def generate_config_snapshot(self, best_recipe: str, start_lat: float, start_lon: float, start_time: str, oil_cfg: dict, grid: GridBuilder):
         config_snapshot = {
             "case_id": self.run_id,
             "start_time": start_time,
@@ -51,10 +51,7 @@ class BenchmarkPipeline:
             "start_lon": start_lon,
             "recipe": best_recipe,
             "oil": oil_cfg,
-            "grid": {
-                "region": REGION,
-                "resolution": GRID_RESOLUTION
-            }
+            "grid": grid.spec.to_metadata(),
         }
         with open(self.base_dir / "config_snapshot.yaml", "w") as f:
             yaml.dump(config_snapshot, f, indent=2)
@@ -70,13 +67,13 @@ class BenchmarkPipeline:
         oil_key = list(full_config["oils"].keys())[0]
         oil_cfg = full_config["oils"][oil_key]
         
-        # 1. Config Snapshot
-        self.generate_config_snapshot(best_recipe, start_lat, start_lon, start_time, oil_cfg)
-        
-        # 2. Setup Grid
+        # 1. Setup Grid
         grid = GridBuilder()
         grid.save_metadata(self.base_dir / "grid" / "grid.json")
         self.logger.info("Grid metadata saved.")
+
+        # 2. Config Snapshot
+        self.generate_config_snapshot(best_recipe, start_lat, start_lon, start_time, oil_cfg, grid)
         
         # Resolve forcing files via the shared helper (reads recipes.yaml).
         forcing = get_forcing_files(best_recipe)
@@ -128,6 +125,23 @@ class BenchmarkPipeline:
             kl_records = []
 
             for h in hours:
+                hits_precheck = precheck_same_grid(
+                    od_rasters[h]["hits"],
+                    pg_rasters[h]["hits"],
+                    report_base_path=self.base_dir / "metrics" / "precheck" / f"hits_{h}",
+                )
+                probs_precheck = precheck_same_grid(
+                    od_rasters[h]["probs"],
+                    pg_rasters[h]["probs"],
+                    report_base_path=self.base_dir / "metrics" / "precheck" / f"probability_{h}",
+                )
+                if not hits_precheck.passed or not probs_precheck.passed:
+                    raise RuntimeError(
+                        f"Benchmark same-grid precheck failed for hour {h}. "
+                        f"Hits report: {hits_precheck.json_report_path} | "
+                        f"Probability report: {probs_precheck.json_report_path}"
+                    )
+
                 od_hits = od_rasters[h]["hits_data"]
                 pg_hits = pg_rasters[h]["hits_data"]
 

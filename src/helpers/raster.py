@@ -1,52 +1,80 @@
 """
 Rasterization helpers for PyGNOME and OpenDrift outputs.
-Builds a common grid and converts netcdf outputs to .tif.
+
+Prototype mode keeps the legacy geographic grid. Official mode uses the
+canonical projected scoring grid and performs real coordinate reprojection
+before histogramming or rasterization.
 """
 
 from __future__ import annotations
 
-import numpy as np
-import xarray as xr
-import pandas as pd
 import json
 from pathlib import Path
 
-from src.helpers.scoring import get_scoring_grid_spec, ScoringGridSpec
+import numpy as np
+import pandas as pd
+import xarray as xr
+
+from src.helpers.scoring import GEOGRAPHIC_CRS, ScoringGridSpec, get_scoring_grid_spec
 
 try:
     import rasterio
-    from rasterio.transform import from_origin
     from rasterio.features import rasterize as rio_rasterize
-except ImportError:
+    from rasterio.transform import from_origin
+    from rasterio.warp import transform as rio_transform
+except ImportError:  # pragma: no cover - guarded at runtime
     rasterio = None
     rio_rasterize = None
+    from_origin = None
+    rio_transform = None
 
 try:
     import geopandas as gpd
-except ImportError:
+except ImportError:  # pragma: no cover - guarded at runtime
     gpd = None
 
 
 class GridBuilder:
     """
-    Creates the canonical common raster grid used by benchmark/validation outputs.
+    Create the canonical common raster grid used by benchmark/validation outputs.
     """
-    def __init__(self, region: list[float] = None, resolution: float = None):
+
+    def __init__(self, region: list[float] | None = None, resolution: float | None = None):
         spec = get_scoring_grid_spec()
 
         if region is not None or resolution is not None:
             _region = spec.region if region is None else region
             _resolution = spec.resolution if resolution is None else resolution
             spec = type(spec)(
-                min_lon=_region[0],
-                max_lon=_region[1],
-                min_lat=_region[2],
-                max_lat=_region[3],
-                resolution=_resolution,
+                min_x=float(_region[0]),
+                max_x=float(_region[1]),
+                min_y=float(_region[2]),
+                max_y=float(_region[3]),
+                resolution=float(_resolution),
                 crs=spec.crs,
+                x_name=spec.x_name,
+                y_name=spec.y_name,
+                units=spec.units,
+                workflow_mode=spec.workflow_mode,
+                run_name=spec.run_name,
+                display_bounds_wgs84=spec.display_bounds_wgs84,
+                buffer_m=spec.buffer_m,
+                grid_snap_m=spec.grid_snap_m,
+                metadata_path=spec.metadata_path,
+                metadata_json_path=spec.metadata_json_path,
+                template_path=spec.template_path,
+                extent_path=spec.extent_path,
+                land_mask_path=spec.land_mask_path,
+                sea_mask_path=spec.sea_mask_path,
+                shoreline_mask_status=spec.shoreline_mask_status,
+                source_paths=spec.source_paths,
             )
 
         self.spec = spec
+        self.min_x = spec.min_x
+        self.max_x = spec.max_x
+        self.min_y = spec.min_y
+        self.max_y = spec.max_y
         self.min_lon = spec.min_lon
         self.max_lon = spec.max_lon
         self.min_lat = spec.min_lat
@@ -54,20 +82,42 @@ class GridBuilder:
         self.resolution = spec.resolution
         self.width = spec.width
         self.height = spec.height
-
-        # Transform for saving to TIFF
-        self.transform = from_origin(self.min_lon, self.max_lat, self.resolution, self.resolution)
-
-        # Generate cell edges for numpy histogramming
+        self.crs = spec.crs
+        self.is_projected = spec.is_projected
+        self.x_name = spec.x_name
+        self.y_name = spec.y_name
+        self.units = spec.units
+        self.display_bounds_wgs84 = spec.display_bounds_wgs84
+        self.region = spec.region
+        self.x_bins = spec.x_bins
+        self.y_bins = spec.y_bins
+        self.x_centers = spec.x_centers
+        self.y_centers = spec.y_centers
         self.lon_bins = spec.lon_bins
         self.lat_bins = spec.lat_bins
-        self.crs = spec.crs
+
+        if from_origin is None:
+            raise ImportError("rasterio is required to build raster transforms")
+        self.transform = from_origin(self.min_x, self.max_y, self.resolution, self.resolution)
 
     def save_metadata(self, out_path: Path):
         meta = self.spec.to_metadata()
-        with open(out_path, "w") as f:
-            json.dump(meta, f, indent=4)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=2)
         return meta
+
+
+def _reproject_gdf_to_grid(gdf, grid: GridBuilder):
+    if gdf is None:
+        return gdf
+    if gpd is None:
+        raise ImportError("geopandas is required to reproject geometry layers")
+    if gdf.crs is None:
+        gdf = gdf.set_crs(GEOGRAPHIC_CRS)
+    if str(gdf.crs) != str(grid.crs):
+        gdf = gdf.to_crs(grid.crs)
+    return gdf
 
 
 def rasterize_polygon_gdf(gdf, grid: GridBuilder, burn_value: float = 1.0) -> np.ndarray:
@@ -76,7 +126,12 @@ def rasterize_polygon_gdf(gdf, grid: GridBuilder, burn_value: float = 1.0) -> np
     if gdf is None or gdf.empty:
         return np.zeros((grid.height, grid.width), dtype=np.float32)
 
-    shapes = ((geom, burn_value) for geom in gdf.geometry if geom is not None and not geom.is_empty)
+    aligned = _reproject_gdf_to_grid(gdf, grid)
+    valid = aligned.dropna(subset=["geometry"])
+    if valid.empty:
+        return np.zeros((grid.height, grid.width), dtype=np.float32)
+
+    shapes = ((geom, burn_value) for geom in valid.geometry if geom is not None and not geom.is_empty)
     arr = rio_rasterize(
         shapes,
         out_shape=(grid.height, grid.width),
@@ -85,24 +140,25 @@ def rasterize_polygon_gdf(gdf, grid: GridBuilder, burn_value: float = 1.0) -> np
         dtype=np.float32,
         all_touched=True,
     )
-    return np.flipud(arr)
+    return arr.astype(np.float32)
 
 
 def save_mask_raster(grid: GridBuilder, data: np.ndarray, out_path: Path):
     if rasterio is None:
         raise ImportError("rasterio is required to save TIFFs")
 
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     with rasterio.open(
         out_path,
-        'w',
-        driver='GTiff',
+        "w",
+        driver="GTiff",
         height=grid.height,
         width=grid.width,
         count=1,
         dtype=data.dtype,
         crs=grid.crs,
         transform=grid.transform,
-        compress='lzw'
+        compress="lzw",
     ) as dst:
         dst.write(data, 1)
 
@@ -114,128 +170,154 @@ def rasterize_observation_layer(gdf, grid: GridBuilder, out_path: Path | None = 
     return mask
 
 
-def extract_particles_at_hour(nc_path: Path, target_hours: int, model_type: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def extract_particles_at_hour(
+    nc_path: Path,
+    target_hours: int,
+    model_type: str,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Extracts active particle lons, lats, and mass at a specific target hour.
+    Extract active particle lon/lat coordinates and mass at a specific target hour.
     """
-    if model_type == 'opendrift':
+    if model_type == "opendrift":
         with xr.open_dataset(nc_path) as ds:
             times = pd.to_datetime(ds.time.values)
             start_time = times[0]
             target_time = start_time + pd.Timedelta(hours=target_hours)
-            
-            # Find closest time index
             diffs = np.abs(times - target_time)
             t_idx = np.argmin(diffs)
-            
-            # OpenDrift shapes: (traj, time)
-            lon = ds['lon'].values[:, t_idx]
-            lat = ds['lat'].values[:, t_idx]
-            status = ds['status'].values[:, t_idx]
-            mass = ds['mass_oil'].values[:, t_idx] if 'mass_oil' in ds else np.ones_like(lon)
-            
-            # Status 0 is active, filter out NaNs
+
+            lon = ds["lon"].values[:, t_idx]
+            lat = ds["lat"].values[:, t_idx]
+            status = ds["status"].values[:, t_idx]
+            mass = ds["mass_oil"].values[:, t_idx] if "mass_oil" in ds else np.ones_like(lon)
+
             valid = (status == 0) & ~np.isnan(lon) & ~np.isnan(lat)
             return lon[valid], lat[valid], mass[valid]
-            
-    elif model_type == 'pygnome':
+
+    if model_type == "pygnome":
         import netCDF4
+
         with netCDF4.Dataset(nc_path) as nc:
             raw_times = netCDF4.num2date(
-                nc.variables['time'][:], 
-                nc.variables['time'].units,
+                nc.variables["time"][:],
+                nc.variables["time"].units,
                 only_use_cftime_datetimes=False,
-                only_use_python_datetimes=True
+                only_use_python_datetimes=True,
             )
             times = pd.to_datetime(raw_times)
             t_idx = np.argmin(np.abs(times - (times[0] + pd.Timedelta(hours=target_hours))))
-            
-            # PyGNOME flatten arrays, use particle_count
-            particle_counts = nc.variables['particle_count'][:]
+
+            particle_counts = nc.variables["particle_count"][:]
             start_idx = int(np.sum(particle_counts[:t_idx]))
             end_idx = start_idx + int(particle_counts[t_idx])
-            
-            lon = nc.variables['longitude'][start_idx:end_idx]
-            lat = nc.variables['latitude'][start_idx:end_idx]
-            status = nc.variables['status_codes'][start_idx:end_idx]
-            mass = nc.variables['mass'][start_idx:end_idx] if 'mass' in nc.variables else np.ones_like(lon)
-            
-            # In water (2)
-            valid = (status == 2)
+
+            lon = nc.variables["longitude"][start_idx:end_idx]
+            lat = nc.variables["latitude"][start_idx:end_idx]
+            status = nc.variables["status_codes"][start_idx:end_idx]
+            mass = nc.variables["mass"][start_idx:end_idx] if "mass" in nc.variables else np.ones_like(lon)
+
+            valid = status == 2
             return lon[valid], lat[valid], mass[valid]
 
-    else:
-        raise ValueError(f"Unknown model_type: {model_type}")
+    raise ValueError(f"Unknown model_type: {model_type}")
 
 
-def rasterize_particles(grid: GridBuilder, lon: np.ndarray, lat: np.ndarray, mass: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def project_points_to_grid(
+    grid: GridBuilder,
+    lon: np.ndarray,
+    lat: np.ndarray,
+    source_crs: str = GEOGRAPHIC_CRS,
+) -> tuple[np.ndarray, np.ndarray]:
+    lon_arr = np.asarray(lon, dtype=float)
+    lat_arr = np.asarray(lat, dtype=float)
+    if str(grid.crs).upper() == str(source_crs).upper():
+        return lon_arr, lat_arr
+    if rio_transform is None:
+        raise ImportError("rasterio is required to transform coordinates into the scoring grid")
+    x_vals, y_vals = rio_transform(source_crs, grid.crs, lon_arr.tolist(), lat_arr.tolist())
+    return np.asarray(x_vals, dtype=float), np.asarray(y_vals, dtype=float)
+
+
+def rasterize_particles(
+    grid: GridBuilder,
+    lon: np.ndarray,
+    lat: np.ndarray,
+    mass: np.ndarray,
+    source_crs: str = GEOGRAPHIC_CRS,
+) -> tuple[np.ndarray, np.ndarray]:
     """
-    Converts scattered particles into binary hits and density probability matrices.
+    Convert scattered particles into binary hits and density probability matrices.
     """
-    # Create 2D histogram of particle counts
-    counts, _, _ = np.histogram2d(lat, lon, bins=[grid.lat_bins, grid.lon_bins])
-    # Reverse counts along lat axis to match image coordinates (top-left is max_lat, min_lon)
+    x_vals, y_vals = project_points_to_grid(grid, lon, lat, source_crs=source_crs)
+    counts, _, _ = np.histogram2d(y_vals, x_vals, bins=[grid.y_bins, grid.x_bins])
     counts = np.flipud(counts)
-    
-    # Binary hits (1 if count > 0, else 0)
+
     hits = (counts > 0).astype(np.float32)
-    
-    # 2D histogram of mass
-    mass_grid, _, _ = np.histogram2d(lat, lon, bins=[grid.lat_bins, grid.lon_bins], weights=mass)
+
+    mass_grid, _, _ = np.histogram2d(y_vals, x_vals, bins=[grid.y_bins, grid.x_bins], weights=mass)
     mass_grid = np.flipud(mass_grid)
-    
-    # Density / Probability (mass per cell / total mass)
+
     total_mass = np.sum(mass_grid)
-    probs = (mass_grid / total_mass).astype(np.float32) if total_mass > 0 else mass_grid.astype(np.float32)
-    
+    if total_mass > 0:
+        probs = (mass_grid / total_mass).astype(np.float32)
+    else:
+        probs = mass_grid.astype(np.float32)
+
     return hits, probs
 
 
 def save_raster(grid: GridBuilder, data: np.ndarray, out_path: Path):
     """
-    Saves a 2D numpy array to a GeoTIFF using rasterio.
+    Save a 2D numpy array to a GeoTIFF using rasterio.
     """
     if rasterio is None:
         raise ImportError("rasterio is required to save TIFFs")
-        
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     with rasterio.open(
         out_path,
-        'w',
-        driver='GTiff',
+        "w",
+        driver="GTiff",
         height=grid.height,
         width=grid.width,
         count=1,
         dtype=data.dtype,
         crs=grid.crs,
         transform=grid.transform,
-        compress='lzw'
+        compress="lzw",
     ) as dst:
         dst.write(data, 1)
 
 
-def rasterize_model_output(grid: GridBuilder, nc_path: Path, model_type: str, out_dir: Path, hours: list[int] = [24, 48, 72]):
+def rasterize_model_output(
+    grid: GridBuilder,
+    nc_path: Path,
+    model_type: str,
+    out_dir: Path,
+    hours: list[int] = [24, 48, 72],
+):
     """
-    Extracts particles for given hours, rasterizes them to hits and probs, and saves as GeoTIFFs.
-    Returns dictionary with paths to the generated tiffs.
+    Extract particles for given hours, rasterize them to hits and probabilities,
+    save as GeoTIFFs, and return the written artifacts.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     results = {}
-    
-    for h in hours:
-        lon, lat, mass = extract_particles_at_hour(nc_path, h, model_type)
+
+    for hour in hours:
+        lon, lat, mass = extract_particles_at_hour(nc_path, hour, model_type)
         hits, probs = rasterize_particles(grid, lon, lat, mass)
-        
-        hits_path = out_dir / f"hits_{h}.tif"
-        probs_path = out_dir / f"p_{h}.tif"
-        
+
+        hits_path = out_dir / f"hits_{hour}.tif"
+        probs_path = out_dir / f"p_{hour}.tif"
+
         save_raster(grid, hits, hits_path)
         save_raster(grid, probs, probs_path)
-        
-        results[h] = {
+
+        results[hour] = {
             "hits": hits_path,
             "probs": probs_path,
             "hits_data": hits,
-            "probs_data": probs
+            "probs_data": probs,
         }
-        
+
     return results

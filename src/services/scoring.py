@@ -16,6 +16,7 @@ import pandas as pd
 
 from src.core.case_context import get_case_context
 from src.helpers.metrics import calculate_fss
+from src.helpers.scoring import precheck_same_grid
 from src.helpers.raster import GridBuilder
 from src.utils.io import (
     get_forecast_manifest_path,
@@ -154,12 +155,41 @@ class Phase3BScoringService:
         return pd.DataFrame(records)
 
     def _score_pairings(self, pairing_manifest: pd.DataFrame) -> pd.DataFrame:
+        case = get_case_context()
         windows_km = [1, 3, 5, 10]
         rows = []
+        precheck_dir = self.output_dir / "same_grid_precheck"
         for _, row in pairing_manifest.iterrows():
             obs_mask_path = Path(row["mask_path"])
+            forecast_path = Path(row["output_path"])
+
+            precheck_csv = ""
+            precheck_json = ""
+            if case.is_official:
+                if forecast_path.suffix.lower() != ".tif":
+                    raise RuntimeError(
+                        "Official Phase 3B scoring requires canonical raster forecasts on the scoring grid. "
+                        f"Unsupported official forecast artifact: {forecast_path}"
+                    )
+                report_base = precheck_dir / (
+                    f"layer_{int(row['layer_id'])}__{forecast_path.stem}"
+                )
+                precheck = precheck_same_grid(
+                    forecast=forecast_path,
+                    target=obs_mask_path,
+                    report_base_path=report_base,
+                )
+                precheck_csv = str(precheck.csv_report_path)
+                precheck_json = str(precheck.json_report_path)
+                if not precheck.passed:
+                    raise RuntimeError(
+                        "Phase 3B same-grid precheck failed. "
+                        f"Forecast: {forecast_path} | Target: {obs_mask_path} | "
+                        f"CSV: {precheck.csv_report_path} | JSON: {precheck.json_report_path}"
+                    )
+
             obs_mask = self._read_mask(obs_mask_path)
-            fc_mask = self._load_forecast_mask(Path(row["output_path"]))
+            fc_mask = self._load_forecast_mask(forecast_path)
             for window_km in windows_km:
                 fss = calculate_fss(fc_mask, obs_mask, window=max(1, int(window_km)))
                 rows.append({
@@ -176,6 +206,8 @@ class Phase3BScoringService:
                     "rerun_required": row["rerun_required"],
                     "window_km": window_km,
                     "fss": fss,
+                    "precheck_csv": precheck_csv,
+                    "precheck_json": precheck_json,
                 })
         return pd.DataFrame(rows)
 
