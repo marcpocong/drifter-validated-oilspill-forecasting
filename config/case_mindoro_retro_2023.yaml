@@ -18,6 +18,12 @@ simulation_end_utc: "2023-03-06T09:59:00Z"
 forcing_start_utc: "2023-03-03T09:59:00Z"
 forcing_end_utc: "2023-03-06T09:59:00Z"
 
+forecast:
+  transport_model: oceandrift
+  provisional_transport_model: true
+  element_count: 5000
+  polygon_seed_random_seed: 20230303
+
 drifter:
   required: false
   mode: frozen_phase1_baseline

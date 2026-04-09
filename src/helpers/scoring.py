@@ -450,13 +450,17 @@ def get_scoring_grid_spec(force_refresh: bool = False) -> ScoringGridSpec:
     return spec
 
 
-def _describe_raster(path: str | Path) -> tuple[dict[str, Any], np.ndarray]:
+def _describe_raster(path: str | Path) -> tuple[dict[str, Any], np.ndarray, np.ndarray]:
     if rasterio is None:
         raise ImportError("rasterio is required to run same-grid prechecks")
 
     path = Path(path)
     with rasterio.open(path) as src:
         mask = src.read_masks(1)
+        data = src.read(1).astype(np.float64)
+        valid = mask == 255
+        valid_values = data[valid]
+        valid_values = valid_values[np.isfinite(valid_values)]
         desc = {
             "path": str(path),
             "crs": src.crs.to_string() if src.crs else None,
@@ -473,9 +477,12 @@ def _describe_raster(path: str | Path) -> tuple[dict[str, Any], np.ndarray]:
             "resolution": [float(abs(src.res[0])), float(abs(src.res[1]))],
             "nodata": None if src.nodata is None else float(src.nodata),
             "dtype": src.dtypes[0],
+            "dtype_numeric": bool(np.issubdtype(np.dtype(src.dtypes[0]), np.number)),
             "mask_all_valid": bool(np.all(mask == 255)),
+            "valid_min": None if valid_values.size == 0 else float(np.min(valid_values)),
+            "valid_max": None if valid_values.size == 0 else float(np.max(valid_values)),
         }
-    return desc, mask
+    return desc, valid, data
 
 
 def _values_match(left: float | None, right: float | None, tol: float = 1e-9) -> bool:
@@ -484,6 +491,54 @@ def _values_match(left: float | None, right: float | None, tol: float = 1e-9) ->
     if left is None or right is None:
         return False
     return math.isclose(float(left), float(right), abs_tol=tol)
+
+
+def _dtype_semantics_match(left_desc: dict[str, Any], right_desc: dict[str, Any]) -> bool:
+    if not left_desc["dtype_numeric"] or not right_desc["dtype_numeric"]:
+        return False
+
+    def _unit_interval_compatible(desc: dict[str, Any]) -> bool:
+        min_value = desc.get("valid_min")
+        max_value = desc.get("valid_max")
+        if min_value is None or max_value is None:
+            return True
+        return float(min_value) >= -1e-6 and float(max_value) <= 1.0 + 1e-6
+
+    return _unit_interval_compatible(left_desc) and _unit_interval_compatible(right_desc)
+
+
+def _sea_mask_compatible(
+    forecast_desc: dict[str, Any],
+    target_desc: dict[str, Any],
+    forecast_data: np.ndarray,
+    target_data: np.ndarray,
+) -> tuple[bool, str]:
+    spec = get_scoring_grid_spec()
+    sea_mask_path = Path(spec.sea_mask_path) if spec.sea_mask_path else None
+    if sea_mask_path is None or not sea_mask_path.exists():
+        return True, ""
+
+    sea_desc, _, sea_data = _describe_raster(sea_mask_path)
+    same_grid = (
+        sea_desc["crs"] == forecast_desc["crs"] == target_desc["crs"]
+        and sea_desc["width"] == forecast_desc["width"] == target_desc["width"]
+        and sea_desc["height"] == forecast_desc["height"] == target_desc["height"]
+        and all(
+            _values_match(left, right, tol=1e-6)
+            for left, right in zip(sea_desc["transform"], forecast_desc["transform"])
+        )
+        and all(
+            _values_match(left, right, tol=1e-6)
+            for left, right in zip(sea_desc["transform"], target_desc["transform"])
+        )
+    )
+    if not same_grid:
+        return False, str(sea_mask_path)
+
+    sea_mask = sea_data > 0.5
+    forecast_active = np.isfinite(forecast_data) & (forecast_data > 0.0)
+    target_active = np.isfinite(target_data) & (target_data > 0.0)
+    return bool(np.all(~forecast_active | sea_mask) and np.all(~target_active | sea_mask)), str(sea_mask_path)
 
 
 def precheck_same_grid(
@@ -509,8 +564,14 @@ def precheck_same_grid(
     csv_report_path = base_path.with_suffix(".csv")
     json_report_path = base_path.with_suffix(".json")
 
-    forecast_desc, forecast_mask = _describe_raster(forecast_path)
-    target_desc, target_mask = _describe_raster(target_path)
+    forecast_desc, forecast_valid_mask, forecast_data = _describe_raster(forecast_path)
+    target_desc, target_valid_mask, target_data = _describe_raster(target_path)
+    sea_mask_ok, sea_mask_path = _sea_mask_compatible(
+        forecast_desc=forecast_desc,
+        target_desc=target_desc,
+        forecast_data=forecast_data,
+        target_data=target_data,
+    )
 
     checks = {
         "crs_match": forecast_desc["crs"] == target_desc["crs"],
@@ -525,7 +586,9 @@ def precheck_same_grid(
             for left, right in zip(forecast_desc["resolution"], target_desc["resolution"])
         ),
         "nodata_match": _values_match(forecast_desc["nodata"], target_desc["nodata"]),
-        "mask_compatible": forecast_mask.shape == target_mask.shape and np.array_equal(forecast_mask, target_mask),
+        "dtype_semantics_match": _dtype_semantics_match(forecast_desc, target_desc),
+        "mask_compatible": forecast_valid_mask.shape == target_valid_mask.shape and np.array_equal(forecast_valid_mask, target_valid_mask),
+        "sea_mask_compatible": sea_mask_ok,
     }
     passed = all(checks.values())
 
@@ -533,6 +596,7 @@ def precheck_same_grid(
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "passed": passed,
         "checks": checks,
+        "sea_mask_path": sea_mask_path,
         "forecast": forecast_desc,
         "target": target_desc,
     }
@@ -556,6 +620,13 @@ def precheck_same_grid(
         "forecast_resolution_y": forecast_desc["resolution"][1],
         "target_resolution_x": target_desc["resolution"][0],
         "target_resolution_y": target_desc["resolution"][1],
+        "forecast_dtype": forecast_desc["dtype"],
+        "target_dtype": target_desc["dtype"],
+        "forecast_valid_min": forecast_desc["valid_min"],
+        "forecast_valid_max": forecast_desc["valid_max"],
+        "target_valid_min": target_desc["valid_min"],
+        "target_valid_max": target_desc["valid_max"],
+        "sea_mask_path": sea_mask_path,
     }
     with open(csv_report_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(row.keys()))

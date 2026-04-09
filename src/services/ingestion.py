@@ -119,6 +119,7 @@ class DataIngestionService(BaseService):
             
             # 3. Download CMEMS
             manifest.downloads["cmems"] = self.download_cmems()
+            manifest.downloads["cmems_wave"] = self.download_cmems_wave()
             
             # 4. Download ERA5
             manifest.downloads["era5"] = self.download_era5()
@@ -404,6 +405,56 @@ class DataIngestionService(BaseService):
             
         except Exception as e:
             logger.error(f"CMEMS Download failed: {e}")
+            return "FAILED"
+
+    def download_cmems_wave(self) -> str:
+        """Download CMEMS wave/Stokes forcing for official and prototype transport runs."""
+        logger.info("Fetching CMEMS wave/Stokes forcing...")
+
+        username = os.getenv("CMEMS_USERNAME")
+        password = os.getenv("CMEMS_PASSWORD")
+
+        if not username or not password:
+            logger.warning("CMEMS credentials not found. Skipping wave download.")
+            return "SKIPPED_NO_CREDS"
+
+        if not copernicusmarine:
+            logger.warning("copernicusmarine library not installed; skipping wave download.")
+            return "SKIPPED_NO_LIB"
+
+        output_path = self.forcing_dir / "cmems_wave.nc"
+        if output_path.exists():
+            output_path.unlink()
+            logger.info("Deleted existing CMEMS wave file: %s", output_path)
+
+        request_year = datetime.strptime(self.start_date, "%Y-%m-%d").year
+        if request_year < 2022:
+            dataset_id = "cmems_mod_glo_wav_my_0.2deg_PT3H-i"
+            logger.info("Using multi-year CMEMS wave dataset for year %s", request_year)
+        else:
+            dataset_id = "cmems_mod_glo_wav_anfc_0.083deg_PT3H-i"
+            logger.info("Using analysis/forecast CMEMS wave dataset for year %s", request_year)
+
+        try:
+            copernicusmarine.subset(
+                dataset_id=dataset_id,
+                minimum_longitude=self.bbox[0],
+                maximum_longitude=self.bbox[1],
+                minimum_latitude=self.bbox[2],
+                maximum_latitude=self.bbox[3],
+                start_datetime=f"{self.start_date}T00:00:00",
+                end_datetime=f"{self.end_date}T23:59:59",
+                variables=["VHM0", "VSDX", "VSDY"],
+                output_filename="cmems_wave.nc",
+                output_directory=str(self.forcing_dir),
+                overwrite=True,
+                username=username,
+                password=password,
+            )
+            logger.info("Saved CMEMS wave/Stokes data to %s", output_path)
+            return str(output_path)
+        except Exception as e:
+            logger.error("CMEMS wave download failed: %s", e)
             return "FAILED"
 
     def download_era5(self) -> str:

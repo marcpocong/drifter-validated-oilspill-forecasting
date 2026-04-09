@@ -4,6 +4,26 @@
 ensemble:
   ensemble_size: 50
 
+official_forecast:
+  transport_model: oceandrift
+  provisional_transport_model: true
+  loading_audit_basename: phase2_loading_audit
+  snapshot_hours: [24, 48, 72]
+  probability_thresholds: [0.5, 0.9]
+  require_wave_forcing: true
+  enable_stokes_drift: true
+  deterministic:
+    start_time_offset_hours: 0
+    wind_factor: 1.0
+    horizontal_diffusivity_m2s: 2.0
+  ensemble:
+    ensemble_size: 50
+    wind_factor_min: 0.8
+    wind_factor_max: 1.2
+    start_time_offset_hours: [-3, -2, -1, 0, 1, 2, 3]
+    horizontal_diffusivity_m2s_min: 1.0
+    horizontal_diffusivity_m2s_max: 10.0
+
 official_products:
   snapshot_hours: [24, 48, 72]
   probability_thresholds: [0.5, 0.9]

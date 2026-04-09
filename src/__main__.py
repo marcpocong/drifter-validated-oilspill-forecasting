@@ -155,20 +155,34 @@ def run_prep():
 
 
 def print_phase2_outputs(results):
+    from src.core.case_context import get_case_context
     from src.core.constants import BASE_OUTPUT_DIR
 
+    case = get_case_context()
     print("\nEnsemble generation complete.")
     print(f"Outputs saved to: {results['output']}")
-    print("Phase 2 probability outputs:")
-    print(f"  - {BASE_OUTPUT_DIR}/ensemble/probability_24h.png")
-    print(f"  - {BASE_OUTPUT_DIR}/ensemble/probability_48h.png")
-    print(f"  - {BASE_OUTPUT_DIR}/ensemble/probability_72h.png")
-    print(f"  - {BASE_OUTPUT_DIR}/ensemble/probability_24h.nc")
-    print(f"  - {BASE_OUTPUT_DIR}/ensemble/probability_48h.nc")
-    print(f"  - {BASE_OUTPUT_DIR}/ensemble/probability_72h.nc")
+    if case.is_official:
+        print("Official Phase 2 forecast products:")
+        print(f"  - {BASE_OUTPUT_DIR}/forecast/forecast_manifest.json")
+        print(f"  - {BASE_OUTPUT_DIR}/forecast/control_footprint_mask_2023-03-06T09-59-00Z.tif")
+        print(f"  - {BASE_OUTPUT_DIR}/forecast/control_density_norm_2023-03-06T09-59-00Z.tif")
+        print(f"  - {BASE_OUTPUT_DIR}/forecast/phase2_loading_audit.json")
+        print(f"  - {BASE_OUTPUT_DIR}/ensemble/ensemble_manifest.json")
+        print(f"  - {BASE_OUTPUT_DIR}/ensemble/prob_presence_2023-03-06T09-59-00Z.tif")
+        print(f"  - {BASE_OUTPUT_DIR}/ensemble/mask_p50_2023-03-06T09-59-00Z.tif")
+        print(f"  - {BASE_OUTPUT_DIR}/ensemble/mask_p90_2023-03-06T09-59-00Z.tif")
+        print(f"  - {BASE_OUTPUT_DIR}/ensemble/mask_p50_2023-03-06_datecomposite.tif")
+    else:
+        print("Phase 2 probability outputs:")
+        print(f"  - {BASE_OUTPUT_DIR}/ensemble/probability_24h.png")
+        print(f"  - {BASE_OUTPUT_DIR}/ensemble/probability_48h.png")
+        print(f"  - {BASE_OUTPUT_DIR}/ensemble/probability_72h.png")
+        print(f"  - {BASE_OUTPUT_DIR}/ensemble/probability_24h.nc")
+        print(f"  - {BASE_OUTPUT_DIR}/ensemble/probability_48h.nc")
+        print(f"  - {BASE_OUTPUT_DIR}/ensemble/probability_72h.nc")
     if results.get("manifest"):
         print(f"  - {results['manifest']} (ensemble manifest)")
-    if results.get("written_files"):
+    if results.get("written_files") and not case.is_official:
         alias_path = next((p for p in results["written_files"] if p.endswith("probability_cone.png")), None)
         if alias_path:
             print(f"  - {alias_path} (legacy alias)")
@@ -434,11 +448,13 @@ def run_benchmark():
 
 def run_phase3b():
     from src.core.constants import BASE_OUTPUT_DIR, RUN_NAME
+    from src.core.case_context import get_case_context
     from src.services.scoring import run_phase3b_scoring
     from src.utils.io import resolve_recipe_selection
 
     print("Starting Phase 3B: Observational Validation vs Satellite Imagery...")
     print_workflow_context()
+    case = get_case_context()
 
     selection = resolve_recipe_selection()
     best_recipe = selection.recipe
@@ -454,13 +470,15 @@ def run_phase3b():
     )
     print_recipe_selection(selection, label="Transport recipe")
 
-    output_dir = BASE_OUTPUT_DIR / "validation"
+    output_dir = BASE_OUTPUT_DIR / ("phase3b" if case.is_official else "validation")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     results = run_phase3b_scoring(output_dir=output_dir)
     print("\nPhase 3B complete.")
     print(f"FSS metrics saved to: {results.fss_by_date_window}")
     print(f"Summary saved to: {results.summary}")
+    if getattr(results, "diagnostics", None):
+        print(f"Diagnostics saved to: {results.diagnostics}")
     if getattr(results, "run_manifest", None):
         print(f"Run manifest saved to: {results.run_manifest}")
 

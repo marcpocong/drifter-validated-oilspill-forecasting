@@ -513,6 +513,7 @@ def get_prepared_input_specs(
         for recipe in recipes.values():
             currents_file = recipe.get("currents_file")
             wind_file = recipe.get("wind_file")
+            wave_file = recipe.get("wave_file")
             if currents_file:
                 forcing_entries.setdefault(
                     ("forcing_currents", currents_file),
@@ -531,6 +532,15 @@ def get_prepared_input_specs(
                         "source": recipe.get("wind_source") or _infer_source_name(wind_file) or "Wind forcing",
                     },
                 )
+            if wave_file:
+                forcing_entries.setdefault(
+                    ("forcing_wave", wave_file),
+                    {
+                        "label": f"forcing_wave_{Path(wave_file).name}",
+                        "path": str(forcing_dir / wave_file),
+                        "source": recipe.get("wave_source") or _infer_source_name(wave_file) or "Wave forcing",
+                    },
+                )
         specs.extend(forcing_entries.values())
     elif recipe_name:
         forcing = get_forcing_files(recipe_name)
@@ -544,6 +554,12 @@ def get_prepared_input_specs(
             Path(forcing["wind"]),
             forcing.get("wind_source") or "Wind forcing",
         )
+        if forcing.get("wave"):
+            add_spec(
+                f"recipe_wave_{recipe_name}",
+                Path(forcing["wave"]),
+                forcing.get("wave_source") or "Wave forcing",
+            )
 
     return specs
 
@@ -582,6 +598,68 @@ def get_forecast_output_dir(run_name: str | None = None) -> Path:
 def get_forecast_manifest_path(run_name: str | None = None) -> Path:
     """Return the case-local spill-forecast manifest path."""
     return get_forecast_output_dir(run_name) / "forecast_manifest.json"
+
+
+def get_ensemble_manifest_path(run_name: str | None = None) -> Path:
+    """Return the case-local ensemble manifest path."""
+    return get_case_output_dir(run_name) / "ensemble" / "ensemble_manifest.json"
+
+
+def get_phase2_loading_audit_paths(run_name: str | None = None) -> dict[str, Path]:
+    """Return the canonical official Phase 2 loading-audit paths."""
+    forecast_dir = get_forecast_output_dir(run_name)
+    return {
+        "json": forecast_dir / "phase2_loading_audit.json",
+        "csv": forecast_dir / "phase2_loading_audit.csv",
+    }
+
+
+def _timestamp_to_label(value) -> str:
+    timestamp = pd.Timestamp(value)
+    if timestamp.tzinfo is not None:
+        timestamp = timestamp.tz_convert("UTC").tz_localize(None)
+    return timestamp.strftime("%Y-%m-%dT%H-%M-%SZ")
+
+
+def _resolve_official_validation_timestamp():
+    case = get_case_context()
+    if case.validation_layer.event_time_utc:
+        return pd.Timestamp(case.validation_layer.event_time_utc)
+    return pd.Timestamp(case.simulation_end_utc)
+
+
+def get_official_control_footprint_mask_path(timestamp=None, run_name: str | None = None) -> Path:
+    """Return the canonical official deterministic footprint-mask path."""
+    target_time = timestamp if timestamp is not None else _resolve_official_validation_timestamp()
+    return get_forecast_output_dir(run_name) / f"control_footprint_mask_{_timestamp_to_label(target_time)}.tif"
+
+
+def get_official_control_density_norm_path(timestamp=None, run_name: str | None = None) -> Path:
+    """Return the canonical official deterministic normalized-density path."""
+    target_time = timestamp if timestamp is not None else _resolve_official_validation_timestamp()
+    return get_forecast_output_dir(run_name) / f"control_density_norm_{_timestamp_to_label(target_time)}.tif"
+
+
+def get_official_prob_presence_path(timestamp=None, run_name: str | None = None) -> Path:
+    """Return the canonical official ensemble probability raster path."""
+    target_time = timestamp if timestamp is not None else _resolve_official_validation_timestamp()
+    return get_case_output_dir(run_name) / "ensemble" / f"prob_presence_{_timestamp_to_label(target_time)}.tif"
+
+
+def get_official_mask_threshold_path(
+    threshold_label: str,
+    timestamp=None,
+    run_name: str | None = None,
+) -> Path:
+    """Return the canonical official ensemble threshold-mask path."""
+    target_time = timestamp if timestamp is not None else _resolve_official_validation_timestamp()
+    return get_case_output_dir(run_name) / "ensemble" / f"mask_{threshold_label}_{_timestamp_to_label(target_time)}.tif"
+
+
+def get_official_mask_p50_datecomposite_path(run_name: str | None = None) -> Path:
+    """Return the canonical official date-composite P50 path."""
+    validation_date = str(_resolve_official_validation_timestamp().date())
+    return get_case_output_dir(run_name) / "ensemble" / f"mask_p50_{validation_date}_datecomposite.tif"
 
 
 def get_deterministic_control_output_path(recipe_name: str, run_name: str | None = None) -> Path:
@@ -624,10 +702,18 @@ def get_phase3b_forecast_candidates(
     if case.is_official:
         candidates.append(
             {
+                "label": "ensemble_mask_p50_datecomposite",
+                "type": "ensemble_mask_p50_datecomposite",
+                "path": str(get_official_mask_p50_datecomposite_path(run_name=active_run_name)),
+                "source": "Official ensemble P50 date-composite footprint mask for the validation date",
+            }
+        )
+        candidates.append(
+            {
                 "label": f"deterministic_control_{recipe_name}",
-                "type": f"deterministic_control_{recipe_name}_hits_72h",
-                "path": str(get_deterministic_control_score_raster_path(recipe_name, 72, active_run_name, raster_kind="hits")),
-                "source": "Official deterministic control score raster at T+72h",
+                "type": f"deterministic_control_{recipe_name}_footprint_validation",
+                "path": str(get_official_control_footprint_mask_path(run_name=active_run_name)),
+                "source": "Official deterministic control footprint mask at the validation timestamp",
             }
         )
     else:
@@ -640,22 +726,15 @@ def get_phase3b_forecast_candidates(
             }
         )
 
-    candidates.append(
-        {
-            "label": "ensemble_prob_72h",
-            "type": "ensemble_prob_72h",
-            "path": str(
-                get_ensemble_probability_score_raster_path(72, active_run_name)
-                if case.is_official
-                else case_dir / "ensemble" / "probability_72h.nc"
-            ),
-            "source": (
-                "Phase 2 ensemble probability score raster at T+72h"
-                if case.is_official
-                else "Phase 2 ensemble probability product at T+72h"
-            ),
-        }
-    )
+    if not case.is_official:
+        candidates.append(
+            {
+                "label": "ensemble_prob_72h",
+                "type": "ensemble_prob_72h",
+                "path": str(case_dir / "ensemble" / "probability_72h.nc"),
+                "source": "Phase 2 ensemble probability product at T+72h",
+            }
+        )
     return candidates
 
 
@@ -676,6 +755,15 @@ def find_missing_phase3b_forecast_outputs(
                     "label": "forecast_manifest",
                     "path": str(forecast_manifest),
                     "source": "Official spill forecast manifest",
+                }
+            )
+        ensemble_manifest = get_ensemble_manifest_path(active_run_name)
+        if not ensemble_manifest.exists():
+            missing.append(
+                {
+                    "label": "ensemble_manifest",
+                    "path": str(ensemble_manifest),
+                    "source": "Official ensemble forecast manifest",
                 }
             )
 
@@ -945,6 +1033,44 @@ def find_current_vars(ds: xr.Dataset) -> tuple[str, str]:
         if u in ds and v in ds:
             return u, v
     raise KeyError(f"No current variables found. Available: {list(ds.data_vars)}")
+
+
+def find_wave_vars(ds: xr.Dataset) -> tuple[str, str, str]:
+    """Detect Stokes-drift and significant-wave-height variables."""
+    direct_candidates = [
+        (
+            "sea_surface_wave_stokes_drift_x_velocity",
+            "sea_surface_wave_stokes_drift_y_velocity",
+            "sea_surface_wave_significant_height",
+        ),
+        ("VSDX", "VSDY", "VHM0"),
+    ]
+    for vx, vy, hs in direct_candidates:
+        if vx in ds and vy in ds and hs in ds:
+            return vx, vy, hs
+
+    by_standard_name = {}
+    for name, data_var in ds.data_vars.items():
+        standard_name = str(data_var.attrs.get("standard_name") or "").strip()
+        if standard_name:
+            by_standard_name[standard_name] = name
+
+    required = (
+        "sea_surface_wave_stokes_drift_x_velocity",
+        "sea_surface_wave_stokes_drift_y_velocity",
+        "sea_surface_wave_significant_height",
+    )
+    if all(key in by_standard_name for key in required):
+        return (
+            by_standard_name[required[0]],
+            by_standard_name[required[1]],
+            by_standard_name[required[2]],
+        )
+
+    raise KeyError(
+        "No wave/Stokes variable triplet found. "
+        f"Available variables: {list(ds.data_vars)}"
+    )
 
 
 def select_nearest_point(ds: xr.Dataset, lat: float, lon: float) -> xr.Dataset:
