@@ -22,7 +22,7 @@ from opendrift.models.oceandrift import OceanDrift
 from opendrift.readers import reader_constant, reader_netCDF_CF_generic
 
 from src.core.case_context import get_case_context
-from src.core.constants import BASE_OUTPUT_DIR, RUN_NAME
+from src.core.constants import BASE_OUTPUT_DIR
 from src.helpers.plotting import plot_probability_map
 from src.helpers.raster import (
     GridBuilder,
@@ -139,9 +139,9 @@ def intercept_sys_exit():
         sys.exit = original_exit
 
 
-def _relative_output_path(path: Path) -> str:
+def _relative_output_path(path: Path, base_output_dir: Path = BASE_OUTPUT_DIR) -> str:
     try:
-        return str(path.relative_to(BASE_OUTPUT_DIR))
+        return str(path.relative_to(base_output_dir))
     except ValueError:
         return str(path)
 
@@ -187,24 +187,36 @@ def _threshold_label(threshold: float) -> str:
 
 
 class EnsembleForecastService:
-    def __init__(self, currents_file, winds_file, wave_file=None):
+    def __init__(
+        self,
+        currents_file,
+        winds_file,
+        wave_file=None,
+        output_run_name: str | None = None,
+        sensitivity_context: dict | None = None,
+        historical_baseline_provenance: dict | None = None,
+    ):
         self.case = get_case_context()
         self.case_config = self._load_case_config()
-        self.output_dir = BASE_OUTPUT_DIR / "ensemble"
+        self.output_run_name = str(output_run_name or self.case.run_name)
+        self.base_output_dir = Path("output") / self.output_run_name
+        self.output_dir = self.base_output_dir / "ensemble"
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.forecast_dir = BASE_OUTPUT_DIR / "forecast"
+        self.forecast_dir = self.base_output_dir / "forecast"
         self.forecast_dir.mkdir(parents=True, exist_ok=True)
         self.member_mask_dir = self.output_dir / "member_presence"
         self.member_mask_dir.mkdir(parents=True, exist_ok=True)
         self.loading_cache_dir = self.forecast_dir / "forcing_cache"
         self.loading_cache_dir.mkdir(parents=True, exist_ok=True)
         self._wind_scaling_template: xr.Dataset | None = None
+        self.sensitivity_context = dict(sensitivity_context or {})
+        self.historical_baseline_provenance = dict(historical_baseline_provenance or {})
 
         self.currents_file = Path(currents_file)
         self.winds_file = Path(winds_file)
         self.wave_file = Path(wave_file) if wave_file else None
         self.alias_probability_cone = True
-        audit_paths = get_phase2_loading_audit_paths() if self.case.is_official else {
+        audit_paths = get_phase2_loading_audit_paths(run_name=self.output_run_name) if self.case.is_official else {
             "json": self.forecast_dir / "forecast_loading_audit.json",
             "csv": self.forecast_dir / "forecast_loading_audit.csv",
         }
@@ -407,7 +419,7 @@ class EnsembleForecastService:
     def _resolve_wave_file(self) -> Path | None:
         if self.wave_file is not None:
             return self.wave_file
-        return Path(f"data/forcing/{RUN_NAME}/cmems_wave.nc")
+        return Path("data/forcing") / self.case.run_name / "cmems_wave.nc"
 
     def _scale_wind_forcing(self, source_path: Path, wind_factor: float) -> Path:
         if np.isclose(float(wind_factor), 1.0):
@@ -851,14 +863,14 @@ class EnsembleForecastService:
         written_files: list[Path] = []
         records: list[dict] = []
 
-        prob_presence_path = get_official_prob_presence_path(target_time)
+        prob_presence_path = get_official_prob_presence_path(target_time, run_name=self.output_run_name)
         save_raster(grid, probability_data.astype(np.float32), prob_presence_path)
         written_files.append(prob_presence_path)
         records.append(
             {
                 "product_type": "prob_presence",
                 "timestamp_utc": timestamp_to_utc_iso(target_time),
-                "relative_path": _relative_output_path(prob_presence_path),
+                "relative_path": _relative_output_path(prob_presence_path, self.base_output_dir),
                 "semantics": "Per-cell ensemble probability of member presence at the product timestamp.",
             }
         )
@@ -866,14 +878,18 @@ class EnsembleForecastService:
         for threshold in self.probability_thresholds:
             threshold_label = _threshold_label(threshold)
             mask_data = (probability_data >= threshold).astype(np.float32)
-            mask_path = get_official_mask_threshold_path(threshold_label, target_time)
+            mask_path = get_official_mask_threshold_path(
+                threshold_label,
+                target_time,
+                run_name=self.output_run_name,
+            )
             save_raster(grid, mask_data, mask_path)
             written_files.append(mask_path)
             records.append(
                 {
                     "product_type": f"mask_{threshold_label}",
                     "timestamp_utc": timestamp_to_utc_iso(target_time),
-                    "relative_path": _relative_output_path(mask_path),
+                    "relative_path": _relative_output_path(mask_path, self.base_output_dir),
                     "semantics": f"Binary ensemble mask where probability of presence is at least {threshold:.2f}.",
                 }
             )
@@ -915,7 +931,7 @@ class EnsembleForecastService:
         ).to_netcdf(nc_out)
         written_paths.append(nc_out)
 
-        tif_out = get_ensemble_probability_score_raster_path(hours_since_start)
+        tif_out = get_ensemble_probability_score_raster_path(hours_since_start, run_name=self.output_run_name)
         save_raster(grid, probability_data.astype(np.float32), tif_out)
         written_paths.append(tif_out)
 
@@ -954,8 +970,14 @@ class EnsembleForecastService:
             lon, lat, mass, actual_time = self._load_opendrift_snapshot(nc_path, target_time)
             hits, probs = rasterize_particles(grid, lon, lat, mass)
 
-            footprint_path = get_official_control_footprint_mask_path(target_time)
-            density_path = get_official_control_density_norm_path(target_time)
+            footprint_path = get_official_control_footprint_mask_path(
+                target_time,
+                run_name=self.output_run_name,
+            )
+            density_path = get_official_control_density_norm_path(
+                target_time,
+                run_name=self.output_run_name,
+            )
             save_raster(grid, hits, footprint_path)
             save_raster(grid, probs, density_path)
             written_files.extend([footprint_path, density_path])
@@ -966,14 +988,14 @@ class EnsembleForecastService:
                         "product_type": "control_footprint_mask",
                         "timestamp_utc": timestamp_to_utc_iso(target_time),
                         "actual_snapshot_time_utc": timestamp_to_utc_iso(actual_time),
-                        "relative_path": _relative_output_path(footprint_path),
+                        "relative_path": _relative_output_path(footprint_path, self.base_output_dir),
                         "semantics": "Binary deterministic control footprint mask on the canonical scoring grid.",
                     },
                     {
                         "product_type": "control_density_norm",
                         "timestamp_utc": timestamp_to_utc_iso(target_time),
                         "actual_snapshot_time_utc": timestamp_to_utc_iso(actual_time),
-                        "relative_path": _relative_output_path(density_path),
+                        "relative_path": _relative_output_path(density_path, self.base_output_dir),
                         "semantics": "Normalized deterministic control particle density on the canonical scoring grid.",
                     },
                 ]
@@ -1024,7 +1046,7 @@ class EnsembleForecastService:
                         "member_id": member["member_id"],
                         "timestamp_utc": timestamp_to_utc_iso(target_time),
                         "actual_snapshot_time_utc": timestamp_to_utc_iso(actual_time),
-                        "relative_path": _relative_output_path(member_mask_path),
+                        "relative_path": _relative_output_path(member_mask_path, self.base_output_dir),
                         "semantics": "Binary per-member presence mask on the canonical scoring grid.",
                     }
                 )
@@ -1049,7 +1071,7 @@ class EnsembleForecastService:
                 {
                     "product_type": "ensemble_density_norm",
                     "timestamp_utc": timestamp_to_utc_iso(target_time),
-                    "relative_path": _relative_output_path(ensemble_density_path),
+                    "relative_path": _relative_output_path(ensemble_density_path, self.base_output_dir),
                     "semantics": "Mean ensemble normalized density across members on the canonical scoring grid.",
                 }
             )
@@ -1077,14 +1099,14 @@ class EnsembleForecastService:
                         "product_type": "member_presence_mask_datecomposite",
                         "member_id": member["member_id"],
                         "date_utc": validation_date,
-                        "relative_path": _relative_output_path(member_composite_path),
+                        "relative_path": _relative_output_path(member_composite_path, self.base_output_dir),
                         "semantics": "Per-member binary presence union across all forecast timesteps on the target UTC date.",
                     }
                 )
 
             composite_probability = np.mean(np.stack(composite_masks, axis=0), axis=0).astype(np.float32)
             composite_prob_path = self.output_dir / f"prob_presence_{validation_date}_datecomposite.tif"
-            composite_p50_path = get_official_mask_p50_datecomposite_path()
+            composite_p50_path = get_official_mask_p50_datecomposite_path(run_name=self.output_run_name)
             save_raster(grid, composite_probability, composite_prob_path)
             save_raster(grid, (composite_probability >= 0.5).astype(np.float32), composite_p50_path)
             written_files.extend([composite_prob_path, composite_p50_path])
@@ -1093,13 +1115,13 @@ class EnsembleForecastService:
                     {
                         "product_type": "prob_presence_datecomposite",
                         "date_utc": validation_date,
-                        "relative_path": _relative_output_path(composite_prob_path),
+                        "relative_path": _relative_output_path(composite_prob_path, self.base_output_dir),
                         "semantics": "Per-cell ensemble probability of any member presence across the target UTC date.",
                     },
                     {
                         "product_type": "mask_p50_datecomposite",
                         "date_utc": validation_date,
-                        "relative_path": _relative_output_path(composite_p50_path),
+                        "relative_path": _relative_output_path(composite_p50_path, self.base_output_dir),
                         "semantics": "Binary date-composite mask where probability of presence is at least 0.50.",
                     },
                 ]
@@ -1182,7 +1204,7 @@ class EnsembleForecastService:
             ds_prob.to_netcdf(nc_out)
             written_files.append(nc_out)
 
-            tif_out = get_ensemble_probability_score_raster_path(hr)
+            tif_out = get_ensemble_probability_score_raster_path(hr, run_name=self.output_run_name)
             save_raster(grid, prob_density, tif_out)
             written_files.append(tif_out)
 
@@ -1284,6 +1306,7 @@ class EnsembleForecastService:
             "manifest_type": "official_phase2_ensemble",
             "workflow_mode": self.case.workflow_mode,
             "case_id": self.case.case_id,
+            "run_name": self.output_run_name,
             "simulation_window_utc": {
                 "start": timestamp_to_utc_iso(simulation_start),
                 "end": timestamp_to_utc_iso(simulation_end),
@@ -1301,7 +1324,10 @@ class EnsembleForecastService:
             "recipe_provenance": {
                 "recipe": recipe_name,
                 "nominal_start_time_utc": timestamp_to_utc_iso(start_time),
-                "baseline_recipe": recipe_name,
+                "baseline_recipe": (
+                    (self.historical_baseline_provenance or {}).get("recipe")
+                    or recipe_name
+                ),
             },
             "baseline_provenance": {
                 "recipe": selection.recipe if selection is not None else recipe_name,
@@ -1318,6 +1344,8 @@ class EnsembleForecastService:
                 "json": str(self.audit_json_path),
                 "csv": str(self.audit_csv_path),
             },
+            "historical_baseline_provenance": self.historical_baseline_provenance,
+            "sensitivity_context": self.sensitivity_context,
             "ensemble_configuration": {
                 "ensemble_size": len(member_runs),
                 "element_count": self.official_element_count,
@@ -1330,20 +1358,20 @@ class EnsembleForecastService:
             },
             "source_geometry": {
                 "initialization_mode": self.case.initialization_mode,
-                "initialization_polygon": str(self.case.initialization_layer.processed_vector_path(RUN_NAME))
+                "initialization_polygon": str(self.case.initialization_layer.processed_vector_path(self.case.run_name))
                 if self.case.is_official
-                else str(self.case.initialization_layer.geojson_path(RUN_NAME)),
-                "validation_polygon": str(self.case.validation_layer.processed_vector_path(RUN_NAME))
+                else str(self.case.initialization_layer.geojson_path(self.case.run_name)),
+                "validation_polygon": str(self.case.validation_layer.processed_vector_path(self.case.run_name))
                 if self.case.is_official
-                else str(self.case.validation_layer.geojson_path(RUN_NAME)),
-                "source_point": str(self.case.provenance_layer.processed_vector_path(RUN_NAME))
+                else str(self.case.validation_layer.geojson_path(self.case.run_name)),
+                "source_point": str(self.case.provenance_layer.processed_vector_path(self.case.run_name))
                 if self.case.is_official
-                else str(self.case.provenance_layer.geojson_path(RUN_NAME)),
+                else str(self.case.provenance_layer.geojson_path(self.case.run_name)),
             },
             "member_runs": [
                 {
                     "member_id": member["member_id"],
-                    "relative_path": _relative_output_path(member["output_file"]),
+                    "relative_path": _relative_output_path(member["output_file"], self.base_output_dir),
                     "start_time_utc": member["start_time_utc"],
                     "end_time_utc": member["end_time_utc"],
                     "element_count": member["element_count"],
@@ -1364,7 +1392,7 @@ class EnsembleForecastService:
         selection: RecipeSelection | None = None,
     ) -> dict:
         """Write the Phase 2 ensemble manifest."""
-        manifest_path = get_ensemble_manifest_path()
+        manifest_path = get_ensemble_manifest_path(run_name=self.output_run_name)
         if self.case.is_official:
             payload = self._build_ensemble_manifest_payload(
                 recipe_name=recipe_name,
@@ -1378,7 +1406,7 @@ class EnsembleForecastService:
                 "written_files": [
                     {
                         "file_name": path.name,
-                        "relative_path": _relative_output_path(path),
+                        "relative_path": _relative_output_path(path, self.base_output_dir),
                     }
                     for path in written_files
                     if path.exists()
@@ -1452,7 +1480,7 @@ class EnsembleForecastService:
         )
         audit["seed_element_count"] = seed_element_count
 
-        output_file = get_deterministic_control_output_path(recipe_name)
+        output_file = get_deterministic_control_output_path(recipe_name, run_name=self.output_run_name)
         control_nc = self._run_model(
             model=model,
             output_file=output_file,
@@ -1684,7 +1712,7 @@ class EnsembleForecastService:
     ) -> Path:
         """Write an official spill-forecast manifest for Phase 3B consumers."""
         grid = GridBuilder()
-        manifest_path = get_forecast_manifest_path()
+        manifest_path = get_forecast_manifest_path(run_name=self.output_run_name)
         simulation_start, simulation_end, _ = self._get_official_simulation_window()
         validation_time = pd.Timestamp(self.case.validation_layer.event_time_utc or self.case.simulation_end_utc)
         status_flags = self._build_status_flags(selection)
@@ -1692,6 +1720,7 @@ class EnsembleForecastService:
             "manifest_type": "official_phase2_forecast",
             "workflow_mode": self.case.workflow_mode,
             "case_id": self.case.case_id,
+            "run_name": self.output_run_name,
             "simulation_window_utc": {
                 "start": timestamp_to_utc_iso(simulation_start),
                 "end": timestamp_to_utc_iso(simulation_end),
@@ -1727,10 +1756,12 @@ class EnsembleForecastService:
                 "json": str(self.audit_json_path),
                 "csv": str(self.audit_csv_path),
             },
+            "historical_baseline_provenance": self.historical_baseline_provenance,
+            "sensitivity_context": self.sensitivity_context,
             "source_geometry": {
-                "initialization_polygon": str(self.case.initialization_layer.processed_vector_path(RUN_NAME)),
-                "validation_polygon": str(self.case.validation_layer.processed_vector_path(RUN_NAME)),
-                "source_point": str(self.case.provenance_layer.processed_vector_path(RUN_NAME)),
+                "initialization_polygon": str(self.case.initialization_layer.processed_vector_path(self.case.run_name)),
+                "validation_polygon": str(self.case.validation_layer.processed_vector_path(self.case.run_name)),
+                "source_point": str(self.case.provenance_layer.processed_vector_path(self.case.run_name)),
             },
             "deterministic_control": {
                 "netcdf_path": str(deterministic_control["output_file"]),
@@ -1744,12 +1775,16 @@ class EnsembleForecastService:
                 "actual_element_count": self.official_element_count,
             },
             "canonical_products": {
-                "control_footprint_mask": str(get_official_control_footprint_mask_path(validation_time)),
-                "control_density_norm": str(get_official_control_density_norm_path(validation_time)),
-                "prob_presence": str(get_official_prob_presence_path(validation_time)),
-                "mask_p50": str(get_official_mask_threshold_path("p50", validation_time)),
-                "mask_p90": str(get_official_mask_threshold_path("p90", validation_time)),
-                "mask_p50_datecomposite": str(get_official_mask_p50_datecomposite_path()),
+                "control_footprint_mask": str(
+                    get_official_control_footprint_mask_path(validation_time, run_name=self.output_run_name)
+                ),
+                "control_density_norm": str(
+                    get_official_control_density_norm_path(validation_time, run_name=self.output_run_name)
+                ),
+                "prob_presence": str(get_official_prob_presence_path(validation_time, run_name=self.output_run_name)),
+                "mask_p50": str(get_official_mask_threshold_path("p50", validation_time, run_name=self.output_run_name)),
+                "mask_p90": str(get_official_mask_threshold_path("p90", validation_time, run_name=self.output_run_name)),
+                "mask_p50_datecomposite": str(get_official_mask_p50_datecomposite_path(run_name=self.output_run_name)),
             },
             "written_files": [str(path) for path in deterministic_control["written_files"]] + list(ensemble_manifest.get("written_files", [])),
         }
@@ -1797,10 +1832,14 @@ def run_official_spill_forecast(
     start_time: str | None = None,
     start_lat: float | None = None,
     start_lon: float | None = None,
+    output_run_name: str | None = None,
+    forcing_override: dict | None = None,
+    sensitivity_context: dict | None = None,
+    historical_baseline_provenance: dict | None = None,
 ):
     """Run the official deterministic control plus ensemble path for Phase 3B."""
     try:
-        forcing = get_forcing_files(selection.recipe)
+        forcing = dict(forcing_override or get_forcing_files(selection.recipe))
         currents_file = str(forcing["currents"])
         winds_file = str(forcing["wind"])
         wave_file = str(forcing["wave"]) if forcing.get("wave") else None
@@ -1808,7 +1847,14 @@ def run_official_spill_forecast(
         logger.error("Invalid recipe '%s': %s", selection.recipe, e)
         return {"status": "error", "message": str(e)}
 
-    service = EnsembleForecastService(currents_file, winds_file, wave_file=wave_file)
+    service = EnsembleForecastService(
+        currents_file,
+        winds_file,
+        wave_file=wave_file,
+        output_run_name=output_run_name,
+        sensitivity_context=sensitivity_context,
+        historical_baseline_provenance=historical_baseline_provenance,
+    )
 
     d_lat, d_lon, d_time = resolve_spill_origin()
     _start_lat = start_lat if start_lat is not None else d_lat

@@ -17,6 +17,7 @@ from src.utils.io import (
     get_official_mask_p50_datecomposite_path,
     get_phase2_loading_audit_paths,
     get_phase3b_forecast_candidates,
+    get_recipe_sensitivity_run_name,
 )
 from src.helpers.raster import GridBuilder
 
@@ -98,6 +99,26 @@ class ForecastLoadingTests(unittest.TestCase):
             self.assertTrue(service.enable_stokes_drift)
             self.assertTrue(service.provisional_transport_model)
             self.assertEqual(service.audit_json_path.name, "phase2_loading_audit.json")
+
+    def test_official_service_can_target_nested_recipe_sensitivity_output(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dummy = Path(tmpdir) / "dummy.nc"
+            xr.Dataset().to_netcdf(dummy)
+
+            with mock.patch.dict(os.environ, {"WORKFLOW_MODE": "mindoro_retro_2023"}, clear=False):
+                get_case_context.cache_clear()
+                nested_run_name = get_recipe_sensitivity_run_name("hycom_era5")
+                service = EnsembleForecastService(
+                    str(dummy),
+                    str(dummy),
+                    wave_file=str(dummy),
+                    output_run_name=nested_run_name,
+                )
+
+            self.assertIn("recipe_sensitivity", service.output_run_name)
+            self.assertTrue(str(service.output_dir).endswith("recipe_sensitivity/hycom_era5/ensemble"))
+            self.assertTrue(str(service.forecast_dir).endswith("recipe_sensitivity/hycom_era5/forecast"))
+            self.assertTrue(str(service.audit_json_path).endswith("recipe_sensitivity/hycom_era5/forecast/phase2_loading_audit.json"))
 
     def test_date_composite_mask_unions_same_day_presence(self):
         with tempfile.TemporaryDirectory() as tmpdir:

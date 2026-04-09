@@ -6,6 +6,8 @@ Container routing via the PIPELINE_PHASE environment variable:
   PIPELINE_PHASE=1_2  (default) -> Prototype: Phase 1 validation + Phase 2 ensemble
                                     Official: frozen-baseline recipe + deterministic control + Phase 2 ensemble
   PIPELINE_PHASE=official_phase3b -> Official minimal path: deterministic control + ensemble + Phase 3B
+  PIPELINE_PHASE=recipe_sensitivity -> Official event-scale Phase 3B recipe sensitivities
+  PIPELINE_PHASE=public_obs_appendix -> Official appendix-only public observation expansion
   PIPELINE_PHASE=3               -> Phase 3 (oil weathering & PyGNOME comparison)
   PIPELINE_PHASE=benchmark       -> Phase 3A cross-model benchmark
 
@@ -483,6 +485,72 @@ def run_phase3b():
         print(f"Run manifest saved to: {results.run_manifest}")
 
 
+def run_recipe_sensitivity_phase():
+    from src.core.case_context import get_case_context
+    from src.core.constants import RUN_NAME
+    from src.services.recipe_sensitivity import run_recipe_sensitivity
+    from src.utils.io import get_recipe_sensitivity_output_dir, resolve_recipe_selection
+
+    case = get_case_context()
+    if not case.is_official:
+        print("recipe_sensitivity is only supported for official spill-case workflows.")
+        sys.exit(1)
+
+    print("Starting official Mindoro event-scale Phase 3B recipe sensitivities...")
+    print_workflow_context()
+
+    selection = resolve_recipe_selection()
+    ensure_prepared_inputs(
+        RUN_NAME,
+        recipe_name=selection.recipe,
+        require_drifter=case.drifter_required,
+        phase_label="recipe sensitivity phase",
+    )
+    print_recipe_selection(selection, label="Frozen historical baseline")
+
+    results = run_recipe_sensitivity()
+    output_dir = get_recipe_sensitivity_output_dir()
+    print("\nRecipe sensitivity runs complete.")
+    print(f"Outputs saved to: {output_dir}")
+    print(f"Summary saved to: {results['artifacts']['summary_csv']}")
+    print(f"By-window metrics saved to: {results['artifacts']['by_window_csv']}")
+    print(f"Diagnostics saved to: {results['artifacts']['diagnostics_csv']}")
+    print(f"Report saved to: {results['artifacts']['report_md']}")
+    if results["artifacts"].get("overlay_png"):
+        print(f"QA overlay saved to: {results['artifacts']['overlay_png']}")
+
+
+def run_public_obs_appendix_phase():
+    from src.core.case_context import get_case_context
+    from src.core.constants import RUN_NAME
+    from src.services.public_obs_appendix import run_public_obs_appendix
+    from src.utils.io import resolve_recipe_selection
+
+    case = get_case_context()
+    if not case.is_official:
+        print("public_obs_appendix is only supported for official spill-case workflows.")
+        sys.exit(1)
+
+    print("Starting appendix-only public observation expansion...")
+    print_workflow_context()
+
+    selection = resolve_recipe_selection()
+    ensure_prepared_inputs(
+        RUN_NAME,
+        recipe_name=selection.recipe,
+        require_drifter=case.drifter_required,
+        phase_label="public observation appendix",
+    )
+    print_recipe_selection(selection, label="Frozen historical baseline")
+
+    results = run_public_obs_appendix()
+    print("\nPublic observation appendix complete.")
+    print(f"Inventory CSV: {results['inventory_csv']}")
+    print(f"Inventory JSON: {results['inventory_json']}")
+    print(f"Accepted quantitative appendix dates: {', '.join(results['accepted_quantitative_dates'])}")
+    print(f"Recommendation: {results['recommendation']}")
+
+
 def main():
     import subprocess
 
@@ -515,6 +583,10 @@ def main():
         run_official_phase3b_minimal()
     elif phase == "benchmark":
         run_benchmark()
+    elif phase == "recipe_sensitivity":
+        run_recipe_sensitivity_phase()
+    elif phase == "public_obs_appendix":
+        run_public_obs_appendix_phase()
     elif phase == "3":
         run_phase3()
     elif phase == "3b":

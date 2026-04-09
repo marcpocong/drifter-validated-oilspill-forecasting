@@ -14,6 +14,7 @@ from typing import Dict, Any, List
 import xarray as xr
 import pandas as pd
 import shutil
+import yaml
 from erddapy import ERDDAP
 
 # Custom Helpers
@@ -47,6 +48,26 @@ from src.utils.io import get_prepared_input_manifest_path, get_prepared_input_sp
 
 # Setup logging
 logger = logging.getLogger(__name__)
+OFFICIAL_FORCING_HALO_DEGREES_DEFAULT = 0.5
+
+
+def derive_bbox_from_display_bounds(
+    display_bounds_wgs84: list[float],
+    halo_degrees: float = OFFICIAL_FORCING_HALO_DEGREES_DEFAULT,
+) -> list[float]:
+    """Expand canonical scoring-grid display bounds by a fixed geographic halo."""
+    if len(display_bounds_wgs84) != 4:
+        raise ValueError("display_bounds_wgs84 must contain [min_lon, max_lon, min_lat, max_lat].")
+    min_lon, max_lon, min_lat, max_lat = [float(value) for value in display_bounds_wgs84]
+    halo = float(halo_degrees)
+    if halo < 0:
+        raise ValueError("halo_degrees must be >= 0.")
+    return [
+        min_lon - halo,
+        max_lon + halo,
+        min_lat - halo,
+        max_lat + halo,
+    ]
 
 class ArcGISLayerIngestionError(RuntimeError):
     pass
@@ -59,6 +80,7 @@ class DataIngestionService(BaseService):
     def __init__(self, output_dir: str = 'data'):
         self.case_context = get_case_context()
         self._assert_pipeline_role()
+        self.case_config = self._load_case_config()
         self.output_dir = Path(output_dir)
         self.forcing_dir = self.output_dir / 'forcing' / RUN_NAME
         self.drifter_dir = self.output_dir / 'drifters' / RUN_NAME
@@ -78,10 +100,18 @@ class DataIngestionService(BaseService):
             if self.case_context.is_prototype
             else [self.case_context.forcing_start_date]
         )
-        
-        # Pad bounding box heavily to prevent edge-clipping during interpolation for low-res models like NCEP
-        pad = 3.0
-        self.bbox = [REGION[0]-pad, REGION[1]+pad, REGION[2]-pad, REGION[3]+pad] 
+
+        self.official_forcing_halo_degrees = float(
+            self.case_config.get("forcing_bbox_halo_degrees", OFFICIAL_FORCING_HALO_DEGREES_DEFAULT)
+        )
+        if self.case_context.is_official:
+            self.bbox = list(self.case_context.region)
+            self.bbox_source = "official_case_region_fallback_before_scoring_grid"
+        else:
+            # Pad bounding box heavily to prevent edge-clipping during interpolation for low-res models like NCEP
+            pad = 3.0
+            self.bbox = [REGION[0]-pad, REGION[1]+pad, REGION[2]-pad, REGION[3]+pad]
+            self.bbox_source = "legacy_region_plus_3deg_pad"
         self.grid = GridBuilder() if self.case_context.is_prototype else None
 
     @staticmethod
@@ -92,12 +122,43 @@ class DataIngestionService(BaseService):
                 "Data preparation is only supported in the pipeline container. "
                 "Run the prep stage from the pipeline service instead."
             )
+
+    def _load_case_config(self) -> dict:
+        if not self.case_context.case_definition_path:
+            return {}
+        case_path = Path(self.case_context.case_definition_path)
+        if not case_path.exists():
+            return {}
+        with open(case_path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+
+    def _refresh_official_forcing_bbox_from_scoring_grid(self) -> None:
+        if not self.case_context.is_official:
+            return
+
+        from src.helpers.scoring import get_scoring_grid_spec
+
+        spec = get_scoring_grid_spec()
+        display_bounds = spec.display_bounds_wgs84 or list(self.case_context.region)
+        self.bbox = derive_bbox_from_display_bounds(
+            display_bounds_wgs84=display_bounds,
+            halo_degrees=self.official_forcing_halo_degrees,
+        )
+        self.bbox_source = (
+            f"canonical_scoring_grid_display_bounds_plus_{self.official_forcing_halo_degrees:.2f}deg_halo"
+        )
+        logger.info(
+            "Official forcing subset bbox refreshed from scoring grid: %s (%s)",
+            self.bbox,
+            self.bbox_source,
+        )
         
     def run(self):
         """Execute the ingestion logic."""
         manifest = IngestionManifest(
             config={
                 "bbox": str(self.bbox),
+                "bbox_source": self.bbox_source,
                 "start_date": self.start_date,
                 "end_date": self.end_date
             }
@@ -113,6 +174,12 @@ class DataIngestionService(BaseService):
                     self.case_context.workflow_mode,
                 )
                 manifest.downloads["drifters"] = "SKIPPED_FROZEN_PHASE1_BASELINE"
+
+            if self.case_context.is_official:
+                manifest.downloads["arcgis"] = self.download_arcgis_layers()
+                self._refresh_official_forcing_bbox_from_scoring_grid()
+                manifest.config["bbox"] = str(self.bbox)
+                manifest.config["bbox_source"] = self.bbox_source
             
             # 2. Download HYCOM
             manifest.downloads["hycom"] = self.download_hycom()
@@ -127,7 +194,8 @@ class DataIngestionService(BaseService):
             # 5. Download NCEP
             manifest.downloads["ncep"] = self.download_ncep()
 
-            manifest.downloads["arcgis"] = self.download_arcgis_layers()
+            if not self.case_context.is_official:
+                manifest.downloads["arcgis"] = self.download_arcgis_layers()
 
             # Save Manifest
             manifest_path = self.output_dir / "download_manifest.json"

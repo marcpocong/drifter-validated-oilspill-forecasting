@@ -254,24 +254,31 @@ def resolve_official_phase3b_pairs(
 
 
 class Phase3BScoringService:
-    def __init__(self, output_dir: str | Path | None = None):
+    def __init__(
+        self,
+        output_dir: str | Path | None = None,
+        forecast_run_name: str | None = None,
+        observation_run_name: str | None = None,
+        run_context: dict | None = None,
+    ):
         self.case = get_case_context()
-        default_output_dir = Path("output") / self.case.run_name / ("phase3b" if self.case.is_official else "validation")
+        self.forecast_run_name = str(forecast_run_name or self.case.run_name)
+        self.observation_run_name = str(observation_run_name or self.case.run_name)
+        self.run_context = dict(run_context or {})
+        default_output_dir = Path("output") / self.forecast_run_name / ("phase3b" if self.case.is_official else "validation")
         self.output_dir = Path(output_dir) if output_dir else default_output_dir
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.grid = GridBuilder()
         self.windows_km = list(OFFICIAL_PHASE3B_WINDOWS_KM)
 
     def run(self) -> Phase3BArtifacts:
-        from src.core.constants import RUN_NAME
-
         if self.case.is_official:
-            return self._run_official(RUN_NAME)
-        return self._run_prototype(RUN_NAME)
+            return self._run_official(self.forecast_run_name, self.observation_run_name)
+        return self._run_prototype(self.forecast_run_name)
 
-    def _run_official(self, run_name: str) -> Phase3BArtifacts:
-        forecast_context = self._load_official_forecast_context(run_name)
-        obs_registry = self._build_official_obs_registry(run_name)
+    def _run_official(self, forecast_run_name: str, observation_run_name: str) -> Phase3BArtifacts:
+        forecast_context = self._load_official_forecast_context(forecast_run_name)
+        obs_registry = self._build_official_obs_registry(observation_run_name)
         pairing_manifest = self._build_official_pairing_manifest(obs_registry, forecast_context)
         pairing_manifest, fss_df, diagnostics_df = self._score_official_pairings(pairing_manifest)
         summary_df = self._summarize_official(pairing_manifest, fss_df, diagnostics_df)
@@ -291,7 +298,7 @@ class Phase3BScoringService:
         diagnostics_df.to_csv(diagnostics_path, index=False)
         self._write_official_run_manifest(
             path=run_manifest_path,
-            run_name=run_name,
+            run_name=forecast_run_name,
             forecast_context=forecast_context,
             obs_registry_path=obs_registry_path,
             pairing_manifest_path=pairing_manifest_path,
@@ -300,6 +307,7 @@ class Phase3BScoringService:
             diagnostics_path=diagnostics_path,
             pairing_manifest=pairing_manifest,
             qa_artifacts=qa_artifacts,
+            observation_run_name=observation_run_name,
         )
 
         return Phase3BArtifacts(
@@ -355,6 +363,28 @@ class Phase3BScoringService:
         grid = forecast_manifest.get("grid") or ensemble_manifest.get("grid") or {}
         deterministic_control = forecast_manifest.get("deterministic_control") or {}
         ensemble_config = ensemble_manifest.get("ensemble_configuration") or {}
+        historical_baseline = (
+            forecast_manifest.get("historical_baseline_provenance")
+            or ensemble_manifest.get("historical_baseline_provenance")
+            or {}
+        )
+        sensitivity_context = (
+            forecast_manifest.get("sensitivity_context")
+            or ensemble_manifest.get("sensitivity_context")
+            or {}
+        )
+        active_recipe_id = (
+            recipe_selection.get("recipe")
+            or (forecast_manifest.get("recipe_provenance") or {}).get("recipe")
+            or (ensemble_manifest.get("recipe_provenance") or {}).get("recipe")
+            or ""
+        )
+        baseline_recipe_id = (
+            historical_baseline.get("recipe")
+            or (forecast_manifest.get("baseline_provenance") or {}).get("recipe")
+            or (ensemble_manifest.get("baseline_provenance") or {}).get("recipe")
+            or active_recipe_id
+        )
 
         return {
             "case_output_dir": case_output_dir,
@@ -365,12 +395,10 @@ class Phase3BScoringService:
             "validation_time_utc": validation_time_utc,
             "phase3b_status": phase3b_status,
             "recipe_selection": recipe_selection,
-            "baseline_recipe_id": (
-                recipe_selection.get("recipe")
-                or (forecast_manifest.get("baseline_provenance") or {}).get("recipe")
-                or (ensemble_manifest.get("baseline_provenance") or {}).get("recipe")
-                or ""
-            ),
+            "active_recipe_id": active_recipe_id,
+            "baseline_recipe_id": baseline_recipe_id,
+            "historical_baseline_provenance": historical_baseline,
+            "sensitivity_context": sensitivity_context,
             "transport_model": str(transport.get("model", "")),
             "provisional_transport_model": _json_bool(transport.get("provisional_transport_model")),
             "grid_id": str(grid.get("grid_id", "")),
@@ -505,7 +533,9 @@ class Phase3BScoringService:
                     "phase3b_provisional": phase3b_status["provisional"],
                     "phase3b_rerun_required": phase3b_status["rerun_required"],
                     "phase3b_status_reason": " | ".join(phase3b_status["reasons"]),
+                    "active_recipe_id": forecast_context["active_recipe_id"],
                     "baseline_recipe_id": forecast_context["baseline_recipe_id"],
+                    "historical_baseline_recipe_id": forecast_context["baseline_recipe_id"],
                     "grid_id": forecast_context["grid_id"],
                     "grid_metadata_path": forecast_context["grid_metadata_path"],
                     "grid_metadata_json_path": forecast_context["grid_metadata_json_path"],
@@ -640,19 +670,25 @@ class Phase3BScoringService:
         diagnostics_path: Path,
         pairing_manifest: pd.DataFrame,
         qa_artifacts: list[Path],
+        observation_run_name: str,
     ) -> None:
         payload = {
             "run_name": run_name,
+            "observation_run_name": observation_run_name,
             "workflow_mode": self.case.workflow_mode,
             "output_dir": str(self.output_dir),
             "mode": "official_phase3b_scoring",
             "phase3b_status_flags": forecast_context["phase3b_status"],
+            "run_context": self.run_context,
             "upstream_forecast": {
                 "forecast_manifest_path": str(forecast_context["forecast_manifest_path"]),
                 "ensemble_manifest_path": str(forecast_context["ensemble_manifest_path"]),
+                "active_recipe_id": forecast_context["active_recipe_id"],
                 "transport_model": forecast_context["transport_model"],
                 "provisional_transport_model": forecast_context["provisional_transport_model"],
                 "baseline_recipe_id": forecast_context["baseline_recipe_id"],
+                "historical_baseline_provenance": forecast_context["historical_baseline_provenance"],
+                "sensitivity_context": forecast_context["sensitivity_context"],
                 "grid_id": forecast_context["grid_id"],
                 "grid_metadata_path": forecast_context["grid_metadata_path"],
                 "grid_metadata_json_path": forecast_context["grid_metadata_json_path"],
@@ -994,6 +1030,16 @@ class Phase3BScoringService:
         raise ValueError(f"Unsupported forecast output: {path}")
 
 
-def run_phase3b_scoring(output_dir: str | Path | None = None):
-    service = Phase3BScoringService(output_dir=output_dir)
+def run_phase3b_scoring(
+    output_dir: str | Path | None = None,
+    forecast_run_name: str | None = None,
+    observation_run_name: str | None = None,
+    run_context: dict | None = None,
+):
+    service = Phase3BScoringService(
+        output_dir=output_dir,
+        forecast_run_name=forecast_run_name,
+        observation_run_name=observation_run_name,
+        run_context=run_context,
+    )
     return service.run()
