@@ -6,7 +6,9 @@ from unittest import mock
 
 import numpy as np
 import rasterio
+import geopandas as gpd
 from rasterio.transform import from_origin
+from shapely.geometry import Point, Polygon
 
 from src.core.case_context import get_case_context
 
@@ -88,6 +90,19 @@ class TestScoringGrid(unittest.TestCase):
                 failing = precheck_same_grid(forecast_path, shifted_path, tmp_path / "failing")
                 self.assertFalse(failing.passed)
                 self.assertFalse(failing.checks["transform_match"])
+
+    def test_polygon_reference_point_uses_largest_polygon_without_union(self):
+        from src.utils.io import _resolve_polygon_reference_point
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "polygons.gpkg"
+            small = Polygon([(120.0, 12.0), (120.01, 12.0), (120.01, 12.01), (120.0, 12.01)])
+            large = Polygon([(121.0, 13.0), (121.2, 13.0), (121.2, 13.2), (121.0, 13.2)])
+            gdf = gpd.GeoDataFrame({"id": [1, 2]}, geometry=[small, large], crs="EPSG:4326")
+            gdf.to_file(path, driver="GPKG")
+
+            lat, lon = _resolve_polygon_reference_point(path, geometry_type="polygon")
+            self.assertTrue(large.contains(Point(lon, lat)) or large.touches(Point(lon, lat)))
 
 
 if __name__ == "__main__":

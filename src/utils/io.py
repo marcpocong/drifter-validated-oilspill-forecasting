@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict
 
+import numpy as np
 import pandas as pd
 import xarray as xr
 import yaml
@@ -420,17 +421,52 @@ def get_prepared_input_specs(
 
     for layer in case.arcgis_layers:
         layer_source = f"ArcGIS FeatureServer layer {layer.layer_id}: {layer.service_url}"
-        add_spec(
-            f"{layer.role}_geojson",
-            layer.geojson_path(active_run_name),
-            layer_source,
-        )
-        if layer.geometry_type == "polygon":
+        if case.is_official:
             add_spec(
-                f"{layer.role}_mask",
-                layer.mask_path(active_run_name),
-                f"Rasterized mask from {layer_source}",
+                f"{layer.role}_raw_geojson",
+                layer.raw_geojson_path(active_run_name),
+                layer_source,
             )
+            add_spec(
+                f"{layer.role}_processed_vector",
+                layer.processed_vector_path(active_run_name),
+                f"Processed vector derived from {layer_source}",
+            )
+            add_spec(
+                f"{layer.role}_service_metadata",
+                layer.service_metadata_path(active_run_name),
+                f"Archived service metadata from {layer_source}",
+            )
+            if layer.geometry_type == "polygon":
+                mask_path = (
+                    layer.official_observed_mask_path(active_run_name)
+                    if layer.role == case.validation_layer.role
+                    else layer.mask_path(active_run_name)
+                )
+                add_spec(
+                    f"{layer.role}_mask",
+                    mask_path,
+                    f"Rasterized mask from processed {layer.role} geometry on the canonical scoring grid",
+                )
+        else:
+            add_spec(
+                f"{layer.role}_geojson",
+                layer.geojson_path(active_run_name),
+                layer_source,
+            )
+            if layer.geometry_type == "polygon":
+                add_spec(
+                    f"{layer.role}_mask",
+                    layer.mask_path(active_run_name),
+                    f"Rasterized mask from {layer_source}",
+                )
+
+    if case.is_official:
+        add_spec(
+            "arcgis_processing_report",
+            Path("data") / "arcgis" / active_run_name / "arcgis_processing_report.csv",
+            "Generated ArcGIS processing QA report",
+        )
 
     if case.is_official:
         from src.helpers.scoring import get_scoring_grid_artifact_paths
@@ -681,10 +717,20 @@ def resolve_spill_origin(
 
     case = get_case_context()
     if case.is_official:
+        provenance_point = resolve_provenance_source_point()
+        if provenance_point is not None:
+            lat, lon = provenance_point
+            logger.info(
+                "Loaded official provenance point for metadata/logging: (%.4f, %.4f)",
+                lat,
+                lon,
+            )
+            return lat, lon, case.release_start_utc
+
         init_path = resolve_initialization_polygon_path()
-        lat, lon = _resolve_polygon_reference_point(init_path)
+        lat, lon = _resolve_polygon_reference_point(init_path, geometry_type="polygon")
         logger.info(
-            "Loaded official release reference from initialization polygon: (%.4f, %.4f)",
+            "Loaded official polygon reference from cleaned initialization vector: (%.4f, %.4f)",
             lat,
             lon,
         )
@@ -721,21 +767,23 @@ def resolve_polygon_seeding(num_elements: int) -> tuple[list[float], list[float]
     case = get_case_context()
     import geopandas as gpd
 
-    seed_geojson = resolve_initialization_polygon_path()
-    if not seed_geojson.exists():
-        raise FileNotFoundError(f"Missing initialization polygon: {seed_geojson}")
+    seed_path = resolve_initialization_polygon_path()
+    if not seed_path.exists():
+        raise FileNotFoundError(f"Missing initialization polygon: {seed_path}")
 
-    gdf = gpd.read_file(seed_geojson)
+    gdf = gpd.read_file(seed_path)
     valid_gdf = gdf.dropna(subset=["geometry"])
     if valid_gdf.empty:
-        raise ValueError(f"No valid geometry found in {seed_geojson}")
+        raise ValueError(f"No valid geometry found in {seed_path}")
 
-    united = valid_gdf.geometry.buffer(0).unary_union
-    temp_series = gpd.GeoSeries([united], crs=valid_gdf.crs)
-    pts = temp_series.sample_points(num_elements).explode(index_parts=False)
-
-    lons = pts.x.tolist()
-    lats = pts.y.tolist()
+    if case.is_official:
+        lons, lats = _sample_points_from_polygons(valid_gdf, num_elements)
+    else:
+        united = valid_gdf.geometry.buffer(0).unary_union
+        temp_series = gpd.GeoSeries([united], crs=valid_gdf.crs)
+        pts = temp_series.sample_points(num_elements).explode(index_parts=False)
+        lons = pts.x.tolist()
+        lats = pts.y.tolist()
 
     seed_time = case.release_start_utc if case.is_official else str(case.phase_1_start_date_value)
     return lons, lats, seed_time
@@ -745,20 +793,32 @@ def resolve_initialization_polygon_path(run_name: str | None = None) -> Path:
     """Return the local GeoJSON path for the configured initialization polygon."""
     case = get_case_context()
     active_run_name = run_name or case.run_name
-    return case.initialization_layer.geojson_path(active_run_name)
+    return _resolve_layer_vector_path(case.initialization_layer, active_run_name, case.is_official)
 
 
 def resolve_validation_polygon_path(run_name: str | None = None) -> Path:
     """Return the local GeoJSON path for the configured validation polygon."""
     case = get_case_context()
     active_run_name = run_name or case.run_name
-    return case.validation_layer.geojson_path(active_run_name)
+    return _resolve_layer_vector_path(case.validation_layer, active_run_name, case.is_official)
+
+
+def resolve_validation_mask_path(run_name: str | None = None) -> Path:
+    """Return the local raster path for the configured validation mask."""
+    case = get_case_context()
+    active_run_name = run_name or case.run_name
+    if case.is_official:
+        preferred = case.validation_layer.official_observed_mask_path(active_run_name)
+        if preferred.exists():
+            return preferred
+        return preferred
+    return case.validation_layer.mask_path(active_run_name)
 
 
 def resolve_provenance_source_point() -> tuple[float, float] | None:
     """Return the provenance Layer 0 point when available."""
     case = get_case_context()
-    point_path = case.provenance_layer.geojson_path(case.run_name)
+    point_path = _resolve_layer_vector_path(case.provenance_layer, case.run_name, case.is_official)
     if not point_path.exists():
         return None
 
@@ -769,15 +829,61 @@ def resolve_provenance_source_point() -> tuple[float, float] | None:
         if gdf.empty or not gdf.geometry.notnull().any():
             return None
         pt = gdf.geometry.dropna().iloc[0]
+        if gdf.crs is not None and str(gdf.crs).upper() != "EPSG:4326":
+            pt = gpd.GeoSeries([pt], crs=gdf.crs).to_crs("EPSG:4326").iloc[0]
         return float(pt.y), float(pt.x)
     except Exception as e:
         logger.warning(f"Failed to read provenance source point {point_path}: {e}")
         return None
 
 
-def _resolve_polygon_reference_point(path: str | Path) -> tuple[float, float]:
-    """Resolve a stable representative point from a polygon geometry file."""
+def _resolve_layer_vector_path(layer, run_name: str, official_mode: bool) -> Path:
+    if official_mode:
+        for path in (
+            layer.processed_vector_path(run_name),
+            layer.raw_geojson_path(run_name),
+            layer.geojson_path(run_name),
+        ):
+            if path.exists():
+                return path
+        return layer.processed_vector_path(run_name)
+    return layer.geojson_path(run_name)
+
+
+def _sample_points_from_polygons(gdf, num_elements: int) -> tuple[list[float], list[float]]:
     import geopandas as gpd
+
+    work = gdf.dropna(subset=["geometry"]).copy()
+    if work.empty:
+        raise ValueError("No valid geometry is available for polygon seeding.")
+
+    weights = work.geometry.apply(lambda geom: geom.area).to_numpy(dtype=float)
+    if not np.isfinite(weights).all() or weights.sum() <= 0:
+        weights = np.ones(len(work), dtype=float)
+    probabilities = weights / weights.sum()
+    rng = np.random.default_rng()
+    counts = rng.multinomial(num_elements, probabilities)
+
+    point_series_parts = []
+    for geometry, count in zip(work.geometry, counts):
+        if count <= 0:
+            continue
+        samples = gpd.GeoSeries([geometry], crs=work.crs).sample_points(count).explode(index_parts=False)
+        point_series_parts.append(samples.reset_index(drop=True))
+
+    if not point_series_parts:
+        raise ValueError("Polygon seeding did not generate any sample points.")
+
+    points = gpd.GeoSeries(pd.concat(point_series_parts, ignore_index=True), crs=work.crs)
+    if points.crs is not None and str(points.crs).upper() != "EPSG:4326":
+        points = points.to_crs("EPSG:4326")
+    return points.x.tolist(), points.y.tolist()
+
+
+def _resolve_polygon_reference_point(path: str | Path, geometry_type: str = "polygon") -> tuple[float, float]:
+    """Resolve a stable representative point from a cleaned vector geometry file."""
+    import geopandas as gpd
+    from src.services.arcgis import get_preferred_reference_geometry
 
     polygon_path = Path(path)
     if not polygon_path.exists():
@@ -788,7 +894,17 @@ def _resolve_polygon_reference_point(path: str | Path) -> tuple[float, float]:
     if valid_gdf.empty:
         raise ValueError(f"No valid geometry found in {polygon_path}")
 
-    representative = valid_gdf.geometry.unary_union.representative_point()
+    representative_geometry = get_preferred_reference_geometry(valid_gdf, geometry_type)
+    if representative_geometry is None:
+        raise ValueError(f"No valid {geometry_type} geometry found in {polygon_path}")
+
+    representative = (
+        representative_geometry.representative_point()
+        if geometry_type == "polygon"
+        else representative_geometry
+    )
+    if valid_gdf.crs is not None and str(valid_gdf.crs).upper() != "EPSG:4326":
+        representative = gpd.GeoSeries([representative], crs=valid_gdf.crs).to_crs("EPSG:4326").iloc[0]
     return float(representative.y), float(representative.x)
 
 

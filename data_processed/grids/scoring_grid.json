@@ -1,6 +1,6 @@
 {
   "min_x": 274000.0,
-  "max_x": 397000.0,
+  "max_x": 398000.0,
   "min_y": 1355000.0,
   "max_y": 1524000.0,
   "resolution": 1000.0,
@@ -12,9 +12,9 @@
   "run_name": "CASE_MINDORO_RETRO_2023",
   "display_bounds_wgs84": [
     120.90964677179262,
-    122.05296048769894,
+    122.0621541786303,
     12.249384840763462,
-    13.783619650637805
+    13.783655303175253
   ],
   "buffer_m": 50000.0,
   "grid_snap_m": 1000.0,
@@ -26,15 +26,15 @@
   "sea_mask_path": "data_processed/grids/sea_mask.tif",
   "shoreline_mask_status": "scaffold_all_sea_pending_shoreline_integration",
   "source_paths": {
-    "initialization_polygon": "data/arcgis/CASE_MINDORO_RETRO_2023/seed_polygon_mar3.geojson",
-    "validation_polygon": "data/arcgis/CASE_MINDORO_RETRO_2023/validation_polygon_mar6.geojson",
-    "source_point": "data/arcgis/CASE_MINDORO_RETRO_2023/source_point_metadata.geojson"
+    "initialization_polygon": "data/arcgis/CASE_MINDORO_RETRO_2023/seed_polygon_mar3_processed.gpkg",
+    "validation_polygon": "data/arcgis/CASE_MINDORO_RETRO_2023/validation_polygon_mar6_processed.gpkg",
+    "source_point": "data/arcgis/CASE_MINDORO_RETRO_2023/source_point_metadata_processed.gpkg"
   },
-  "width": 123,
+  "width": 124,
   "height": 169,
   "extent": [
     274000.0,
-    397000.0,
+    398000.0,
     1355000.0,
     1524000.0
   ],

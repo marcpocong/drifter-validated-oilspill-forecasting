@@ -74,10 +74,6 @@ class Phase3BScoringService:
         df = pd.read_csv(registry_path)
         records = []
         for _, row in df.iterrows():
-            mask_path = Path(row["mask"])
-            if not mask_path.exists():
-                raise FileNotFoundError(f"ArcGIS mask not found: {mask_path}")
-            
             row_role = row.get("role")
             row_layer_id = int(row["layer_id"])
             if row_role:
@@ -86,6 +82,10 @@ class Phase3BScoringService:
                 is_validation_layer = row_layer_id == case.validation_layer.layer_id
             if not is_validation_layer:
                 continue
+
+            mask_path = Path(row["mask"])
+            if not mask_path.exists():
+                raise FileNotFoundError(f"ArcGIS mask not found: {mask_path}")
 
             records.append({
                 "layer_id": row_layer_id,

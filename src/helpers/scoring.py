@@ -210,6 +210,25 @@ def _load_gdf(path: Path, label: str):
     return valid
 
 
+def _resolve_official_layer_path(layer, label: str) -> Path:
+    processed_path = layer.processed_vector_path(get_case_context().run_name)
+    if processed_path.exists():
+        return processed_path
+
+    raw_path = layer.raw_geojson_path(get_case_context().run_name)
+    if raw_path.exists():
+        return raw_path
+
+    legacy_path = layer.geojson_path(get_case_context().run_name)
+    if legacy_path.exists():
+        return legacy_path
+
+    raise FileNotFoundError(
+        f"Official scoring grid requires the processed {label}. "
+        f"Missing processed path: {processed_path}"
+    )
+
+
 def _snap_min(value: float, snap: float) -> float:
     return math.floor(value / snap) * snap
 
@@ -317,9 +336,9 @@ def build_official_scoring_grid(force_refresh: bool = False) -> ScoringGridSpec:
         if cached.run_name == case.run_name and cached.workflow_mode == case.workflow_mode:
             return cached
 
-    init_path = case.initialization_layer.geojson_path(case.run_name)
-    validation_path = case.validation_layer.geojson_path(case.run_name)
-    source_path = case.provenance_layer.geojson_path(case.run_name)
+    init_path = _resolve_official_layer_path(case.initialization_layer, "March 3 initialization polygon")
+    validation_path = _resolve_official_layer_path(case.validation_layer, "March 6 validation polygon")
+    source_path = _resolve_official_layer_path(case.provenance_layer, "source point")
 
     init_gdf = _load_gdf(init_path, "March 3 initialization polygon").to_crs(OFFICIAL_GRID_CRS)
     validation_gdf = _load_gdf(validation_path, "March 6 validation polygon").to_crs(OFFICIAL_GRID_CRS)

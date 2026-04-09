@@ -13,7 +13,6 @@ from typing import Dict, Any, List
 
 import xarray as xr
 import pandas as pd
-import requests
 import shutil
 from erddapy import ERDDAP
 
@@ -43,7 +42,7 @@ from src.core.constants import REGION, RUN_NAME
 from src.core.base import BaseService
 from src.exceptions.custom import DataLoadingError
 from src.models.ingestion import IngestionManifest
-from src.helpers.raster import GridBuilder, rasterize_observation_layer
+from src.helpers.raster import GridBuilder
 from src.utils.io import get_prepared_input_manifest_path, get_prepared_input_specs
 
 # Setup logging
@@ -539,58 +538,34 @@ class DataIngestionService(BaseService):
             return "FAILED"
 
     def download_arcgis_layers(self) -> str:
-        """ArcGIS ingestion resolved directly from Mindoro authoritative map."""
-        from src.services.arcgis import get_configured_arcgis_layers
-        from src.helpers.scoring import build_official_scoring_grid
+        """ArcGIS ingestion resolved directly from the configured workflow case."""
+        from src.helpers.scoring import OFFICIAL_GRID_CRS, build_official_scoring_grid
+        from src.services.arcgis import (
+            ArcGISFeatureServerClient,
+            get_arcgis_processing_report_path,
+            get_arcgis_registry_path,
+            get_configured_arcgis_layers,
+            rasterize_prepared_layer,
+        )
 
         workflow_layers = get_configured_arcgis_layers()
-        layer_lookup = {layer.local_name: layer for layer in self.case_context.arcgis_layers}
 
         if not workflow_layers:
             logger.info("No ArcGIS layers resolved from the project case set; skipping.")
             return "SKIPPED_NO_LAYERS"
 
-        records = []
-        registry_rows = []
-        pending_layers = []
+        client = ArcGISFeatureServerClient(timeout=60)
+        prepared_layers = []
         for layer in workflow_layers:
             try:
-                url = layer.service_url.rstrip("/")
-                layer_id = int(layer.layer_id)
-                name = layer.name or f"layer_{layer_id}"
-                layer_meta = layer_lookup.get(name)
-                query_url = f"{url}/{layer_id}/query"
-                logger.info(f"Downloading ArcGIS layer: {name} (ID: {layer_id})")
-                params = {
-                    "where": "1=1",
-                    "outFields": "*",
-                    "returnGeometry": "true",
-                    "f": "geojson",
-                }
-                resp = requests.get(query_url, params=params, timeout=60)
-                resp.raise_for_status()
-                payload = resp.json()
-                features = payload.get("features", [])
-                gdf = gpd.GeoDataFrame.from_features(features, crs="EPSG:4326") if features else gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")
-
-                if not gdf.empty:
-                    minx, miny, maxx, maxy = gdf.total_bounds
-                    if maxx < 5.0 and maxy < 5.0:
-                        logger.warning(f"Detected mangled Web Mercator coords in {name}. Re-projecting back to WGS84 degrees.")     
-                        gdf = gdf.to_crs(3857).set_crs(4326, allow_override=True)
-
-                out_geojson = self.arcgis_dir / f"{name}.geojson"
-                gdf.to_file(out_geojson, driver="GeoJSON")
-                pending_layers.append(
-                    {
-                        "name": name,
-                        "layer_id": layer_id,
-                        "role": layer_meta.role if layer_meta else "",
-                        "event_time_utc": layer_meta.event_time_utc if layer_meta else "",
-                        "feature_count": int(len(gdf)),
-                        "geojson": str(out_geojson),
-                        "gdf": gdf,
-                    }
+                logger.info("Downloading ArcGIS layer: %s (ID: %s)", layer.name, layer.layer_id)
+                target_crs = OFFICIAL_GRID_CRS if self.case_context.is_official else "EPSG:4326"
+                prepared_layers.append(
+                    client.prepare_layer(
+                        layer=layer,
+                        target_crs=target_crs,
+                        grid=self.grid if self.case_context.is_prototype else None,
+                    )
                 )
             except Exception as e:
                 logger.error(f"ArcGIS ingestion failed for layer {layer.name}: {e}")
@@ -599,27 +574,14 @@ class DataIngestionService(BaseService):
         if self.case_context.is_official:
             build_official_scoring_grid(force_refresh=True)
             self.grid = GridBuilder()
-        elif self.grid is None:
-            self.grid = GridBuilder()
+            prepared_layers = [rasterize_prepared_layer(layer_result, self.grid) for layer_result in prepared_layers]
 
-        for layer_data in pending_layers:
-            mask_path = self.arcgis_dir / f"{layer_data['name']}.tif"
-            rasterize_observation_layer(layer_data["gdf"], self.grid, mask_path)
+        registry_rows = [layer_result.to_registry_row() for layer_result in prepared_layers]
+        report_rows = [layer_result.to_processing_report_row() for layer_result in prepared_layers]
+        pd.DataFrame(registry_rows).to_csv(get_arcgis_registry_path(RUN_NAME), index=False)
+        pd.DataFrame(report_rows).to_csv(get_arcgis_processing_report_path(RUN_NAME), index=False)
 
-            registry_rows.append(
-                {
-                    "name": layer_data["name"],
-                    "layer_id": layer_data["layer_id"],
-                    "role": layer_data["role"],
-                    "event_time_utc": layer_data["event_time_utc"],
-                    "feature_count": layer_data["feature_count"],
-                    "geojson": layer_data["geojson"],
-                    "mask": str(mask_path),
-                }
-            )
-            records.append(layer_data["name"])
-
-        pd.DataFrame(registry_rows).to_csv(self.arcgis_dir / "arcgis_registry.csv", index=False)
+        records = [layer_result.name for layer_result in prepared_layers]
         return ",".join(records) if records else "SKIPPED_NO_DATA"
 
 if __name__ == "__main__":

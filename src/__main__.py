@@ -97,11 +97,12 @@ def ensure_phase3b_forecast_outputs(
 def ensure_data_exists(run_name: str, require_drifter: bool = True):
     from src.core.case_context import get_case_context
     from src.services.ingestion import DataIngestionService
+    from src.utils.io import resolve_initialization_polygon_path, resolve_validation_polygon_path
 
     drifter_path = Path(f"data/drifters/{run_name}/drifters_noaa.csv")
     case = get_case_context()
-    init_polygon_path = case.initialization_layer.geojson_path(run_name)
-    validation_polygon_path = case.validation_layer.geojson_path(run_name)
+    init_polygon_path = resolve_initialization_polygon_path(run_name)
+    validation_polygon_path = resolve_validation_polygon_path(run_name)
 
     missing = (
         not init_polygon_path.exists()

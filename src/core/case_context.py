@@ -58,6 +58,24 @@ class CaseLayerConfig:
     def mask_path(self, run_name: str) -> Path:
         return Path("data") / "arcgis" / run_name / f"{self.local_name}.tif"
 
+    def raw_geojson_path(self, run_name: str) -> Path:
+        return Path("data") / "arcgis" / run_name / f"{self.local_name}_raw.geojson"
+
+    def processed_vector_path(self, run_name: str) -> Path:
+        return Path("data") / "arcgis" / run_name / f"{self.local_name}_processed.gpkg"
+
+    def service_metadata_path(self, run_name: str) -> Path:
+        return Path("data") / "arcgis" / run_name / f"{self.local_name}_service_metadata.json"
+
+    def processing_notes_path(self, run_name: str) -> Path:
+        return Path("data") / "arcgis" / run_name / f"{self.local_name}_processing_notes.json"
+
+    def official_observed_mask_path(self, run_name: str) -> Path:
+        if not self.event_time_utc:
+            raise ValueError(f"Layer {self.local_name} is missing event_time_utc for observed-mask naming.")
+        event_date = str(pd.to_datetime(self.event_time_utc).date())
+        return Path("data") / "arcgis" / run_name / f"obs_mask_{event_date}.tif"
+
 
 @dataclass(frozen=True)
 class CaseContext:
