@@ -7,6 +7,12 @@ Container routing via the PIPELINE_PHASE environment variable:
                                     Official: frozen-baseline recipe + deterministic control + Phase 2 ensemble
   PIPELINE_PHASE=official_phase3b -> Official minimal path: deterministic control + ensemble + Phase 3B
   PIPELINE_PHASE=recipe_sensitivity -> Official event-scale Phase 3B recipe sensitivities
+  PIPELINE_PHASE=convergence_after_shoreline -> Official shoreline-aware particle-count convergence
+  PIPELINE_PHASE=displacement_after_convergence -> Official post-convergence displacement/transport audit
+  PIPELINE_PHASE=phase3b_multidate_public -> Official multi-date public-observation Phase 3B
+  PIPELINE_PHASE=phase3b_extended_public -> Official extended-horizon public-observation Phase 3B guardrail
+  PIPELINE_PHASE=phase3b_extended_public_scored -> Appendix-only short extended public-observation scoring
+  PIPELINE_PHASE=horizon_survival_audit -> Read-only short-extended horizon survival diagnosis
   PIPELINE_PHASE=public_obs_appendix -> Official appendix-only public observation expansion
   PIPELINE_PHASE=3               -> Phase 3 (oil weathering & PyGNOME comparison)
   PIPELINE_PHASE=benchmark       -> Phase 3A cross-model benchmark
@@ -551,6 +557,161 @@ def run_public_obs_appendix_phase():
     print(f"Recommendation: {results['recommendation']}")
 
 
+def run_convergence_after_shoreline_phase():
+    from src.core.case_context import get_case_context
+    from src.core.constants import RUN_NAME
+    from src.services.convergence_after_shoreline import run_convergence_after_shoreline
+
+    case = get_case_context()
+    if not case.is_official:
+        print("convergence_after_shoreline is only supported for official spill-case workflows.")
+        sys.exit(1)
+
+    print("Starting shoreline-aware particle-count convergence...")
+    print_workflow_context()
+
+    ensure_prepared_inputs(
+        RUN_NAME,
+        require_drifter=case.drifter_required,
+        include_all_transport_forcing=True,
+        phase_label="shoreline-aware convergence",
+    )
+
+    results = run_convergence_after_shoreline()
+    print("\nShoreline-aware convergence complete.")
+    print(f"Summary saved to: {results['summary_csv']}")
+    print(f"By-window metrics saved to: {results['by_window_csv']}")
+    print(f"Diagnostics saved to: {results['diagnostics_csv']}")
+    print(f"Report saved to: {results['report_md']}")
+    print(f"Run manifest saved to: {results['run_manifest_json']}")
+    if results.get("qa_fss_png"):
+        print(f"QA FSS plot: {results['qa_fss_png']}")
+    if results.get("qa_nonzero_png"):
+        print(f"QA nonzero plot: {results['qa_nonzero_png']}")
+    if results.get("qa_overlays_png"):
+        print(f"QA overlays: {results['qa_overlays_png']}")
+
+
+def run_displacement_after_convergence_phase():
+    from src.core.case_context import get_case_context
+    from src.services.displacement_after_convergence import run_displacement_after_convergence
+
+    case = get_case_context()
+    if not case.is_official:
+        print("displacement_after_convergence is only supported for official spill-case workflows.")
+        sys.exit(1)
+
+    print("Starting post-convergence displacement/transport audit...")
+    print_workflow_context()
+
+    results = run_displacement_after_convergence()
+    print("\nPost-convergence displacement audit complete.")
+    print(f"Report saved to: {results['report_md']}")
+    print(f"Audit JSON saved to: {results['audit_json']}")
+    print(f"Ranked hypotheses saved to: {results['ranked_hypotheses_csv']}")
+    print(f"Top hypothesis: {results['top_hypothesis']}")
+    print(f"Recommended next rerun: {results['recommended_next_rerun']}")
+    if results.get("qa_overlay_png"):
+        print(f"QA overlay: {results['qa_overlay_png']}")
+
+
+def run_phase3b_multidate_public_phase():
+    from src.core.case_context import get_case_context
+    from src.services.phase3b_multidate_public import run_phase3b_multidate_public
+
+    case = get_case_context()
+    if not case.is_official:
+        print("phase3b_multidate_public is only supported for official spill-case workflows.")
+        sys.exit(1)
+
+    print("Starting formal multi-date public-observation Phase 3B validation...")
+    print_workflow_context()
+
+    results = run_phase3b_multidate_public()
+    print("\nMulti-date public Phase 3B complete.")
+    print(f"Outputs saved to: {results['output_dir']}")
+    print(f"Accepted validation dates: {', '.join(results['accepted_validation_dates']) or 'none'}")
+    print(f"March 3 excluded from forecast skill summary: {results['march3_excluded']}")
+    print(f"Strict March 6 files unchanged: {results['strict_files_unchanged']}")
+    print(f"Summary saved to: {results['summary']}")
+    print(f"Event-corridor summary saved to: {results['eventcorridor_summary']}")
+
+
+def run_phase3b_extended_public_phase():
+    from src.core.case_context import get_case_context
+    from src.services.phase3b_extended_public import run_phase3b_extended_public
+
+    case = get_case_context()
+    if not case.is_official:
+        print("phase3b_extended_public is only supported for official spill-case workflows.")
+        sys.exit(1)
+
+    print("Starting extended-horizon public-observation Phase 3B guardrail...")
+    print_workflow_context()
+
+    results = run_phase3b_extended_public()
+    print("\nExtended public Phase 3B guardrail complete.")
+    print(f"Outputs saved to: {results['output_dir']}")
+    print(
+        "Accepted extended quantitative dates: "
+        f"{', '.join(results['accepted_extended_quantitative_dates']) or 'none'}"
+    )
+    print(f"Status: {results['status']}")
+    print(f"Headline FSS: {results['headline_fss']}")
+    print(f"Not-possible report: {results['not_possible_report']}")
+    print(f"Run manifest: {results['run_manifest']}")
+
+
+def run_phase3b_extended_public_scored_phase():
+    from src.core.case_context import get_case_context
+    from src.services.phase3b_extended_public_scored import run_phase3b_extended_public_scored
+
+    case = get_case_context()
+    if not case.is_official:
+        print("phase3b_extended_public_scored is only supported for official spill-case workflows.")
+        sys.exit(1)
+
+    print("Starting appendix-only scored short extended public-observation validation...")
+    print_workflow_context()
+
+    results = run_phase3b_extended_public_scored()
+    print("\nShort extended public-observation scoring complete.")
+    print(f"Outputs saved to: {results['output_dir']}")
+    print(f"Accepted short-tier dates scored: {', '.join(results['accepted_short_dates_scored']) or 'none'}")
+    print(f"Forcing manifest: {results['forcing_manifest_json']}")
+    print(f"Loading audit: {results['loading_audit_json']}")
+    print(f"Summary: {results['summary_csv']}")
+    print(f"Per-window FSS: {results['fss_csv']}")
+    print(f"Diagnostics: {results['diagnostics_csv']}")
+    print(f"Event-corridor summary: {results['eventcorridor_summary_md']}")
+    print(f"Forcing extension worked cleanly: {results['forcing_extension_clean']}")
+    print(f"Medium tier recommendation: {results['medium_tier_recommendation']}")
+
+
+def run_horizon_survival_audit_phase():
+    from src.core.case_context import get_case_context
+    from src.services.horizon_survival_audit import run_horizon_survival_audit
+
+    case = get_case_context()
+    if not case.is_official:
+        print("horizon_survival_audit is only supported for official spill-case workflows.")
+        sys.exit(1)
+
+    print("Starting read-only short-extended horizon survival audit...")
+    print_workflow_context()
+
+    results = run_horizon_survival_audit()
+    print("\nHorizon survival audit complete.")
+    print(f"Outputs saved to: {results['output_dir']}")
+    print(f"Dominant diagnosis class: {results['dominant_diagnosis_class']}")
+    print(f"Last nonzero deterministic footprint: {results['last_nonzero_deterministic_footprint'] or 'none'}")
+    print(f"Last nonzero prob_presence: {results['last_nonzero_prob_presence'] or 'none'}")
+    print(f"Last nonzero mask_p50: {results['last_nonzero_mask_p50'] or 'none'}")
+    print(f"March 7-9 empty reason: {results['march7_9_empty_reason']}")
+    print(f"Recommended next rerun: {results['recommended_next_rerun']}")
+    print(f"Report: {results['report_md']}")
+
+
 def main():
     import subprocess
 
@@ -585,6 +746,18 @@ def main():
         run_benchmark()
     elif phase == "recipe_sensitivity":
         run_recipe_sensitivity_phase()
+    elif phase == "convergence_after_shoreline":
+        run_convergence_after_shoreline_phase()
+    elif phase == "displacement_after_convergence":
+        run_displacement_after_convergence_phase()
+    elif phase == "phase3b_multidate_public":
+        run_phase3b_multidate_public_phase()
+    elif phase == "phase3b_extended_public":
+        run_phase3b_extended_public_phase()
+    elif phase == "phase3b_extended_public_scored":
+        run_phase3b_extended_public_scored_phase()
+    elif phase == "horizon_survival_audit":
+        run_horizon_survival_audit_phase()
     elif phase == "public_obs_appendix":
         run_public_obs_appendix_phase()
     elif phase == "3":

@@ -40,3 +40,5 @@ md/
 # Openclaw
 openclaw/
 .agents/
+# raw shoreline downloads
+data_processed/grids/raw/

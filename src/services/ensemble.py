@@ -196,6 +196,10 @@ class EnsembleForecastService:
         output_run_name: str | None = None,
         sensitivity_context: dict | None = None,
         historical_baseline_provenance: dict | None = None,
+        simulation_start_utc: str | None = None,
+        simulation_end_utc: str | None = None,
+        snapshot_hours: list[int] | None = None,
+        date_composite_dates: list[str] | None = None,
     ):
         self.case = get_case_context()
         self.case_config = self._load_case_config()
@@ -212,6 +216,9 @@ class EnsembleForecastService:
         self._wind_scaling_template: xr.Dataset | None = None
         self.sensitivity_context = dict(sensitivity_context or {})
         self.historical_baseline_provenance = dict(historical_baseline_provenance or {})
+        self.simulation_start_override = simulation_start_utc
+        self.simulation_end_override = simulation_end_utc
+        self.date_composite_dates_override = list(date_composite_dates or [])
 
         self.currents_file = Path(currents_file)
         self.winds_file = Path(winds_file)
@@ -245,6 +252,8 @@ class EnsembleForecastService:
                 "probability_thresholds": self.official_config.get("probability_thresholds", [0.5, 0.9]),
             }
         self.snapshot_hours = [int(hour) for hour in official_products.get("snapshot_hours", [24, 48, 72])]
+        if snapshot_hours is not None:
+            self.snapshot_hours = [int(hour) for hour in snapshot_hours]
         self.probability_thresholds = [float(value) for value in official_products.get("probability_thresholds", [0.5, 0.9])]
         self.transport_model_name = str(self.official_config.get("transport_model", "OceanDrift"))
         self.provisional_transport_model = bool(self.official_config.get("provisional_transport_model", self.case.is_official))
@@ -309,8 +318,8 @@ class EnsembleForecastService:
         return int(value)
 
     def _get_official_simulation_window(self) -> tuple[pd.Timestamp, pd.Timestamp, int]:
-        start = normalize_model_timestamp(self.case.simulation_start_utc)
-        end = normalize_model_timestamp(self.case.simulation_end_utc)
+        start = normalize_model_timestamp(self.simulation_start_override or self.case.simulation_start_utc)
+        end = normalize_model_timestamp(self.simulation_end_override or self.case.simulation_end_utc)
         duration_hours = int(round((end - start).total_seconds() / 3600.0))
         return start, end, duration_hours
 
@@ -1120,7 +1129,8 @@ class EnsembleForecastService:
         if self.case.validation_layer.event_time_utc:
             validation_date = str(pd.Timestamp(self.case.validation_layer.event_time_utc).date())
 
-        if validation_date:
+        date_composite_dates = self.date_composite_dates_override or ([validation_date] if validation_date else [])
+        for validation_date in date_composite_dates:
             composite_masks: list[np.ndarray] = []
             for member in member_runs:
                 composite = self._build_date_composite_mask(
@@ -1148,7 +1158,7 @@ class EnsembleForecastService:
             composite_probability = np.mean(np.stack(composite_masks, axis=0), axis=0).astype(np.float32)
             composite_probability = self._apply_scoreable_ocean_mask(composite_probability)
             composite_prob_path = self.output_dir / f"prob_presence_{validation_date}_datecomposite.tif"
-            composite_p50_path = get_official_mask_p50_datecomposite_path(run_name=self.output_run_name)
+            composite_p50_path = self.output_dir / f"mask_p50_{validation_date}_datecomposite.tif"
             save_raster(grid, composite_probability, composite_prob_path)
             save_raster(
                 grid,
@@ -1397,6 +1407,8 @@ class EnsembleForecastService:
                 "ensemble_size": len(member_runs),
                 "element_count": self.official_element_count,
                 "polygon_seed_random_seed": self.official_polygon_seed_random_seed,
+                "snapshot_hours": list(self.snapshot_hours),
+                "date_composite_dates": list(self.date_composite_dates_override or []),
                 "wind_factor_min": float(ensemble_cfg.get("wind_factor_min", 0.8)),
                 "wind_factor_max": float(ensemble_cfg.get("wind_factor_max", 1.2)),
                 "start_time_offset_hours": [int(v) for v in ensemble_cfg.get("start_time_offset_hours", [-3, -2, -1, 0, 1, 2, 3])],
@@ -1883,6 +1895,10 @@ def run_official_spill_forecast(
     forcing_override: dict | None = None,
     sensitivity_context: dict | None = None,
     historical_baseline_provenance: dict | None = None,
+    simulation_start_utc: str | None = None,
+    simulation_end_utc: str | None = None,
+    snapshot_hours: list[int] | None = None,
+    date_composite_dates: list[str] | None = None,
 ):
     """Run the official deterministic control plus ensemble path for Phase 3B."""
     try:
@@ -1901,6 +1917,10 @@ def run_official_spill_forecast(
         output_run_name=output_run_name,
         sensitivity_context=sensitivity_context,
         historical_baseline_provenance=historical_baseline_provenance,
+        simulation_start_utc=simulation_start_utc,
+        simulation_end_utc=simulation_end_utc,
+        snapshot_hours=snapshot_hours,
+        date_composite_dates=date_composite_dates,
     )
 
     d_lat, d_lon, d_time = resolve_spill_origin()

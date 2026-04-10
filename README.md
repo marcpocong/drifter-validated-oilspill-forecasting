@@ -6,9 +6,28 @@ A comprehensive thesis project for oil spill prediction and validation using par
 
 This system implements a multi-phase approach to oil spill forecasting:
 
-- **Phase 1**: Transport validation using OpenDrift with four forcing recipe configurations, scored against real drifter observations (NCS metric)
-- **Phase 2**: Ensemble uncertainty quantification via 50-member Monte Carlo perturbations, producing 24h, 48h, and 72h probability PNG and NetCDF outputs
-- **Phase 3**: Oil weathering & fate analysis — simulates how light vs. heavy oil behaves over 72 hours (evaporation, dispersion, beaching) with supplementary PyGNOME cross-comparison
+- **Phase 1**: Prototype transport validation using OpenDrift forcing recipes scored against drifter observations with NCS
+- **Phase 2**: Deterministic control plus ensemble forecast generation. Prototype mode keeps legacy probability products; official Mindoro mode writes canonical projected raster products and machine-readable manifests
+- **Phase 3A/3B**: Benchmark and public-observation validation tracks on the canonical scoring grid, plus a separate oil weathering and PyGNOME comparison lane
+
+## Current Mindoro Progress
+
+The repository now preserves the original `prototype_2016` workflow while adding the official `mindoro_retro_2023` workflow for the thesis-aligned Mindoro spill case.
+
+Current official status:
+
+- The official scoring grid is a real EPSG:32651 projected 1 km grid, with canonical template, extent, and GSHHG-derived shoreline/land/sea masks under `data_processed/grids/`.
+- ArcGIS ingestion archives raw public service downloads, writes cleaned processed vectors, rasterizes accepted observation masks to the canonical grid, and records QA reports.
+- Official Phase 2 forecast generation writes canonical products such as `control_footprint_mask_<timestamp>.tif`, `control_density_norm_<timestamp>.tif`, `prob_presence_<timestamp>.tif`, `mask_p50_<timestamp>.tif`, and date-composite masks with manifests and loading audits.
+- Strict official Phase 3B remains locked to `mask_p50_2023-03-06_datecomposite.tif` vs `obs_mask_2023-03-06.tif`; this is now treated as a strict single-date stress test.
+- A formal multi-date public-observation validation track promotes accepted dated, machine-readable, observation-derived public masks for March 4, March 5, and March 6. March 3 is initialization consistency only, not a normal forecast-skill date.
+- A public-observation appendix inventory and extended-observation guardrail are in place. Accepted extended dates have been inventoried, but only the short tier March 7-9 has been model-extended and scored so far.
+- The short extended appendix scoring completed with clean forcing coverage through March 9 plus offset buffer. March 7-9 p50 masks were empty, while the March 4-9 event corridor remained nonzero.
+- The latest horizon-survival audit diagnosed the late-horizon loss as **Class C: shoreline/beaching/retention behavior**, not forcing truncation, scoring-grid mismatch, or a date-composite writer bug. All audited runs ended in `stranded_no_active`; the recommended next rerun is a transport/retention fix rerun before attempting the medium extended tier.
+
+Important limitation:
+
+- The official transport stack is still recorded as provisional where manifests report `provisional_transport_model=true`. Do not interpret current Phase 3B results as a final scientific improvement until the stranding/retention issue is addressed.
 
 ## Technology Stack
 
@@ -125,7 +144,11 @@ This project uses a **Dual Container Strategy**. The `pipeline` container runs P
 | **Stop Environment** | `docker-compose down` | `docker-compose down` |
 | **Rebuild Image** | `docker-compose up -d --build` | `docker-compose up -d --build` |
 
-> **Note:** `prototype_2016` resolves the best recipe from `output/[CASE]/validation/validation_ranking.csv` written by the historical Phase 1 drifter-validation track. `mindoro_retro_2023` does not run case-local drifter validation; it resolves the transport recipe from `config/phase1_baseline_selection.yaml` by default, or from `BASELINE_SELECTION_PATH` / `BASELINE_RECIPE_OVERRIDE` when explicitly provided. Official deterministic control + ensemble runs write `output/[CASE]/forecast/forecast_manifest.json`, and Phase 3B writes `phase3b_run_manifest.json`; both record whether the baseline came from a frozen historical artifact, an override recipe, or a provisional fallback, together with `valid`, `provisional`, and `rerun_required` status flags. All downloads and preprocessing happen only in the `pipeline` container via `PIPELINE_PHASE=prep`, which writes `data/prepared/[CASE]/prepared_input_manifest.csv`. Later phases only read prepared files and fail fast if they are missing. Phase 2 writes `probability_24h.png`, `probability_48h.png`, `probability_72h.png`, `probability_24h.nc`, `probability_48h.nc`, `probability_72h.nc`, and `ensemble_manifest.json` under `output/[CASE]/ensemble/`.
+> **Note:** `prototype_2016` resolves the best recipe from `output/[CASE]/validation/validation_ranking.csv` written by the historical Phase 1 drifter-validation track. `mindoro_retro_2023` resolves the transport recipe from `config/phase1_baseline_selection.yaml` by default, or from `BASELINE_SELECTION_PATH` / `BASELINE_RECIPE_OVERRIDE` when explicitly provided.
+>
+> Official Mindoro deterministic control and ensemble runs write canonical forecast/ensemble manifests under `output/CASE_MINDORO_RETRO_2023/forecast/` and `output/CASE_MINDORO_RETRO_2023/ensemble/`. Prototype probability outputs such as `probability_24h` / `probability_48h` / `probability_72h` remain prototype artifacts and are not the official Phase 3B dependency.
+>
+> All downloads and preprocessing happen only in the `pipeline` container via `PIPELINE_PHASE=prep`, which writes `data/prepared/[CASE]/prepared_input_manifest.csv`. Later phases only read prepared files and fail fast if they are missing.
 
 ## Usage
 
@@ -193,6 +216,21 @@ docker-compose exec -e WORKFLOW_MODE=mindoro_retro_2023 -e PIPELINE_PHASE=prep p
 
 # Official Mindoro minimal Phase 3B path
 docker-compose exec -e WORKFLOW_MODE=mindoro_retro_2023 -e PIPELINE_PHASE=official_phase3b pipeline python -m src
+
+# Official Mindoro scoring-only strict Phase 3B path, after forecast artifacts exist
+docker-compose exec -e WORKFLOW_MODE=mindoro_retro_2023 -e PIPELINE_PHASE=3b pipeline python -m src
+
+# Official Mindoro multi-date public-observation validation
+docker-compose exec -e WORKFLOW_MODE=mindoro_retro_2023 -e PIPELINE_PHASE=phase3b_multidate_public pipeline python -m src
+
+# Official Mindoro extended public-observation inventory guardrail
+docker-compose exec -e WORKFLOW_MODE=mindoro_retro_2023 -e PIPELINE_PHASE=phase3b_extended_public pipeline python -m src
+
+# Appendix-only short extended public-observation scoring, March 7-9 only
+docker-compose exec -e WORKFLOW_MODE=mindoro_retro_2023 -e PIPELINE_PHASE=phase3b_extended_public_scored -e EXTENDED_PUBLIC_TIER=short pipeline python -m src
+
+# Read-only horizon-survival audit for the completed short extended run
+docker-compose exec -e WORKFLOW_MODE=mindoro_retro_2023 -e PIPELINE_PHASE=horizon_survival_audit pipeline python -m src
 
 # Official Mindoro Phase 1 + 2 only
 docker-compose exec -e WORKFLOW_MODE=mindoro_retro_2023 pipeline python -m src
@@ -325,5 +363,5 @@ For questions or issues, please contact: arjayninosaguisa@gmail.com
 
 ---
 
-**Last Updated**: 2026-02-22
-**Status**: Phase 3 Development
+**Last Updated**: 2026-04-10
+**Status**: Official Mindoro Phase 3B diagnostics active; next priority is transport/retention rerun before medium extended validation

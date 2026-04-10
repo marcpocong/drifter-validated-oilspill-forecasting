@@ -653,6 +653,25 @@ def get_recipe_sensitivity_run_name(
     return str(PurePosixPath(active_run_name) / "recipe_sensitivity" / str(recipe_name))
 
 
+def get_convergence_after_shoreline_output_dir(run_name: str | None = None) -> Path:
+    """Return the top-level shoreline-aware convergence output directory for a case."""
+    return get_case_output_dir(run_name) / "convergence_after_shoreline"
+
+
+def get_convergence_after_shoreline_run_name(
+    element_count: int,
+    run_name: str | None = None,
+) -> str:
+    """Return the nested run name used for a specific shoreline-aware convergence experiment."""
+    case = get_case_context()
+    active_run_name = run_name or case.run_name
+    return str(
+        PurePosixPath(active_run_name)
+        / "convergence_after_shoreline"
+        / f"elements_{int(element_count):06d}"
+    )
+
+
 def get_forecast_output_dir(run_name: str | None = None) -> Path:
     """Return the case-local deterministic forecast directory."""
     return get_case_output_dir(run_name) / "forecast"
