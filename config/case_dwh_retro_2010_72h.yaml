@@ -106,6 +106,20 @@ phase3c_external_case_ensemble_comparison:
     horizontal_diffusivity_m2s_max: 10.0
     note: "Requested negative offsets are recorded and clipped to 0 h when they would start before the frozen DWH forcing stack."
 
+phase3c_dwh_pygnome_comparator:
+  phase: phase3c_dwh_pygnome_comparator
+  deterministic_and_ensemble_reuse_required: true
+  run_in_container: gnome
+  element_count: 5000
+  polygon_surrogate_cluster_count: 100
+  polygon_surrogate_random_seed: 20100520
+  random_mover_diffusivity_m2s: 1.0
+  output_interval_hours: 1
+  oil_type: oil_crude
+  wave_stokes_policy: "Record the limitation explicitly when the PyGNOME branch cannot attach the scientific DWH wave/Stokes product with clean parity."
+  truth_role: comparator_only
+  recommendation_policy: "Choose one final thesis-facing recommendation after combining reused OpenDrift scores with the new PyGNOME comparator scores."
+
 drifter:
   required: false
   mode: external_public_observation_case_no_drifter_baseline

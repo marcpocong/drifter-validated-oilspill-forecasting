@@ -26,6 +26,7 @@ Container routing via the PIPELINE_PHASE environment variable:
   PIPELINE_PHASE=dwh_phase3c_scientific_forcing_ready -> DWH scientific historical forcing readiness check
   PIPELINE_PHASE=phase3c_external_case_run -> DWH Phase 3C scientific external transfer-validation run
   PIPELINE_PHASE=phase3c_external_case_ensemble_comparison -> DWH Phase 3C deterministic-vs-ensemble comparison
+  PIPELINE_PHASE=phase3c_dwh_pygnome_comparator -> DWH Phase 3C cross-model PyGNOME comparator
   PIPELINE_PHASE=3               -> Phase 3 (oil weathering & PyGNOME comparison)
   PIPELINE_PHASE=benchmark       -> Phase 3A cross-model benchmark
 
@@ -1272,6 +1273,51 @@ def run_phase3c_external_case_ensemble_comparison_phase():
     print(f"Final recommendation: {results['recommendation']}")
 
 
+def run_phase3c_dwh_pygnome_comparator_phase():
+    from src.core.case_context import get_case_context
+    from src.services.phase3c_dwh_pygnome_comparator import run_phase3c_dwh_pygnome_comparator
+
+    case = get_case_context()
+    if case.workflow_mode != "dwh_retro_2010":
+        print("phase3c_dwh_pygnome_comparator requires WORKFLOW_MODE=dwh_retro_2010.")
+        sys.exit(1)
+
+    print("Starting Phase 3C DWH PyGNOME comparator...")
+    print_workflow_context()
+
+    results = run_phase3c_dwh_pygnome_comparator()
+    print("\nDWH Phase 3C PyGNOME comparator complete.")
+    print(f"Outputs saved to: {results['output_dir']}")
+    print(f"Deterministic success: {results['deterministic_success']}")
+    print(f"Ensemble comparison reused: {results['ensemble_comparison_reused']}")
+    print(f"PyGNOME comparator success: {results['pygnome_comparator_success']}")
+    print("Headline per-date FSS:")
+    for label, values in results["headline_fss"].items():
+        print(f"  {label}:")
+        for date, metrics in values.items():
+            print(
+                f"    - {date}: "
+                f"1km={metrics.get('fss_1km', float('nan')):.4f}, "
+                f"3km={metrics.get('fss_3km', float('nan')):.4f}, "
+                f"5km={metrics.get('fss_5km', float('nan')):.4f}, "
+                f"10km={metrics.get('fss_10km', float('nan')):.4f}"
+            )
+    print("Headline May 21-23 event-corridor FSS:")
+    for label, metrics in results["eventcorridor_fss"].items():
+        print(
+            f"  - {label}: "
+            f"1km={metrics.get('fss_1km', float('nan')):.4f}, "
+            f"3km={metrics.get('fss_3km', float('nan')):.4f}, "
+            f"5km={metrics.get('fss_5km', float('nan')):.4f}, "
+            f"10km={metrics.get('fss_10km', float('nan')):.4f}"
+        )
+    print(f"Pairing manifest: {results['pairing_manifest_csv']}")
+    print(f"FSS table: {results['fss_by_date_window_csv']}")
+    print(f"Summary: {results['summary_csv']}")
+    print(f"Event-corridor summary: {results['eventcorridor_summary_csv']}")
+    print(f"Final recommendation: {results['recommendation']}")
+
+
 def main():
     import subprocess
 
@@ -1344,6 +1390,8 @@ def main():
         run_phase3c_external_case_run_phase()
     elif phase == "phase3c_external_case_ensemble_comparison":
         run_phase3c_external_case_ensemble_comparison_phase()
+    elif phase == "phase3c_dwh_pygnome_comparator":
+        run_phase3c_dwh_pygnome_comparator_phase()
     elif phase == "3":
         run_phase3()
     elif phase == "3b":
