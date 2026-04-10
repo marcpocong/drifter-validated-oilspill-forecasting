@@ -27,6 +27,7 @@ Container routing via the PIPELINE_PHASE environment variable:
   PIPELINE_PHASE=phase3c_external_case_run -> DWH Phase 3C scientific external transfer-validation run
   PIPELINE_PHASE=phase3c_external_case_ensemble_comparison -> DWH Phase 3C deterministic-vs-ensemble comparison
   PIPELINE_PHASE=phase3c_dwh_pygnome_comparator -> DWH Phase 3C cross-model PyGNOME comparator
+  PIPELINE_PHASE=final_validation_package -> Read-only thesis package built from completed Mindoro + DWH outputs
   PIPELINE_PHASE=3               -> Phase 3 (oil weathering & PyGNOME comparison)
   PIPELINE_PHASE=benchmark       -> Phase 3A cross-model benchmark
 
@@ -1318,12 +1319,71 @@ def run_phase3c_dwh_pygnome_comparator_phase():
     print(f"Final recommendation: {results['recommendation']}")
 
 
+def run_final_validation_package_phase():
+    from src.services.final_validation_package import run_final_validation_package
+
+    print("Starting final validation packaging...")
+    print("This phase is read-only and will not rerun the completed scientific workflows.")
+
+    results = run_final_validation_package()
+    headlines = results["headlines"]
+
+    print("\nFinal validation package complete.")
+    print(f"Outputs saved to: {results['output_dir']}")
+    print("Recommended final chapter structure:")
+    for item in results["recommended_final_chapter_structure"]:
+        print(f"  - {item}")
+    print("Headline Mindoro strict result:")
+    strict = headlines["mindoro_strict"]
+    print(
+        f"  - FSS(1/3/5/10 km) = {strict['fss_1km']:.4f}, {strict['fss_3km']:.4f}, "
+        f"{strict['fss_5km']:.4f}, {strict['fss_10km']:.4f}"
+    )
+    support = headlines["mindoro_broader_support"]
+    print("Headline Mindoro broader-support result:")
+    print(
+        f"  - FSS(1/3/5/10 km) = {support['fss_1km']:.4f}, {support['fss_3km']:.4f}, "
+        f"{support['fss_5km']:.4f}, {support['fss_10km']:.4f}"
+    )
+    dwh_det = headlines["dwh_deterministic_event"]
+    print("Headline DWH deterministic result:")
+    print(
+        f"  - FSS(1/3/5/10 km) = {dwh_det['fss_1km']:.4f}, {dwh_det['fss_3km']:.4f}, "
+        f"{dwh_det['fss_5km']:.4f}, {dwh_det['fss_10km']:.4f}"
+    )
+    dwh_p50 = headlines["dwh_ensemble_p50_event"]
+    dwh_p90 = headlines["dwh_ensemble_p90_event"]
+    print("Headline DWH ensemble result:")
+    print(
+        f"  - p50 event-corridor FSS(1/3/5/10 km) = {dwh_p50['fss_1km']:.4f}, {dwh_p50['fss_3km']:.4f}, "
+        f"{dwh_p50['fss_5km']:.4f}, {dwh_p50['fss_10km']:.4f}"
+    )
+    print(
+        f"  - p90 event-corridor FSS(1/3/5/10 km) = {dwh_p90['fss_1km']:.4f}, {dwh_p90['fss_3km']:.4f}, "
+        f"{dwh_p90['fss_5km']:.4f}, {dwh_p90['fss_10km']:.4f}"
+    )
+    dwh_py = headlines["dwh_pygnome_event"]
+    print("Headline DWH PyGNOME-comparison result:")
+    print(
+        f"  - FSS(1/3/5/10 km) = {dwh_py['fss_1km']:.4f}, {dwh_py['fss_3km']:.4f}, "
+        f"{dwh_py['fss_5km']:.4f}, {dwh_py['fss_10km']:.4f}"
+    )
+    print(f"Final recommendation: {results['final_recommendation']}")
+    print(f"Main table: {results['artifacts']['final_validation_main_table']}")
+    print(f"Summary memo: {results['artifacts']['final_validation_summary']}")
+
+
 def main():
     import subprocess
 
     from src.core.case_context import get_case_context
 
     is_spawned = os.environ.get("RUN_SPAWNED")
+    phase = os.environ.get("PIPELINE_PHASE", "1_2")
+    if phase == "final_validation_package":
+        run_final_validation_package_phase()
+        return
+
     case = get_case_context()
 
     if case.orchestration_dates and not is_spawned:
@@ -1343,7 +1403,6 @@ def main():
                 print(f"Pipeline failed for case {date}. Continuing to next case...")
         return
 
-    phase = os.environ.get("PIPELINE_PHASE", "1_2")
     if phase == "prep":
         run_prep()
     elif phase == "official_phase3b":
@@ -1392,6 +1451,8 @@ def main():
         run_phase3c_external_case_ensemble_comparison_phase()
     elif phase == "phase3c_dwh_pygnome_comparator":
         run_phase3c_dwh_pygnome_comparator_phase()
+    elif phase == "final_validation_package":
+        run_final_validation_package_phase()
     elif phase == "3":
         run_phase3()
     elif phase == "3b":
