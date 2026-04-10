@@ -1,0 +1,235 @@
+workflow_mode: dwh_retro_2010
+case_id: CASE_DWH_RETRO_2010_72H
+spill_name: "Deepwater Horizon retrospective 72h public-validation case"
+description: "External rich-data transfer-validation scaffold using public Deepwater Horizon daily composite oil-spill layers"
+mode_label: "External Deepwater Horizon retrospective setup workflow"
+region: [-92.0, -84.0, 26.5, 31.0]
+
+published_time_zone: "date-composite labels only; exact sub-daily acquisition timezone is not defensible from the public FeatureServer"
+initialization_mode: observation_initialized_date_composite_polygon
+initialization_polygon_layer_id: 5
+validation_polygon_layer_ids: [6, 7, 8]
+accepted_validation_dates:
+  - "2010-05-21"
+  - "2010-05-22"
+  - "2010-05-23"
+source_point_layer_id: 0
+source_point_role: provenance_only
+source_point_layer_usage: provenance_only
+validation_target: daily_date_composite_polygons
+
+release_mode: observation_initialized_polygon
+release_reference: T20100520_Composite
+release_start_utc: "2010-05-20T00:00:00Z"
+release_end_utc: "2010-05-20T00:00:00Z"
+simulation_start_utc: "2010-05-20T00:00:00Z"
+simulation_end_utc: "2010-05-23T23:59:59Z"
+forcing_start_utc: "2010-05-20T00:00:00Z"
+forcing_end_utc: "2010-05-23T23:59:59Z"
+time_placeholder_semantics: "UTC day-boundary placeholders are used only for future forcing-window scaffolding; they are not asserted as exact observation acquisition times."
+raw_output_interval_hours: 1
+official_product_dates:
+  initialization_composite: "2010-05-20"
+  validation_composites:
+    - "2010-05-21"
+    - "2010-05-22"
+    - "2010-05-23"
+  cumulative_context_layer: "not used as truth"
+shoreline_dataset_id: GSHHG_2.3.7_intermediate_level1
+forcing_bbox_halo_degrees: 0.5
+
+forecast:
+  transport_model: oceandrift
+  provisional_transport_model: true
+  element_count: 5000
+  polygon_seed_random_seed: 20100520
+  status: "not run in Phase 3C setup"
+
+smoke_forecast:
+  non_scientific_smoke: true
+  run_id: dwh_phase3c_non_scientific_smoke_24h
+  initialization_layer_id: 5
+  provenance_source_point_layer_id: 0
+  validation_mask_date: "2010-05-21"
+  simulation_start_utc: "2010-05-20T00:00:00Z"
+  simulation_end_utc: "2010-05-21T00:00:00Z"
+  duration_hours: 24
+  element_count: 250
+  output_interval_hours: 1
+  tiny_ensemble:
+    enabled: true
+    member_count: 3
+  forcing_downloads_enabled_by_default: false
+  smoke_forcing_policy: "Use explicit non-zero analytic smoke-only forcing only when scientific adapters are not ready; never silently substitute zero fields."
+
+scientific_forcing:
+  phase: dwh_phase3c_scientific_forcing_ready
+  non_scientific_smoke: false
+  source_is_smoke_only: false
+  required_window_start_utc: "2010-05-20T00:00:00Z"
+  required_window_end_utc: "2010-05-23T23:59:59Z"
+  request_end_utc: "2010-05-24T00:00:00Z"
+  subset_domain_rule: "derive from DWH scoring grid display_bounds_wgs84 plus forcing_bbox_halo_degrees"
+  currents_primary_dataset_id: "GOFS 3.1 reanalysis GLBv0.08 expt_53.X"
+  currents_primary_access_url: "https://tds.hycom.org/thredds/dodsC/GLBv0.08/expt_53.X"
+  winds_primary_dataset_id: reanalysis-era5-single-levels
+  waves_primary_dataset_id: cmems_mod_glo_wav_my_0.2deg_PT3H-i
+  currents_fallback_dataset_id: cmems_mod_glo_phy_my_0.083deg_P1D-m
+  reader_check_policy: "Run only after one complete real historical current+wind+wave stack validates as scientific-ready; this is not the final Phase 3C score table."
+
+phase3c_external_case_run:
+  phase: phase3c_external_case_run
+  phase_name: "Phase 3C - External Rich-Data Spill Transfer Validation"
+  truth_source: public_dwh_observation_derived_daily_masks
+  date_composite_logic_used: true
+  deterministic_control:
+    enabled: true
+    transport_model: opendrift_oceandrift
+    forcing_source: dwh_phase3c_scientific_forcing_ready
+  ensemble:
+    requested_member_count: 50
+    default_status: deferred_until_clean_dwh_ensemble_semantics_are_implemented
+  pygnome_comparator:
+    truth_role: comparator_only
+    default_status: deferred_if_not_cleanly_available
+
+phase3c_external_case_ensemble_comparison:
+  phase: phase3c_external_case_ensemble_comparison
+  deterministic_reuse_required: true
+  ensemble:
+    ensemble_size: 50
+    element_count_per_member: 5000
+    wind_factor_min: 0.8
+    wind_factor_max: 1.2
+    start_time_offset_hours: [-3, -2, -1, 0, 1, 2, 3]
+    horizontal_diffusivity_m2s_min: 1.0
+    horizontal_diffusivity_m2s_max: 10.0
+    note: "Requested negative offsets are recorded and clipped to 0 h when they would start before the frozen DWH forcing stack."
+
+drifter:
+  required: false
+  mode: external_public_observation_case_no_drifter_baseline
+
+arcgis:
+  feature_server_url: "https://services1.arcgis.com/qr14biwnHA6Vis6l/ArcGIS/rest/services/Deepwaterhorizon_Oilspill_WM/FeatureServer"
+  erma_archive_backup_url: "https://www.ncei.noaa.gov/archive/accession/ORR-DWH-ERMA-GIS"
+  layers:
+    initialization_polygon:
+      layer_id: 5
+      name: T20100520_Composite
+      local_name: dwh_t20100520_composite
+      geometry_type: polygon
+      role: initialization_polygon
+      event_date: "2010-05-20"
+      event_time_utc: "2010-05-20T00:00:00Z"
+      time_semantics: "date-composite only; UTC time is a placeholder for compatibility"
+    validation_polygon:
+      layer_id: 6
+      name: T20100521_Composite
+      local_name: dwh_t20100521_composite
+      geometry_type: polygon
+      role: validation_polygon
+      event_date: "2010-05-21"
+      event_time_utc: "2010-05-21T00:00:00Z"
+      time_semantics: "date-composite only; UTC time is a placeholder for compatibility"
+    provenance_source_point:
+      layer_id: 0
+      name: DWH Wellhead
+      local_name: dwh_wellhead
+      geometry_type: point
+      role: provenance_only
+      event_date: "2010-05-20"
+      event_time_utc: "2010-05-20T00:00:00Z"
+      time_semantics: "provenance point, not an observation mask"
+  external_case_layers:
+    source_point:
+      layer_id: 0
+      name: DWH Wellhead
+      local_name: dwh_wellhead
+      geometry_type: point
+      role: source_point_provenance
+      event_date: "2010-05-20"
+      source_taxonomy: qualitative_context_only
+      selected_for_phase3c: true
+      use_in_scoring_grid_extent: true
+      use_as_truth: false
+    cumulative_context:
+      layer_id: 1
+      name: Cumulative DWH Oil Spill Composite
+      local_name: dwh_cumulative_context
+      geometry_type: polygon
+      role: cumulative_context_only
+      source_taxonomy: qualitative_context_only
+      selected_for_phase3c: false
+      use_in_scoring_grid_extent: false
+      use_as_truth: false
+    initialization_polygon:
+      layer_id: 5
+      name: T20100520_Composite
+      local_name: dwh_t20100520_composite
+      geometry_type: polygon
+      role: initialization_polygon
+      event_date: "2010-05-20"
+      source_taxonomy: observation_derived_quantitative
+      selected_for_phase3c: true
+      use_in_scoring_grid_extent: true
+      use_as_truth: false
+    validation_2010_05_21:
+      layer_id: 6
+      name: T20100521_Composite
+      local_name: dwh_t20100521_composite
+      geometry_type: polygon
+      role: validation_polygon
+      event_date: "2010-05-21"
+      source_taxonomy: observation_derived_quantitative
+      selected_for_phase3c: true
+      use_in_scoring_grid_extent: true
+      use_as_truth: true
+    validation_2010_05_22:
+      layer_id: 7
+      name: T20100522_Composite
+      local_name: dwh_t20100522_composite
+      geometry_type: polygon
+      role: validation_polygon
+      event_date: "2010-05-22"
+      source_taxonomy: observation_derived_quantitative
+      selected_for_phase3c: true
+      use_in_scoring_grid_extent: true
+      use_as_truth: true
+    validation_2010_05_23:
+      layer_id: 8
+      name: T20100523_Composite
+      local_name: dwh_t20100523_composite
+      geometry_type: polygon
+      role: validation_polygon
+      event_date: "2010-05-23"
+      source_taxonomy: observation_derived_quantitative
+      selected_for_phase3c: true
+      use_in_scoring_grid_extent: true
+      use_as_truth: true
+
+forcing_services:
+  currents_primary:
+    service_name: HYCOM GOFS 3.1 reanalysis
+    service_url: "https://www.hycom.org/dataserver/gofs-3pt1/reanalysis"
+    access_url: "https://www.hycom.org/dataserver/access-methods/thredds"
+    access_method: THREDDS/OPeNDAP
+  winds_primary:
+    service_name: ERA5 hourly single levels
+    service_url: "https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels"
+    access_method: CDS API / file download
+  currents_fallback:
+    service_name: Copernicus Marine Global Ocean Physics Reanalysis
+    service_url: "https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_PHY_001_030/description"
+    access_method: Copernicus Marine API / file download
+  waves_primary:
+    service_name: Copernicus Marine Global Ocean Waves Reanalysis
+    service_url: "https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_WAV_001_032/description"
+    access_method: Copernicus Marine API / file download
+
+notes:
+  - "Mindoro remains the main Philippine case; this case is a separate external rich-data transfer-validation scaffold."
+  - "The public DWH FeatureServer daily composite names encode dates but do not provide defensible exact sub-daily observation acquisition times for this workflow."
+  - "Phase 3C therefore uses date-composite logic and daily validation masks, not invented exact observation times."
+  - "Layer 1 cumulative composite is context-only and is not used as quantitative truth."
+  - "Modeled trajectory or forecast products are excluded from truth; PyGNOME remains a comparator only."

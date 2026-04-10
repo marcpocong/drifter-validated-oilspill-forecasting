@@ -21,6 +21,11 @@ Container routing via the PIPELINE_PHASE environment variable:
   PIPELINE_PHASE=ensemble_threshold_sensitivity -> Calibrate ensemble footprint thresholds without rerunning
   PIPELINE_PHASE=recipe_sensitivity_r1_multibranch -> Test R1 OpenDrift recipe/branch matrix vs PyGNOME
   PIPELINE_PHASE=public_obs_appendix -> Official appendix-only public observation expansion
+  PIPELINE_PHASE=phase3c_external_case_setup -> External rich-data spill setup and observation ingestion
+  PIPELINE_PHASE=dwh_phase3c_forcing_adapter_and_non_scientific_smoke_forecast -> DWH forcing adapter status + non-scientific smoke forecast
+  PIPELINE_PHASE=dwh_phase3c_scientific_forcing_ready -> DWH scientific historical forcing readiness check
+  PIPELINE_PHASE=phase3c_external_case_run -> DWH Phase 3C scientific external transfer-validation run
+  PIPELINE_PHASE=phase3c_external_case_ensemble_comparison -> DWH Phase 3C deterministic-vs-ensemble comparison
   PIPELINE_PHASE=3               -> Phase 3 (oil weathering & PyGNOME comparison)
   PIPELINE_PHASE=benchmark       -> Phase 3A cross-model benchmark
 
@@ -1064,6 +1069,209 @@ def run_recipe_sensitivity_r1_multibranch_phase():
     print(f"Report: {results['report_md']}")
 
 
+def run_phase3c_external_case_setup_phase():
+    from src.core.case_context import get_case_context
+    from src.services.phase3c_external_case_setup import run_phase3c_external_case_setup
+
+    case = get_case_context()
+    if case.workflow_mode != "dwh_retro_2010":
+        print("phase3c_external_case_setup requires WORKFLOW_MODE=dwh_retro_2010.")
+        sys.exit(1)
+
+    print("Starting Phase 3C external rich-data spill setup...")
+    print_workflow_context()
+
+    results = run_phase3c_external_case_setup()
+
+    print("\nPhase 3C external setup complete.")
+    print(f"Outputs saved to: {results['output_dir']}")
+    print(f"Proposed phase name: {results['phase_name']}")
+    print(f"Proposed placement: {results['phase_placement']}")
+    print(f"Projected scoring CRS: {results['projected_scoring_crs']}")
+    print("\nSelected DWH daily layers:")
+    for layer in [item for item in results["selected_dwh_layers"] if item["layer_id"] in (5, 6, 7, 8)]:
+        print(
+            f"  - layer {layer['layer_id']}: {layer['layer_name']} "
+            f"({layer['event_date'] or 'no date'}, {layer['role']}) - {layer['why_selected']}"
+        )
+    source_layers = [item for item in results["selected_dwh_layers"] if item["layer_id"] == 0]
+    for layer in source_layers:
+        print(f"  - source provenance layer {layer['layer_id']}: {layer['layer_name']} - {layer['why_selected']}")
+    print("\nSelected forcing services:")
+    for service in results["selected_forcing_services"]:
+        print(
+            f"  - {service['forcing_component']}: {service['chosen_service']} "
+            f"[{service['access_method']}; compatible={service['already_compatible_with_current_repo_readers']}]"
+        )
+    print(f"\nRecommended next implementation branch: {results['recommended_next_implementation_branch']}")
+    print(f"Service inventory: {results['service_inventory_csv']}")
+    print(f"Forcing manifest: {results['forcing_manifest_csv']}")
+    print(f"Source taxonomy: {results['taxonomy_csv']}")
+    print(f"Processing report: {results['processing_report_csv']}")
+    print(f"Grid manifest: {results['grid_manifest_csv']}")
+    print(f"Methodology memo: {results['methodology_memo']}")
+
+
+def run_dwh_phase3c_smoke_phase():
+    from src.core.case_context import get_case_context
+    from src.services.dwh_phase3c_smoke import run_dwh_phase3c_smoke
+
+    case = get_case_context()
+    if case.workflow_mode != "dwh_retro_2010":
+        print(f"dwh_phase3c_forcing_adapter_and_non_scientific_smoke_forecast requires WORKFLOW_MODE=dwh_retro_2010.")
+        sys.exit(1)
+
+    print("Starting DWH Phase 3C forcing-adapter status and non-scientific smoke forecast...")
+    print_workflow_context()
+
+    results = run_dwh_phase3c_smoke()
+    sources = results["selected_sources"]
+
+    print("\nDWH non-scientific smoke phase complete.")
+    print(f"Outputs saved to: {results['output_dir']}")
+    print("Selected current/wind/wave sources:")
+    print(f"  - current: {sources['current_source']} [{sources['current_status']}]")
+    print(f"  - wind: {sources['wind_source']} [{sources['wind_status']}]")
+    print(f"  - wave/Stokes: {sources['wave_source']} [{sources['wave_status']}]")
+    print(
+        "Actual smoke forcing coverage: "
+        f"{results['actual_forcing_coverage_start_utc']} to {results['actual_forcing_coverage_end_utc']}"
+    )
+    print(f"Waves attached: {results['waves_attached']}")
+    print(f"Smoke forecast ran: {results['smoke_forecast_ran']}")
+    print(f"Smoke score vs May 21 produced: {results['smoke_score_produced']}")
+    print(f"Next step recommendation: {results['recommendation']}")
+    print(f"Forcing adapter status: {results['adapter_status_csv']}")
+    print(f"Prepared forcing manifest: {results['prepared_forcing_manifest_csv']}")
+    print(f"Smoke loading audit: {results['loading_audit_csv']}")
+    print(f"Smoke summary: {results['summary_csv']}")
+    print(f"Smoke forecast manifest: {results['forecast_manifest']}")
+
+
+def run_dwh_phase3c_scientific_forcing_ready_phase():
+    from src.core.case_context import get_case_context
+    from src.services.dwh_phase3c_scientific_forcing import run_dwh_phase3c_scientific_forcing_ready
+
+    case = get_case_context()
+    if case.workflow_mode != "dwh_retro_2010":
+        print("dwh_phase3c_scientific_forcing_ready requires WORKFLOW_MODE=dwh_retro_2010.")
+        sys.exit(1)
+
+    print("Starting DWH Phase 3C scientific forcing readiness...")
+    print_workflow_context()
+
+    results = run_dwh_phase3c_scientific_forcing_ready()
+    sources = results["selected_sources"]
+
+    print("\nDWH scientific forcing readiness complete.")
+    print(f"Outputs saved to: {results['output_dir']}")
+    print("Selected current/wind/wave sources:")
+    for role in ("current", "wind", "wave"):
+        source = sources.get(role) or {}
+        print(
+            f"  - {role}: {source.get('dataset_product_id', 'none')} "
+            f"[scientific_ready={source.get('scientific_ready', False)}; "
+            f"coverage={source.get('actual_start_time_coverage_utc', '')} to "
+            f"{source.get('actual_end_time_coverage_utc', '')}]"
+        )
+    print(f"Waves attached: {results['waves_attached']}")
+    print(f"Reader-check run succeeded: {results['reader_check_run_succeeded']}")
+    print(f"Next step recommendation: {results['recommendation']}")
+    print(f"Scientific forcing status: {results['status_csv']}")
+    print(f"Scientific prepared forcing manifest: {results['prepared_forcing_manifest_csv']}")
+    print(f"Scientific loading audit: {results['loading_audit_csv']}")
+    print(f"Scientific reader-check report: {results['reader_check_report']}")
+
+
+def run_phase3c_external_case_run_phase():
+    from src.core.case_context import get_case_context
+    from src.services.phase3c_external_case_run import run_phase3c_external_case_run
+
+    case = get_case_context()
+    if case.workflow_mode != "dwh_retro_2010":
+        print("phase3c_external_case_run requires WORKFLOW_MODE=dwh_retro_2010.")
+        sys.exit(1)
+
+    print("Starting Phase 3C external rich-data spill transfer-validation run...")
+    print_workflow_context()
+
+    results = run_phase3c_external_case_run()
+
+    print("\nDWH Phase 3C external case run complete.")
+    print(f"Outputs saved to: {results['output_dir']}")
+    print(f"Deterministic OpenDrift success: {results['deterministic_success']}")
+    print(f"Ensemble success: {results['ensemble_success']}")
+    print(f"PyGNOME comparator success: {results['pygnome_comparator_success']}")
+    print("Headline per-date FSS:")
+    for date, values in results["headline_fss"].items():
+        print(
+            f"  - {date}: "
+            f"1km={values.get('fss_1km', float('nan')):.4f}, "
+            f"3km={values.get('fss_3km', float('nan')):.4f}, "
+            f"5km={values.get('fss_5km', float('nan')):.4f}, "
+            f"10km={values.get('fss_10km', float('nan')):.4f}"
+        )
+    event = results["eventcorridor_fss"]
+    print(
+        "Headline May 21-23 event-corridor FSS: "
+        f"1km={event.get('fss_1km', float('nan')):.4f}, "
+        f"3km={event.get('fss_3km', float('nan')):.4f}, "
+        f"5km={event.get('fss_5km', float('nan')):.4f}, "
+        f"10km={event.get('fss_10km', float('nan')):.4f}"
+    )
+    print(f"Pairing manifest: {results['pairing_manifest_csv']}")
+    print(f"FSS table: {results['fss_by_date_window_csv']}")
+    print(f"Summary: {results['summary_csv']}")
+    print(f"Event-corridor summary: {results['eventcorridor_summary_csv']}")
+    print(f"Final recommendation: {results['recommendation']}")
+
+
+def run_phase3c_external_case_ensemble_comparison_phase():
+    from src.core.case_context import get_case_context
+    from src.services.phase3c_external_case_ensemble_comparison import (
+        run_phase3c_external_case_ensemble_comparison,
+    )
+
+    case = get_case_context()
+    if case.workflow_mode != "dwh_retro_2010":
+        print("phase3c_external_case_ensemble_comparison requires WORKFLOW_MODE=dwh_retro_2010.")
+        sys.exit(1)
+
+    print("Starting Phase 3C external deterministic-vs-ensemble comparison...")
+    print_workflow_context()
+
+    results = run_phase3c_external_case_ensemble_comparison()
+    print("\nDWH Phase 3C ensemble comparison complete.")
+    print(f"Outputs saved to: {results['output_dir']}")
+    print(f"Deterministic success: {results['deterministic_success']}")
+    print(f"Ensemble success: {results['ensemble_success']}")
+    print("Headline per-date FSS:")
+    for label, values in results["headline_fss"].items():
+        print(f"  {label}:")
+        for date, metrics in values.items():
+            print(
+                f"    - {date}: "
+                f"1km={metrics.get('fss_1km', float('nan')):.4f}, "
+                f"3km={metrics.get('fss_3km', float('nan')):.4f}, "
+                f"5km={metrics.get('fss_5km', float('nan')):.4f}, "
+                f"10km={metrics.get('fss_10km', float('nan')):.4f}"
+            )
+    print("Headline event-corridor FSS:")
+    for label, metrics in results["eventcorridor_fss"].items():
+        print(
+            f"  - {label}: "
+            f"1km={metrics.get('fss_1km', float('nan')):.4f}, "
+            f"3km={metrics.get('fss_3km', float('nan')):.4f}, "
+            f"5km={metrics.get('fss_5km', float('nan')):.4f}, "
+            f"10km={metrics.get('fss_10km', float('nan')):.4f}"
+        )
+    print(f"Pairing manifest: {results['pairing_manifest_csv']}")
+    print(f"FSS table: {results['fss_by_date_window_csv']}")
+    print(f"Summary: {results['summary_csv']}")
+    print(f"Event-corridor summary: {results['eventcorridor_summary_csv']}")
+    print(f"Final recommendation: {results['recommendation']}")
+
+
 def main():
     import subprocess
 
@@ -1126,6 +1334,16 @@ def main():
         run_recipe_sensitivity_r1_multibranch_phase()
     elif phase == "public_obs_appendix":
         run_public_obs_appendix_phase()
+    elif phase == "phase3c_external_case_setup":
+        run_phase3c_external_case_setup_phase()
+    elif phase == "dwh_phase3c_forcing_adapter_and_non_scientific_smoke_forecast":
+        run_dwh_phase3c_smoke_phase()
+    elif phase == "dwh_phase3c_scientific_forcing_ready":
+        run_dwh_phase3c_scientific_forcing_ready_phase()
+    elif phase == "phase3c_external_case_run":
+        run_phase3c_external_case_run_phase()
+    elif phase == "phase3c_external_case_ensemble_comparison":
+        run_phase3c_external_case_ensemble_comparison_phase()
     elif phase == "3":
         run_phase3()
     elif phase == "3b":

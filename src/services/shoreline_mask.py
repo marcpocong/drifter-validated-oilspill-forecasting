@@ -288,6 +288,11 @@ def build_shoreline_mask_artifacts(
     force_refresh: bool = False,
     artifact_dir: str | Path | None = None,
     land_source_gdf: gpd.GeoDataFrame | None = None,
+    land_source_name: str = "test_land_source",
+    land_source_version: str = "test",
+    land_source_url: str = "",
+    land_source_path: str | Path | None = None,
+    land_raw_archive_path: str | Path | None = None,
 ) -> dict:
     paths = get_shoreline_artifact_paths(artifact_dir)
     if not force_refresh and shoreline_mask_is_real(paths["base_dir"]):
@@ -303,10 +308,10 @@ def build_shoreline_mask_artifacts(
         raw_archive = raw_archive_path
     else:
         source_gdf = land_source_gdf
-        source_name = "test_land_source"
-        source_version = "test"
-        source_url = ""
-        raw_archive = None
+        source_name = land_source_name
+        source_version = land_source_version
+        source_url = land_source_url
+        raw_archive = Path(land_raw_archive_path) if land_raw_archive_path else None
 
     clipped_wgs84, projected_land = _prepare_land_polygons(spec, source_gdf)
     land_mask, sea_mask = _rasterize_land_mask(projected_land, spec)
@@ -353,7 +358,9 @@ def build_shoreline_mask_artifacts(
         "source_url": source_url,
         "raw_archive_path": str(raw_archive) if raw_archive else "",
         "raw_archive_sha256": _sha256_path(raw_archive) if raw_archive and raw_archive.exists() else "",
-        "source_shapefile_path": str(paths["source_shapefile"]) if land_source_gdf is None else "",
+        "source_shapefile_path": (
+            str(paths["source_shapefile"]) if land_source_gdf is None else str(land_source_path or "")
+        ),
         "clipping_domain_used_wgs84": [float(v) for v in clip_bounds],
         "clipping_domain_used_projected": [float(spec.min_x), float(spec.max_x), float(spec.min_y), float(spec.max_y)],
         "reprojection_crs": spec.crs,

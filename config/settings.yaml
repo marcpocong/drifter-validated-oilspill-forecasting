@@ -7,11 +7,13 @@ region: [115.0, 122.0, 6.0, 14.5]
 # Workflow mode:
 # - prototype_2016       keeps the original multi-date debugging workflow
 # - mindoro_retro_2023   runs the fixed official thesis-aligned case
+# - dwh_retro_2010       runs the external Deepwater Horizon setup/scaffold workflow
 workflow_mode: prototype_2016
 
 # Official workflow case file mappings
 workflow_case_files:
   mindoro_retro_2023: config/case_mindoro_retro_2023.yaml
+  dwh_retro_2010: config/case_dwh_retro_2010_72h.yaml
 
 # Frozen Phase 1 baseline selection artifact for official spill-case workflows.
 phase1_baseline_selection_path: config/phase1_baseline_selection.yaml

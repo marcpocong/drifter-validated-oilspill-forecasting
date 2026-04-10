@@ -314,7 +314,8 @@ def _load_prototype_context(settings: dict) -> CaseContext:
 def get_case_context() -> CaseContext:
     settings = load_settings()
     workflow_mode = os.environ.get("WORKFLOW_MODE", settings.get("workflow_mode", "prototype_2016"))
-    if workflow_mode == "mindoro_retro_2023":
+    case_files = settings.get("workflow_case_files") or {}
+    if workflow_mode in case_files:
         return _load_official_context(settings, workflow_mode)
     if workflow_mode == "prototype_2016":
         return _load_prototype_context(settings)
