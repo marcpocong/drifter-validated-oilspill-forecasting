@@ -1,0 +1,227 @@
+{
+  "phase": "phase5_launcher_and_docs_sync",
+  "generated_at_utc": "2026-04-11T00:37:25.665691+00:00",
+  "repo_root": "/app",
+  "output_dir": "output/final_reproducibility_package",
+  "launcher_catalog": {
+    "path": "config/launcher_matrix.json",
+    "entrypoint": "start.ps1",
+    "catalog_version": "phase5_launcher_matrix_v1",
+    "safe_read_only_entry_ids": [
+      "phase1_audit",
+      "phase2_audit",
+      "final_validation_package",
+      "phase5_sync"
+    ]
+  },
+  "final_validation_package_sync": {
+    "reused_existing_package": true,
+    "package_manifest_path": "output/final_validation_package/final_validation_manifest.json",
+    "package_case_registry_path": "output/final_validation_package/final_validation_case_registry.csv",
+    "scientific_scores_recomputed": false
+  },
+  "docs_updated": [
+    "README.md",
+    "docs/PHASE_STATUS.md",
+    "docs/ARCHITECTURE.md",
+    "docs/OUTPUT_CATALOG.md",
+    "docs/QUICKSTART.md",
+    "docs/COMMAND_MATRIX.md",
+    "docs/LAUNCHER_USER_GUIDE.md"
+  ],
+  "artifacts": {
+    "software_versions": "output/final_reproducibility_package/software_versions.csv",
+    "final_case_registry": "output/final_reproducibility_package/final_case_registry.csv",
+    "final_config_snapshot_index": "output/final_reproducibility_package/final_config_snapshot_index.csv",
+    "final_manifest_index": "output/final_reproducibility_package/final_manifest_index.csv",
+    "final_output_catalog": "output/final_reproducibility_package/final_output_catalog.csv",
+    "final_log_index": "output/final_reproducibility_package/final_log_index.csv",
+    "final_phase_status_registry": "output/final_reproducibility_package/final_phase_status_registry.csv",
+    "final_reproducibility_summary": "output/final_reproducibility_package/final_reproducibility_summary.md",
+    "final_reproducibility_manifest": "output/final_reproducibility_package/final_reproducibility_manifest.json",
+    "phase5_packaging_sync_memo": "output/final_reproducibility_package/phase5_packaging_sync_memo.md",
+    "phase5_final_verdict": "output/final_reproducibility_package/phase5_final_verdict.md",
+    "launcher_user_guide": "output/final_reproducibility_package/launcher_user_guide.md"
+  },
+  "phase_status_rows": [
+    {
+      "phase_id": "phase1",
+      "track_id": "phase1_regional_baseline",
+      "track_label": "Phase 1 regional transport baseline selection",
+      "readiness_status": "architecture_audited_production_rerun_needed",
+      "scientifically_reportable": false,
+      "scientifically_frozen": false,
+      "inherited_provisional": false,
+      "main_blocker": "The repo still lacks the accepted/rejected drogued 72 h segment registry generated from a true 2016-2022 regional drifter pool, so the frozen baseline cannot yet be defended as the final Chapter 3 Phase 1 study.",
+      "reportable_now": false,
+      "reportability_scope": "not_yet_scientifically_reportable",
+      "summary": "Architecture audited; the final 2016-2022 production rerun is still needed.",
+      "evidence_path": "output/phase1_finalization_audit/phase1_finalization_status.json"
+    },
+    {
+      "phase_id": "phase2",
+      "track_id": "phase2_machine_readable_forecast",
+      "track_label": "Phase 2 machine-readable forecast products",
+      "readiness_status": "scientifically_usable_not_frozen",
+      "scientifically_reportable": true,
+      "scientifically_frozen": false,
+      "inherited_provisional": true,
+      "main_blocker": "Phase 2 still depends on a later Phase 1 production rerun for the final frozen-baseline story, and the official recipe family remains only partially available locally because legacy *_ncep runtime IDs remain in config space while gfs_wind.nc is still absent.",
+      "reportable_now": true,
+      "reportability_scope": "scientifically_usable_official_forecast_products",
+      "summary": "Scientifically usable as implemented, but not yet frozen.",
+      "evidence_path": "output/phase2_finalization_audit/phase2_finalization_status.json"
+    },
+    {
+      "phase_id": "phase3a",
+      "track_id": "A",
+      "track_label": "Mindoro Phase 3A benchmark comparator",
+      "readiness_status": "scientifically_informative_comparator",
+      "scientifically_reportable": true,
+      "scientifically_frozen": false,
+      "inherited_provisional": true,
+      "main_blocker": "Comparator-only track; upstream Mindoro transport baseline is still not frozen.",
+      "reportable_now": true,
+      "reportability_scope": "comparative_benchmark_discussion",
+      "summary": "Mindoro Phase 3A remains scientifically informative as a comparator benchmark. ",
+      "evidence_path": "output/final_validation_package/final_validation_manifest.json"
+    },
+    {
+      "phase_id": "phase3b",
+      "track_id": "B1",
+      "track_label": "Mindoro strict March 6 stress test",
+      "readiness_status": "scientifically_informative_sparse_stress_test",
+      "scientifically_reportable": true,
+      "scientifically_frozen": false,
+      "inherited_provisional": true,
+      "main_blocker": "The frozen recipe still comes from three legacy prototype dates, not from a completed 2016-2022 regional drifter-segment study.",
+      "reportable_now": true,
+      "reportability_scope": "main_text_sparse_stress_test",
+      "summary": "Mindoro strict March 6 is a hard sparse stress test and should not be treated as broad-support validation. fss_1km=0.0000, fss_3km=0.0000, fss_5km=0.0000, fss_10km=0.0000",
+      "evidence_path": "output/final_validation_package/final_validation_manifest.json"
+    },
+    {
+      "phase_id": "phase3b",
+      "track_id": "B2",
+      "track_label": "Mindoro broader public-support track",
+      "readiness_status": "scientifically_reportable_support_track",
+      "scientifically_reportable": true,
+      "scientifically_frozen": false,
+      "inherited_provisional": true,
+      "main_blocker": "The frozen recipe still comes from three legacy prototype dates, not from a completed 2016-2022 regional drifter-segment study.",
+      "reportable_now": true,
+      "reportability_scope": "supporting_public_observation_context",
+      "summary": "Mindoro broader public-support remains scientifically informative support material, not a replacement for B1. fss_1km=0.1722, fss_3km=0.2004, fss_5km=0.2166, fss_10km=0.2438",
+      "evidence_path": "output/final_validation_package/final_validation_manifest.json"
+    },
+    {
+      "phase_id": "phase3c",
+      "track_id": "C1",
+      "track_label": "DWH deterministic external transfer validation",
+      "readiness_status": "scientifically_reportable_transfer_validation",
+      "scientifically_reportable": true,
+      "scientifically_frozen": false,
+      "inherited_provisional": true,
+      "main_blocker": "The frozen recipe still comes from three legacy prototype dates, not from a completed 2016-2022 regional drifter-segment study.",
+      "reportable_now": true,
+      "reportability_scope": "external_rich_data_transfer_validation",
+      "summary": "DWH deterministic transfer validation is a reportable external-case success. fss_1km=0.5033, fss_3km=0.5523, fss_5km=0.5700, fss_10km=0.6018",
+      "evidence_path": "output/final_validation_package/final_validation_manifest.json"
+    },
+    {
+      "phase_id": "phase3c",
+      "track_id": "C2",
+      "track_label": "DWH ensemble external transfer validation",
+      "readiness_status": "scientifically_reportable_transfer_validation",
+      "scientifically_reportable": true,
+      "scientifically_frozen": false,
+      "inherited_provisional": true,
+      "main_blocker": "The frozen recipe still comes from three legacy prototype dates, not from a completed 2016-2022 regional drifter-segment study.",
+      "reportable_now": true,
+      "reportability_scope": "external_rich_data_transfer_validation",
+      "summary": "DWH ensemble p50 is reportable and leads the overall mean FSS comparison under the current case definition. fss_1km=0.4997, fss_3km=0.5299, fss_5km=0.5467, fss_10km=0.5790",
+      "evidence_path": "output/final_validation_package/final_validation_manifest.json"
+    },
+    {
+      "phase_id": "phase3c",
+      "track_id": "C3",
+      "track_label": "DWH PyGNOME comparator",
+      "readiness_status": "scientifically_reportable_comparator",
+      "scientifically_reportable": true,
+      "scientifically_frozen": false,
+      "inherited_provisional": true,
+      "main_blocker": "Comparator-only track; PyGNOME is not truth and remains below OpenDrift on the current DWH case.",
+      "reportable_now": true,
+      "reportability_scope": "cross_model_comparator",
+      "summary": "DWH PyGNOME remains reportable as a comparator, not as truth. fss_1km=0.3197, fss_3km=0.3495, fss_5km=0.3689, fss_10km=0.4068",
+      "evidence_path": "output/final_validation_package/final_validation_manifest.json"
+    },
+    {
+      "phase_id": "phase4",
+      "track_id": "mindoro_phase4",
+      "track_label": "Mindoro Phase 4 oil-type and shoreline workflow",
+      "readiness_status": "scientifically_reportable_inherited_provisional",
+      "scientifically_reportable": true,
+      "scientifically_frozen": false,
+      "inherited_provisional": true,
+      "main_blocker": "The frozen recipe still comes from three legacy prototype dates, not from a completed 2016-2022 regional drifter-segment study.",
+      "reportable_now": true,
+      "reportability_scope": "mindoro_oil_type_and_shoreline_interpretation",
+      "summary": "Mindoro Phase 4 is scientifically reportable now, but inherited-provisional from upstream Phase 1/2 state.",
+      "evidence_path": "output/phase4/CASE_MINDORO_RETRO_2023/phase4_run_manifest.json"
+    },
+    {
+      "phase_id": "phase5",
+      "track_id": "phase5_sync",
+      "track_label": "Phase 5 reproducibility / launcher / docs sync",
+      "readiness_status": "implemented_reportable_non_scientific_sync_layer",
+      "scientifically_reportable": false,
+      "scientifically_frozen": false,
+      "inherited_provisional": false,
+      "main_blocker": "",
+      "reportable_now": true,
+      "reportability_scope": "non_scientific_reproducibility_and_documentation_layer",
+      "summary": "Launcher, docs, and reproducibility packaging are synchronized around the current repo state without rerunning expensive science.",
+      "evidence_path": "output/final_reproducibility_package/phase5_final_verdict.md"
+    }
+  ],
+  "manifest_index_summary": {
+    "row_count": 79,
+    "missing_optional_artifacts": [
+      "output/phase4/CASE_DWH_RETRO_2010_72H/phase4_run_manifest.json"
+    ]
+  },
+  "phase5_verdict": {
+    "phase5_reportable_now": true,
+    "launcher_menu_honest_and_current": true,
+    "final_validation_package_reused_without_recompute": true,
+    "requires_phase1_production_rerun_for_full_freeze": true,
+    "phase1_frozen_story_complete": false,
+    "phase2_scientifically_usable": true,
+    "phase2_scientifically_frozen": false,
+    "phase4_scientifically_reportable_now": true,
+    "phase4_inherited_provisional": true,
+    "legacy_recipe_drift_leaks_into_official_mode": true,
+    "biggest_remaining_project_scientific_blocker": "The repo still lacks the accepted/rejected drogued 72 h segment registry generated from a true 2016-2022 regional drifter pool, so the frozen baseline cannot yet be defended as the final Chapter 3 Phase 1 study.",
+    "optional_future_work": [
+      {
+        "work_id": "trajectory_gallery",
+        "label": "Trajectory gallery",
+        "status": "not_implemented"
+      },
+      {
+        "work_id": "read_only_browser_ui",
+        "label": "Read-only browser UI",
+        "status": "not_implemented"
+      },
+      {
+        "work_id": "dwh_phase4_appendix_pilot",
+        "label": "DWH Phase 4 appendix pilot",
+        "status": "deferred"
+      }
+    ],
+    "missing_optional_artifacts": [
+      "output/phase4/CASE_DWH_RETRO_2010_72H/phase4_run_manifest.json"
+    ]
+  }
+}

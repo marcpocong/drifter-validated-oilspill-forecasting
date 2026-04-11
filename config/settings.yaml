@@ -29,9 +29,10 @@ grid_resolution: 0.05
 # Friendly names for visualization
 recipe_component_names:
   hycom: "HYCOM Ocean Currents"
-  ncep: "NCEP Reanalysis Winds"
+  ncep: "Legacy NCEP Prototype Winds"
   cmems: "CMEMS Global Ocean"
   era5: "ERA5 Reanalysis"
+  gfs: "GFS Winds"
 
 
 # ---------------------------------------------------------------------------

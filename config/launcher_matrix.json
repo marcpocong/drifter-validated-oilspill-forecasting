@@ -1,0 +1,326 @@
+{
+  "catalog_version": "phase5_launcher_matrix_v1",
+  "entrypoint": "start.ps1",
+  "categories": [
+    {
+      "category_id": "scientific_reportable_tracks",
+      "label": "Scientific / reportable tracks",
+      "description": "Intentional scientific reruns or reportable output builders."
+    },
+    {
+      "category_id": "sensitivity_appendix_tracks",
+      "label": "Sensitivity / appendix tracks",
+      "description": "Supporting branches that are informative but not the main reportable path."
+    },
+    {
+      "category_id": "read_only_packaging_help_utilities",
+      "label": "Read-only packaging / help utilities",
+      "description": "Safe utilities that summarize or audit the current repo state without rerunning expensive science."
+    },
+    {
+      "category_id": "legacy_prototype_tracks",
+      "label": "Legacy prototype tracks",
+      "description": "Backward-compatible prototype workflows preserved for debugging and regression."
+    }
+  ],
+  "entries": [
+    {
+      "entry_id": "mindoro_reportable_core",
+      "menu_order": 10,
+      "category_id": "scientific_reportable_tracks",
+      "workflow_mode": "mindoro_retro_2023",
+      "label": "Mindoro reportable core bundle",
+      "description": "Prep, official Phase 1/2, strict Phase 3B, broader public support, and Mindoro Phase 4.",
+      "service_profile": "pipeline_only",
+      "rerun_cost": "expensive",
+      "safe_default": false,
+      "notes": "Use only when an intentional scientific rerun of the main Mindoro reportable path is desired.",
+      "steps": [
+        {
+          "phase": "prep",
+          "service": "pipeline",
+          "description": "Prep inputs, scoring grid, and shoreline artifacts"
+        },
+        {
+          "phase": "1_2",
+          "service": "pipeline",
+          "description": "Official deterministic control and 50-member ensemble forecast"
+        },
+        {
+          "phase": "3b",
+          "service": "pipeline",
+          "description": "Strict March 6 public-observation stress test"
+        },
+        {
+          "phase": "phase3b_multidate_public",
+          "service": "pipeline",
+          "description": "Broader public-observation support track"
+        },
+        {
+          "phase": "phase4_oiltype_and_shoreline",
+          "service": "pipeline",
+          "description": "Mindoro Phase 4 oil-type fate and shoreline-impact workflow"
+        }
+      ]
+    },
+    {
+      "entry_id": "mindoro_phase4_only",
+      "menu_order": 20,
+      "category_id": "scientific_reportable_tracks",
+      "workflow_mode": "mindoro_retro_2023",
+      "label": "Mindoro Phase 4 only",
+      "description": "Rebuild only the Mindoro Phase 4 oil-type and shoreline interpretation layer.",
+      "service_profile": "pipeline_only",
+      "rerun_cost": "moderate",
+      "safe_default": false,
+      "notes": "Does not overwrite stored Mindoro or DWH Phase 3 validation outputs.",
+      "steps": [
+        {
+          "phase": "phase4_oiltype_and_shoreline",
+          "service": "pipeline",
+          "description": "Mindoro Phase 4 oil-type fate and shoreline-impact workflow"
+        }
+      ]
+    },
+    {
+      "entry_id": "dwh_reportable_bundle",
+      "menu_order": 30,
+      "category_id": "scientific_reportable_tracks",
+      "workflow_mode": "dwh_retro_2010",
+      "label": "DWH Phase 3C reportable bundle",
+      "description": "External-case setup, scientific forcing readiness, deterministic transfer validation, ensemble comparison, and PyGNOME comparator.",
+      "service_profile": "mixed_pipeline_and_gnome",
+      "rerun_cost": "expensive",
+      "safe_default": false,
+      "notes": "This is the full DWH scientific rerun path and should only be used intentionally.",
+      "steps": [
+        {
+          "phase": "phase3c_external_case_setup",
+          "service": "pipeline",
+          "description": "External-case setup and observation ingestion"
+        },
+        {
+          "phase": "dwh_phase3c_scientific_forcing_ready",
+          "service": "pipeline",
+          "description": "Scientific forcing readiness check"
+        },
+        {
+          "phase": "phase3c_external_case_run",
+          "service": "pipeline",
+          "description": "Deterministic external transfer validation"
+        },
+        {
+          "phase": "phase3c_external_case_ensemble_comparison",
+          "service": "pipeline",
+          "description": "Deterministic-vs-ensemble comparison"
+        },
+        {
+          "phase": "phase3c_dwh_pygnome_comparator",
+          "service": "gnome",
+          "description": "PyGNOME comparator against the DWH truth masks"
+        }
+      ]
+    },
+    {
+      "entry_id": "mindoro_appendix_sensitivity_bundle",
+      "menu_order": 40,
+      "category_id": "sensitivity_appendix_tracks",
+      "workflow_mode": "mindoro_retro_2023",
+      "label": "Mindoro appendix / sensitivity bundle",
+      "description": "Public appendix, extended public scoring, retention, initialization, source-history, PyGNOME comparison, threshold, and recipe sensitivity branches.",
+      "service_profile": "mixed_pipeline_and_gnome",
+      "rerun_cost": "expensive",
+      "safe_default": false,
+      "notes": "These tracks are informative and reportable as support material, but they are not the main-text scientific core.",
+      "steps": [
+        {
+          "phase": "public_obs_appendix",
+          "service": "pipeline",
+          "description": "Public-observation appendix expansion"
+        },
+        {
+          "phase": "phase3b_extended_public",
+          "service": "pipeline",
+          "description": "Extended-horizon guardrail inventory"
+        },
+        {
+          "phase": "phase3b_extended_public_scored",
+          "service": "pipeline",
+          "description": "Short extended public-observation scoring"
+        },
+        {
+          "phase": "horizon_survival_audit",
+          "service": "pipeline",
+          "description": "Horizon survival diagnosis"
+        },
+        {
+          "phase": "transport_retention_fix",
+          "service": "pipeline",
+          "description": "Transport-retention sensitivity diagnostics"
+        },
+        {
+          "phase": "official_rerun_r1",
+          "service": "pipeline",
+          "description": "Selected R1 rerun / rescore pack"
+        },
+        {
+          "phase": "init_mode_sensitivity_r1",
+          "service": "pipeline",
+          "description": "Initialization-mode sensitivity"
+        },
+        {
+          "phase": "source_history_reconstruction_r1",
+          "service": "pipeline",
+          "description": "Source-history reconstruction sensitivity"
+        },
+        {
+          "phase": "pygnome_public_comparison",
+          "service": "gnome",
+          "description": "PyGNOME public-observation comparator"
+        },
+        {
+          "phase": "ensemble_threshold_sensitivity",
+          "service": "pipeline",
+          "description": "Ensemble threshold calibration"
+        },
+        {
+          "phase": "recipe_sensitivity_r1_multibranch",
+          "service": "pipeline",
+          "description": "Recipe / branch sensitivity matrix"
+        }
+      ]
+    },
+    {
+      "entry_id": "phase1_audit",
+      "menu_order": 50,
+      "category_id": "read_only_packaging_help_utilities",
+      "workflow_mode": "mindoro_retro_2023",
+      "label": "Phase 1 finalization audit",
+      "description": "Read-only architectural audit of Phase 1 against the stable Chapter 3 requirements.",
+      "service_profile": "pipeline_only",
+      "rerun_cost": "cheap_read_only",
+      "safe_default": true,
+      "notes": "Does not rerun the expensive 2016-2022 production study.",
+      "steps": [
+        {
+          "phase": "phase1_finalization_audit",
+          "service": "pipeline",
+          "description": "Phase 1 read-only architecture audit"
+        }
+      ]
+    },
+    {
+      "entry_id": "phase2_audit",
+      "menu_order": 60,
+      "category_id": "read_only_packaging_help_utilities",
+      "workflow_mode": "mindoro_retro_2023",
+      "label": "Phase 2 finalization audit",
+      "description": "Read-only semantics/manifests audit of the current official Mindoro forecast outputs.",
+      "service_profile": "pipeline_only",
+      "rerun_cost": "cheap_read_only",
+      "safe_default": true,
+      "notes": "Does not rerun the expensive official forecast path by default.",
+      "steps": [
+        {
+          "phase": "phase2_finalization_audit",
+          "service": "pipeline",
+          "description": "Phase 2 read-only semantics audit"
+        }
+      ]
+    },
+    {
+      "entry_id": "final_validation_package",
+      "menu_order": 70,
+      "category_id": "read_only_packaging_help_utilities",
+      "workflow_mode": "mindoro_retro_2023",
+      "label": "Final validation package refresh",
+      "description": "Read-only rebuild of the frozen thesis validation package from existing Mindoro and DWH outputs.",
+      "service_profile": "pipeline_only",
+      "rerun_cost": "cheap_read_only",
+      "safe_default": true,
+      "notes": "Reuses existing scientific outputs without recomputing scores.",
+      "steps": [
+        {
+          "phase": "final_validation_package",
+          "service": "pipeline",
+          "description": "Read-only final validation packaging"
+        }
+      ]
+    },
+    {
+      "entry_id": "phase5_sync",
+      "menu_order": 80,
+      "category_id": "read_only_packaging_help_utilities",
+      "workflow_mode": "mindoro_retro_2023",
+      "label": "Phase 5 launcher/docs/package sync",
+      "description": "Read-only reproducibility, launcher, documentation, and package synchronization layer.",
+      "service_profile": "pipeline_only",
+      "rerun_cost": "cheap_read_only",
+      "safe_default": true,
+      "notes": "Builds final_reproducibility_package without overwriting scientific outputs.",
+      "steps": [
+        {
+          "phase": "phase5_launcher_and_docs_sync",
+          "service": "pipeline",
+          "description": "Phase 5 launcher/docs/package synchronization"
+        }
+      ]
+    },
+    {
+      "entry_id": "prototype_legacy_bundle",
+      "menu_order": 90,
+      "category_id": "legacy_prototype_tracks",
+      "workflow_mode": "prototype_2016",
+      "label": "Prototype 2016 legacy bundle",
+      "description": "Legacy prep, Phase 1/2, benchmark, Phase 3 weathering, and Phase 3B scoring.",
+      "service_profile": "mixed_pipeline_and_gnome",
+      "rerun_cost": "moderate",
+      "safe_default": false,
+      "notes": "Backward-compatible debug/regression path only. Not the final Chapter 3 Phase 1 study.",
+      "steps": [
+        {
+          "phase": "prep",
+          "service": "pipeline",
+          "description": "Prototype prep"
+        },
+        {
+          "phase": "1_2",
+          "service": "pipeline",
+          "description": "Prototype Phase 1/2 workflow"
+        },
+        {
+          "phase": "benchmark",
+          "service": "gnome",
+          "description": "Prototype benchmark"
+        },
+        {
+          "phase": "3",
+          "service": "gnome",
+          "description": "Prototype Phase 3 weathering and comparison"
+        },
+        {
+          "phase": "3b",
+          "service": "pipeline",
+          "description": "Prototype Phase 3B scoring"
+        }
+      ]
+    }
+  ],
+  "optional_future_work": [
+    {
+      "work_id": "trajectory_gallery",
+      "label": "Trajectory gallery",
+      "status": "not_implemented"
+    },
+    {
+      "work_id": "read_only_browser_ui",
+      "label": "Read-only browser UI",
+      "status": "not_implemented"
+    },
+    {
+      "work_id": "dwh_phase4_appendix_pilot",
+      "label": "DWH Phase 4 appendix pilot",
+      "status": "deferred"
+    }
+  ]
+}

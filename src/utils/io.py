@@ -84,6 +84,114 @@ def get_recipe_definition(recipe_name: str, config_path: str | Path = "config/re
     return dict(recipes[recipe_name])
 
 
+def get_phase1_recipe_architecture(config_path: str | Path = "config/recipes.yaml") -> dict:
+    """Return non-runtime metadata describing the intended Phase 1 recipe architecture."""
+    config = _load_recipes_config(config_path)
+    architecture = config.get("phase1_recipe_architecture") or {}
+    return dict(architecture)
+
+
+def get_official_phase1_recipe_family(config_path: str | Path = "config/recipes.yaml") -> list[str]:
+    """Return the Chapter 3 target recipe family for Phase 1 finalization audits."""
+    architecture = get_phase1_recipe_architecture(config_path)
+    return [str(value) for value in architecture.get("official_recipe_family") or [] if str(value).strip()]
+
+
+def get_phase1_legacy_recipe_aliases(config_path: str | Path = "config/recipes.yaml") -> dict[str, dict]:
+    """Return legacy recipe-name metadata used to keep prototype naming drift explicit."""
+    architecture = get_phase1_recipe_architecture(config_path)
+    aliases = architecture.get("legacy_recipe_name_aliases") or {}
+    return {str(key): dict(value or {}) for key, value in aliases.items()}
+
+
+def get_runtime_recipe_ids(config_path: str | Path = "config/recipes.yaml") -> list[str]:
+    """Return the recipe identifiers currently defined in the runtime config."""
+    config = _load_recipes_config(config_path)
+    return [str(key) for key in (config.get("recipes") or {}).keys()]
+
+
+def get_phase1_baseline_audit_status(selection_path: str | Path | None = None) -> dict[str, Any]:
+    """Return Phase 1 finalization-audit status metadata from the frozen baseline artifact."""
+    try:
+        _, selection = load_baseline_selection(selection_path)
+    except FileNotFoundError:
+        return {}
+
+    chapter3_audit = selection.get("chapter3_finalization_audit") or {}
+    return dict(chapter3_audit.get("audit_status") or {})
+
+
+def get_phase2_recipe_family_status(
+    *,
+    run_name: str | None = None,
+    selected_recipe: str | None = None,
+    config_path: str | Path = "config/recipes.yaml",
+    selection_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Summarize how much of the official Phase 1 recipe family is available to official Phase 2."""
+    active_run_name = str(run_name or get_case_context().run_name)
+    forcing_dir = Path("data") / "forcing" / active_run_name
+
+    expected_family = sorted(set(get_official_phase1_recipe_family(config_path)))
+    runtime_recipe_ids = sorted(set(get_runtime_recipe_ids(config_path)))
+    runtime_defined_official = [recipe_id for recipe_id in expected_family if recipe_id in runtime_recipe_ids]
+    legacy_aliases = get_phase1_legacy_recipe_aliases(config_path)
+    legacy_recipe_ids_present = sorted(recipe_id for recipe_id in runtime_recipe_ids if recipe_id in legacy_aliases)
+    gfs_wind_present = (forcing_dir / "gfs_wind.nc").exists()
+
+    locally_available: list[str] = []
+    unavailable_reasons: dict[str, list[str]] = {}
+    for recipe_id in expected_family:
+        reasons: list[str] = []
+        if recipe_id not in runtime_recipe_ids:
+            reasons.append("recipe_id_not_defined_in_runtime_config")
+        else:
+            recipe = get_recipe_definition(recipe_id, config_path)
+            for forcing_kind, forcing_key in (
+                ("currents", "currents_file"),
+                ("wind", "wind_file"),
+                ("wave", "wave_file"),
+            ):
+                forcing_file = str(recipe.get(forcing_key) or "").strip()
+                if forcing_file and not (forcing_dir / forcing_file).exists():
+                    reasons.append(f"missing_{forcing_kind}_file:{forcing_file}")
+        if "gfs" in recipe_id and not gfs_wind_present:
+            reasons.append("missing_gfs_wind_nc")
+        if reasons:
+            unavailable_reasons[recipe_id] = sorted(set(reasons))
+        else:
+            locally_available.append(recipe_id)
+
+    selected_recipe = str(selected_recipe or "").strip()
+    selected_recipe_alias = dict(legacy_aliases.get(selected_recipe) or {})
+    baseline_audit_status = get_phase1_baseline_audit_status(selection_path)
+    requires_phase1_rerun = bool(
+        baseline_audit_status.get("full_production_rerun_required")
+        or baseline_audit_status.get("requires_phase1_production_rerun_for_full_freeze")
+    )
+    legacy_drift_leaks = bool(
+        selected_recipe_alias
+        or legacy_recipe_ids_present
+        or unavailable_reasons
+    )
+
+    return {
+        "official_recipe_family_expected": expected_family,
+        "official_recipe_family_runtime_defined": runtime_defined_official,
+        "official_recipe_family_locally_available": locally_available,
+        "official_recipe_family_unavailable": [recipe_id for recipe_id in expected_family if recipe_id not in locally_available],
+        "official_recipe_family_unavailable_reasons": unavailable_reasons,
+        "legacy_recipe_ids_present_in_runtime": legacy_recipe_ids_present,
+        "legacy_recipe_id_detected": bool(legacy_recipe_ids_present or selected_recipe_alias),
+        "selected_recipe_id_is_legacy_alias": bool(selected_recipe_alias),
+        "selected_recipe_chapter3_target": str(selected_recipe_alias.get("chapter3_target_recipe") or ""),
+        "gfs_wind_present_for_active_case": gfs_wind_present,
+        "phase1_finalization_classification": str(baseline_audit_status.get("classification") or ""),
+        "requires_phase1_production_rerun_for_full_freeze": requires_phase1_rerun,
+        "legacy_recipe_drift_leaks_into_official_mode": legacy_drift_leaks,
+    }
+
+
 def _validate_recipe_name(recipe_name: str, source_label: str) -> str:
     """Validate that a recipe exists in the canonical recipe config."""
     recipe = str(recipe_name).strip()

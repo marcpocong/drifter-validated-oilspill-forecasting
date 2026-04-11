@@ -21,7 +21,35 @@ Thumbs.db
 data/*
 
 # Output files
-output/
+output/*
+!output/phase1_finalization_audit/
+output/phase1_finalization_audit/*
+!output/phase1_finalization_audit/*.csv
+!output/phase1_finalization_audit/*.json
+!output/phase1_finalization_audit/*.md
+!output/phase2_finalization_audit/
+output/phase2_finalization_audit/*
+!output/phase2_finalization_audit/*.csv
+!output/phase2_finalization_audit/*.json
+!output/phase2_finalization_audit/*.md
+!output/phase4/
+output/phase4/*
+!output/phase4/CASE_MINDORO_RETRO_2023/
+output/phase4/CASE_MINDORO_RETRO_2023/*
+!output/phase4/CASE_MINDORO_RETRO_2023/*.csv
+!output/phase4/CASE_MINDORO_RETRO_2023/*.json
+!output/phase4/CASE_MINDORO_RETRO_2023/*.md
+!output/phase4/CASE_MINDORO_RETRO_2023/*.png
+!output/final_validation_package/
+output/final_validation_package/*
+!output/final_validation_package/*.csv
+!output/final_validation_package/*.json
+!output/final_validation_package/*.md
+!output/final_reproducibility_package/
+output/final_reproducibility_package/*
+!output/final_reproducibility_package/*.csv
+!output/final_reproducibility_package/*.json
+!output/final_reproducibility_package/*.md
 
 # Python testing
 .pytest_cache/

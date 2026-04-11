@@ -30,3 +30,19 @@ recipes:
     wave_file: "cmems_wave.nc"
     duration_hours: 72
     time_step_minutes: 60
+
+phase1_recipe_architecture:
+  official_recipe_family:
+    - cmems_era5
+    - cmems_gfs
+    - hycom_era5
+    - hycom_gfs
+  legacy_recipe_name_aliases:
+    cmems_ncep:
+      chapter3_target_recipe: cmems_gfs
+      status: legacy_name_only
+      note: "Prototype validation still uses ncep_wind.nc. Do not present this as final Chapter 3 GFS evidence."
+    hycom_ncep:
+      chapter3_target_recipe: hycom_gfs
+      status: legacy_name_only
+      note: "Prototype validation still uses ncep_wind.nc. Do not present this as final Chapter 3 GFS evidence."

@@ -16,3 +16,36 @@ historical_validation_artifacts:
 notes:
   - "Official spill-case workflows consume this baseline instead of running case-local drifter validation."
   - "Override with BASELINE_SELECTION_PATH or BASELINE_RECIPE_OVERRIDE when needed."
+chapter3_finalization_audit:
+  target_historical_window:
+    start_date: "2016-01-01"
+    end_date: "2022-12-31"
+  regional_validation_box: [115.0, 122.0, 6.0, 14.5]
+  core_pool_policy: "drogued_segments_only"
+  segment_policy:
+    horizon_hours: 72
+    overlap_policy: "non_overlapping"
+  official_recipe_family:
+    - cmems_era5
+    - cmems_gfs
+    - hycom_era5
+    - hycom_gfs
+  current_local_evidence_scope: "legacy_three_case_prototype_debugging_only"
+  current_local_evidence_dates:
+    - "2016-09-01"
+    - "2016-09-06"
+    - "2016-09-17"
+  expected_phase1_artifacts:
+    accepted_segment_registry: ""
+    rejected_segment_registry: ""
+    segment_metrics: ""
+    recipe_summary: ""
+    recipe_ranking: ""
+    frozen_baseline_artifact: "config/phase1_baseline_selection.yaml"
+  loading_audit_policy:
+    hard_fail_on_missing_required_forcing: true
+    hard_fail_on_empty_valid_recipe_set: true
+  audit_status:
+    classification: implemented_but_provisional
+    full_production_rerun_required: true
+    blocker: "The frozen recipe still comes from three legacy prototype dates, not from a completed 2016-2022 regional drifter-segment study."

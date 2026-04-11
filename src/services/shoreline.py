@@ -1,37 +1,53 @@
 """
-Phase 3: Shoreline Beached-Oil Impact Analysis.
+Shoreline beached-oil impact analysis.
 
-Segments the coastline into ~1 km sections and computes, for each segment:
-  - Total beached oil mass (kg)
-  - Number of beached particles
-  - Arrival-time inter-quartile range (25th–75th percentile)
-  - Earliest arrival hour
-
-Segment IDs follow the format "<prefix>-001", "<prefix>-002", etc.
-(e.g. "PWN-001" for the Palawan/North region).
+Phase 4 prefers the canonical GSHHG-derived shoreline segments already stored in
+the scoring-grid artifacts. The legacy ordered-point segmentation remains as a
+fallback so the older Phase 3 path stays backward-compatible.
 """
 
+from __future__ import annotations
+
 import logging
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import xarray as xr
-from pathlib import Path
 
 from src.helpers.metrics import haversine
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_CANONICAL_SEGMENTS_PATH = Path("data_processed/grids/shoreline_segments.gpkg")
+
+
 class ShorelineImpactService:
     """
-    Analyse beached particle data from OpenOil NetCDF output and produce
-    a per-segment impact table as described in §3.6.7.
+    Analyze beached particle data from an OpenOil NetCDF and produce a
+    per-segment impact table.
+
+    When the canonical shoreline segments are available, each beached particle is
+    attached to the nearest stored shoreline segment. If the artifact is missing
+    or cannot be read, the service falls back to the legacy ordered-point
+    segmentation to preserve the older workflow behavior.
     """
 
-    def __init__(self, segment_length_km: float = 1.0, segment_prefix: str = "PWN"):
+    def __init__(
+        self,
+        segment_length_km: float = 1.0,
+        segment_prefix: str = "PWN",
+        *,
+        canonical_segments_path: str | Path | None = DEFAULT_CANONICAL_SEGMENTS_PATH,
+        prefer_canonical_segments: bool = True,
+    ):
         self.segment_length_km = segment_length_km
         self.segment_prefix = segment_prefix
-        
+        self.canonical_segments_path = Path(canonical_segments_path) if canonical_segments_path else None
+        self.prefer_canonical_segments = bool(prefer_canonical_segments)
+
         from src.core.constants import BASE_OUTPUT_DIR
+
         self.output_dir = BASE_OUTPUT_DIR / "weathering"
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -40,7 +56,9 @@ class ShorelineImpactService:
     # ------------------------------------------------------------------
 
     def analyze(
-        self, nc_path: Path, initial_mass_tonnes: float
+        self,
+        nc_path: Path,
+        initial_mass_tonnes: float,
     ) -> pd.DataFrame | None:
         """
         Extract beached particles from an OpenOil NetCDF and build a
@@ -51,81 +69,84 @@ class ShorelineImpactService:
         nc_path : Path
             Path to the OpenOil output NetCDF.
         initial_mass_tonnes : float
-            Total initial oil mass (M₀) used in the simulation.
+            Total initial oil mass (M0) used in the simulation.
 
         Returns
         -------
         pd.DataFrame or None
-            Columns: segment_id, lat_centre, lon_centre, total_beached_kg,
-                     n_particles, first_arrival_h, arrival_p25_h, arrival_p75_h.
             Returns None when no particles are beached.
         """
         beached = self._extract_beached_particles(nc_path, initial_mass_tonnes)
         if beached is None or beached.empty:
-            logger.info(
-                f"No beached particles in {nc_path.name} – "
-                "skipping shoreline analysis."
-            )
+            logger.info("No beached particles in %s; skipping shoreline analysis.", nc_path.name)
             return None
 
-        segments = self._assign_segments(beached)
-        return segments
+        if self.prefer_canonical_segments and self.canonical_segments_path and self.canonical_segments_path.exists():
+            try:
+                return self._assign_canonical_segments(beached)
+            except Exception as exc:
+                logger.warning(
+                    "Canonical shoreline assignment failed for %s: %s. Falling back to legacy segmentation.",
+                    nc_path.name,
+                    exc,
+                )
+
+        return self._assign_segments(beached)
 
     # ------------------------------------------------------------------
     # Extraction
     # ------------------------------------------------------------------
 
     def _extract_beached_particles(
-        self, nc_path: Path, initial_mass_tonnes: float
+        self,
+        nc_path: Path,
+        initial_mass_tonnes: float,
     ) -> pd.DataFrame | None:
         """
-        From the OpenOil NetCDF, extract each particle's *first* beaching
-        event (status == 1) together with its position, mass, and arrival hour.
-
-        Returns
-        -------
-        pd.DataFrame or None
-            Columns: particle_id, lat, lon, arrival_hour, mass_kg
+        Extract each particle's first beaching event (status == 1) together with
+        its position, mass, and arrival time.
         """
         ds = xr.open_dataset(nc_path)
-
-        status = ds["status"].values        # shape: (n_traj, n_time)
+        status = ds["status"].values
         lat = ds["lat"].values
         lon = ds["lon"].values
         mass_oil = ds["mass_oil"].values
+        time_values = pd.to_datetime(ds["time"].values, utc=True)
         ds.close()
 
-        n_traj, n_time = status.shape
+        n_traj, _ = status.shape
         initial_mass_kg = initial_mass_tonnes * 1000.0
-        mass_per_particle_kg = initial_mass_kg / n_traj
+        mass_per_particle_kg = initial_mass_kg / max(n_traj, 1)
 
-        records = []
-        for p in range(n_traj):
-            p_status = status[p, :]
-            beached_mask = p_status == 1
+        records: list[dict[str, object]] = []
+        start_time = time_values[0]
+        for particle_index in range(n_traj):
+            particle_status = status[particle_index, :]
+            beached_mask = particle_status == 1
             if not np.any(beached_mask):
                 continue
 
-            # First timestep at which the particle was stranded
-            first_t = int(np.argmax(beached_mask))
-            p_lat = float(lat[p, first_t])
-            p_lon = float(lon[p, first_t])
-            p_mass = float(mass_oil[p, first_t])
+            first_index = int(np.argmax(beached_mask))
+            particle_lat = float(lat[particle_index, first_index])
+            particle_lon = float(lon[particle_index, first_index])
+            particle_mass = float(mass_oil[particle_index, first_index])
 
-            if np.isnan(p_lat) or np.isnan(p_lon):
+            if np.isnan(particle_lat) or np.isnan(particle_lon):
                 continue
 
-            # Use mass at beaching time; fall back to uniform per-particle mass
-            if np.isnan(p_mass) or p_mass <= 0:
-                p_mass = mass_per_particle_kg
+            if np.isnan(particle_mass) or particle_mass <= 0:
+                particle_mass = mass_per_particle_kg
 
+            arrival_time = time_values[first_index]
+            arrival_hour = float((arrival_time - start_time) / pd.Timedelta(hours=1))
             records.append(
                 {
-                    "particle_id": p,
-                    "lat": p_lat,
-                    "lon": p_lon,
-                    "arrival_hour": first_t,
-                    "mass_kg": p_mass,
+                    "particle_id": particle_index,
+                    "lat": particle_lat,
+                    "lon": particle_lon,
+                    "arrival_hour": arrival_hour,
+                    "arrival_time_utc": arrival_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "mass_kg": particle_mass,
                 }
             )
 
@@ -134,112 +155,172 @@ class ShorelineImpactService:
         return pd.DataFrame(records)
 
     # ------------------------------------------------------------------
-    # Segmentation
+    # Canonical shoreline assignment
+    # ------------------------------------------------------------------
+
+    def _assign_canonical_segments(self, beached: pd.DataFrame) -> pd.DataFrame:
+        import geopandas as gpd
+
+        if not self.canonical_segments_path or not self.canonical_segments_path.exists():
+            raise FileNotFoundError("Canonical shoreline segment artifact is not available.")
+
+        segments = gpd.read_file(self.canonical_segments_path)
+        if segments.empty or "segment_id" not in segments.columns:
+            raise ValueError("Canonical shoreline segment artifact is missing segment_id rows.")
+
+        working_segments = segments[["segment_id", "length_m", "geometry"]].copy()
+        point_frame = gpd.GeoDataFrame(
+            beached.copy(),
+            geometry=gpd.points_from_xy(beached["lon"], beached["lat"]),
+            crs="EPSG:4326",
+        ).to_crs(working_segments.crs)
+
+        joined = gpd.sjoin_nearest(
+            point_frame,
+            working_segments,
+            how="left",
+            distance_col="distance_to_segment_m",
+        )
+        if joined.empty:
+            return self._assign_segments(beached)
+
+        midpoint_segments = working_segments.copy()
+        midpoint_segments["geometry"] = midpoint_segments.geometry.interpolate(0.5, normalized=True)
+        midpoint_segments = midpoint_segments.to_crs("EPSG:4326")
+        midpoint_segments["segment_midpoint_lon"] = midpoint_segments.geometry.x
+        midpoint_segments["segment_midpoint_lat"] = midpoint_segments.geometry.y
+        midpoint_segments = midpoint_segments.drop(columns=["geometry"])
+
+        grouped = (
+            joined.groupby("segment_id")
+            .agg(
+                total_beached_kg=("mass_kg", "sum"),
+                n_particles=("particle_id", "count"),
+                first_arrival_h=("arrival_hour", "min"),
+                arrival_p25_h=("arrival_hour", lambda values: float(np.percentile(values, 25))),
+                arrival_p75_h=("arrival_hour", lambda values: float(np.percentile(values, 75))),
+                mean_assignment_distance_m=("distance_to_segment_m", "mean"),
+                max_assignment_distance_m=("distance_to_segment_m", "max"),
+                beached_lat_mean=("lat", "mean"),
+                beached_lon_mean=("lon", "mean"),
+            )
+            .reset_index()
+        )
+        first_arrivals = joined.groupby("segment_id")["arrival_time_utc"].min().reset_index()
+        grouped = grouped.merge(first_arrivals, on="segment_id", how="left")
+        grouped = grouped.merge(midpoint_segments, on="segment_id", how="left")
+        grouped = grouped.rename(columns={"length_m": "segment_length_m", "arrival_time_utc": "first_arrival_utc"})
+        grouped["segment_assignment_method"] = "canonical_shoreline_segments_gpkg"
+
+        for column in (
+            "total_beached_kg",
+            "first_arrival_h",
+            "arrival_p25_h",
+            "arrival_p75_h",
+            "mean_assignment_distance_m",
+            "max_assignment_distance_m",
+            "segment_length_m",
+            "segment_midpoint_lat",
+            "segment_midpoint_lon",
+            "beached_lat_mean",
+            "beached_lon_mean",
+        ):
+            if column in grouped.columns:
+                grouped[column] = grouped[column].astype(float).round(3)
+
+        return grouped.sort_values(["first_arrival_h", "segment_id"]).reset_index(drop=True)
+
+    # ------------------------------------------------------------------
+    # Legacy fallback segmentation
     # ------------------------------------------------------------------
 
     def _assign_segments(self, beached: pd.DataFrame) -> pd.DataFrame:
         """
-        Group beached particles into sequential ~1 km coastal segments.
+        Group beached particles into sequential approximate shoreline segments.
 
-        Algorithm
-        ---------
-        1. Sort beached particles by longitude then latitude (approximates
-           west → east coastal order, suitable for the study area).
-        2. Walk through the sorted list; accumulate along-coast haversine
-           distance and start a new segment each time the running total
-           exceeds ``segment_length_km``.
-        3. Aggregate mass and arrival-time statistics per segment.
+        This is the legacy fallback behavior used when the canonical shoreline
+        segments are not available.
         """
         beached = beached.sort_values(["lon", "lat"]).reset_index(drop=True)
 
-        seg_ids: list[int] = []
-        current_seg = 0
-        ref_lat = beached.loc[0, "lat"]
-        ref_lon = beached.loc[0, "lon"]
+        segment_ids: list[int] = []
+        current_segment = 0
+        reference_lat = beached.loc[0, "lat"]
+        reference_lon = beached.loc[0, "lon"]
         cumulative_km = 0.0
 
-        for idx, row in beached.iterrows():
-            d = haversine(ref_lat, ref_lon, row["lat"], row["lon"])
-            cumulative_km += d
-            ref_lat, ref_lon = row["lat"], row["lon"]
+        for index, row in beached.iterrows():
+            distance_km = haversine(reference_lat, reference_lon, row["lat"], row["lon"])
+            cumulative_km += distance_km
+            reference_lat, reference_lon = row["lat"], row["lon"]
 
-            if cumulative_km > self.segment_length_km and idx > 0:
-                current_seg += 1
+            if cumulative_km > self.segment_length_km and index > 0:
+                current_segment += 1
                 cumulative_km = 0.0
 
-            seg_ids.append(current_seg)
+            segment_ids.append(current_segment)
 
         beached = beached.copy()
-        beached["_seg"] = seg_ids
+        beached["_legacy_segment_id"] = segment_ids
 
-        # Aggregate per segment
-        agg = (
-            beached.groupby("_seg")
+        grouped = (
+            beached.groupby("_legacy_segment_id")
             .agg(
-                lat_centre=("lat", "mean"),
-                lon_centre=("lon", "mean"),
+                beached_lat_mean=("lat", "mean"),
+                beached_lon_mean=("lon", "mean"),
                 total_beached_kg=("mass_kg", "sum"),
                 n_particles=("particle_id", "count"),
                 first_arrival_h=("arrival_hour", "min"),
-                arrival_p25_h=(
-                    "arrival_hour",
-                    lambda x: float(np.percentile(x, 25)),
-                ),
-                arrival_p75_h=(
-                    "arrival_hour",
-                    lambda x: float(np.percentile(x, 75)),
-                ),
+                arrival_p25_h=("arrival_hour", lambda values: float(np.percentile(values, 25))),
+                arrival_p75_h=("arrival_hour", lambda values: float(np.percentile(values, 75))),
+                first_arrival_utc=("arrival_time_utc", "min"),
             )
             .reset_index(drop=True)
         )
-
-        # Human-readable segment IDs: PWN-001, PWN-002, …
-        agg.insert(
+        grouped.insert(
             0,
             "segment_id",
-            [f"{self.segment_prefix}-{i + 1:03d}" for i in range(len(agg))],
+            [f"{self.segment_prefix}-{index + 1:03d}" for index in range(len(grouped))],
         )
+        grouped["segment_length_m"] = float(self.segment_length_km) * 1000.0
+        grouped["segment_midpoint_lat"] = grouped["beached_lat_mean"]
+        grouped["segment_midpoint_lon"] = grouped["beached_lon_mean"]
+        grouped["mean_assignment_distance_m"] = np.nan
+        grouped["max_assignment_distance_m"] = np.nan
+        grouped["segment_assignment_method"] = "legacy_ordered_beached_points"
 
-        # Round for readability
-        for col in ("lat_centre", "lon_centre"):
-            agg[col] = agg[col].round(4)
-        agg["total_beached_kg"] = agg["total_beached_kg"].round(1)
-        for col in ("first_arrival_h", "arrival_p25_h", "arrival_p75_h"):
-            agg[col] = agg[col].round(1)
+        for column in (
+            "beached_lat_mean",
+            "beached_lon_mean",
+            "total_beached_kg",
+            "first_arrival_h",
+            "arrival_p25_h",
+            "arrival_p75_h",
+            "segment_length_m",
+            "segment_midpoint_lat",
+            "segment_midpoint_lon",
+        ):
+            grouped[column] = grouped[column].astype(float).round(3)
 
-        return agg
+        return grouped
 
-
-# ---------------------------------------------------------------------------
-# Convenience wrapper
-# ---------------------------------------------------------------------------
 
 def run_shoreline_analysis(
     nc_path: str | Path,
     initial_mass_tonnes: float,
     segment_length_km: float = 1.0,
     segment_prefix: str = "PWN",
+    *,
+    canonical_segments_path: str | Path | None = DEFAULT_CANONICAL_SEGMENTS_PATH,
+    prefer_canonical_segments: bool = True,
 ) -> pd.DataFrame | None:
     """
-    Entry-point wrapper called from ``__main__.py``.
-
-    Parameters
-    ----------
-    nc_path : str or Path
-        Path to the OpenOil output NetCDF.
-    initial_mass_tonnes : float
-        Total initial oil mass M₀ (tonnes).
-    segment_length_km : float
-        Target length of each coastal segment (km).
-    segment_prefix : str
-        Prefix for segment IDs (e.g. "PWN").
-
-    Returns
-    -------
-    pd.DataFrame or None
+    Wrapper used by the existing CLI entrypoints.
     """
     service = ShorelineImpactService(
         segment_length_km=segment_length_km,
         segment_prefix=segment_prefix,
+        canonical_segments_path=canonical_segments_path,
+        prefer_canonical_segments=prefer_canonical_segments,
     )
     return service.analyze(Path(nc_path), initial_mass_tonnes)

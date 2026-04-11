@@ -1,0 +1,285 @@
+{
+  "phase": "phase4_oiltype_and_shoreline",
+  "generated_at_utc": "2026-04-10T23:54:53.158371+00:00",
+  "case_id": "CASE_MINDORO_RETRO_2023",
+  "base_run_name": "CASE_MINDORO_RETRO_2023",
+  "selected_transport_run_name": "CASE_MINDORO_RETRO_2023/convergence_after_shoreline/elements_100000",
+  "transport_branch_kind": "shoreline_aware_convergence_recommended",
+  "shoreline_aware_workflow_reused": true,
+  "selected_transport_loading_audit_path": "output/CASE_MINDORO_RETRO_2023/convergence_after_shoreline/elements_100000/forecast/phase2_loading_audit.json",
+  "transport_loading_audit_status": "reused_deterministic_control_forcing_paths",
+  "transport_forcing_resolution_mode": "phase2_loading_audit_deterministic_control_used_paths",
+  "transport_forcing_paths": {
+    "currents": "output/CASE_MINDORO_RETRO_2023/convergence_after_shoreline/elements_100000/forecast/forcing_cache/cmems_curr__tailpersist__2023-03-06T09-59-00Z.nc",
+    "wind": "data/forcing/CASE_MINDORO_RETRO_2023/era5_wind.nc",
+    "wave": "data/forcing/CASE_MINDORO_RETRO_2023/cmems_wave.nc"
+  },
+  "transport_forcing_audit": {
+    "current": {
+      "used_path": "output/CASE_MINDORO_RETRO_2023/convergence_after_shoreline/elements_100000/forecast/forcing_cache/cmems_curr__tailpersist__2023-03-06T09-59-00Z.nc",
+      "reader_attach_status": "loaded",
+      "covers_requested_window": true,
+      "tail_extension_applied": true,
+      "requested_start_time_utc": "2023-03-03T09:59:00Z",
+      "requested_end_time_utc": "2023-03-06T09:59:00Z"
+    },
+    "wind": {
+      "used_path": "data/forcing/CASE_MINDORO_RETRO_2023/era5_wind.nc",
+      "reader_attach_status": "loaded",
+      "covers_requested_window": true,
+      "tail_extension_applied": false,
+      "requested_start_time_utc": "2023-03-03T09:59:00Z",
+      "requested_end_time_utc": "2023-03-06T09:59:00Z"
+    },
+    "wave": {
+      "used_path": "data/forcing/CASE_MINDORO_RETRO_2023/cmems_wave.nc",
+      "reader_attach_status": "loaded",
+      "covers_requested_window": true,
+      "tail_extension_applied": false,
+      "requested_start_time_utc": "2023-03-03T09:59:00Z",
+      "requested_end_time_utc": "2023-03-06T09:59:00Z"
+    }
+  },
+  "weathering_path_audit": {
+    "decision": "partially_implemented_but_needs_refactor",
+    "reused_existing_weathering_path": true,
+    "service_paths": [
+      "src/services/weathering.py",
+      "src/services/shoreline.py"
+    ],
+    "reason": "The repo already contained a working OpenOil weathering path, but it still wrote Phase 3-era outputs and used synthetic shoreline segment ordering instead of the canonical GSHHG shoreline segment artifacts.",
+    "final_phase4_resolution": "Phase 4 reuses the OpenOil path with a scenario registry, inherits the selected transport run's deterministic-control forcing files from phase2_loading_audit.json, and switches shoreline assignment onto the stored canonical shoreline segments while keeping the legacy fallback available for older workflows."
+  },
+  "baseline_selection_source": "config/phase1_baseline_selection.yaml",
+  "phase1_frozen_story_complete": false,
+  "phase1_finalization_classification": "implemented_but_provisional",
+  "phase2_scientifically_usable": true,
+  "phase2_scientifically_frozen": false,
+  "inherited_transport_model": "oceandrift",
+  "provisional_transport_model": true,
+  "provisional_inherited_from_transport": true,
+  "shoreline_mask_status": "gshhg_2.3.7_resolution_i_level_1_all_touched",
+  "shoreline_mask_signature": "e80ea49ade09d47d48960a01672afa4a80591a9f1567aa15fdf1acf0cfc72774",
+  "shoreline_segments_path": "data_processed/grids/shoreline_segments.gpkg",
+  "oil_scenario_registry_path": "config/phase4_oil_scenarios.csv",
+  "official_recipe_family_expected": [
+    "cmems_era5",
+    "cmems_gfs",
+    "hycom_era5",
+    "hycom_gfs"
+  ],
+  "official_recipe_family_locally_available": [
+    "cmems_era5",
+    "hycom_era5"
+  ],
+  "legacy_recipe_id_detected": true,
+  "requires_phase1_production_rerun_for_full_freeze": true,
+  "transport_reuse_mode": "phase4_deterministic_openoil_replay_using_selected_recipe_and_canonical_shoreline_artifacts",
+  "artifacts": {
+    "phase4_oil_budget_timeseries_lighter_oil": "output/phase4/CASE_MINDORO_RETRO_2023/phase4_oil_budget_timeseries_lighter_oil.csv",
+    "phase4_oil_budget_timeseries_fixed_base_medium_heavy_proxy": "output/phase4/CASE_MINDORO_RETRO_2023/phase4_oil_budget_timeseries_fixed_base_medium_heavy_proxy.csv",
+    "phase4_oil_budget_timeseries_heavier_oil": "output/phase4/CASE_MINDORO_RETRO_2023/phase4_oil_budget_timeseries_heavier_oil.csv",
+    "phase4_oil_budget_summary": "output/phase4/CASE_MINDORO_RETRO_2023/phase4_oil_budget_summary.csv",
+    "phase4_shoreline_arrival": "output/phase4/CASE_MINDORO_RETRO_2023/phase4_shoreline_arrival.csv",
+    "phase4_shoreline_segments": "output/phase4/CASE_MINDORO_RETRO_2023/phase4_shoreline_segments.csv",
+    "phase4_oiltype_comparison": "output/phase4/CASE_MINDORO_RETRO_2023/phase4_oiltype_comparison.csv",
+    "qa_phase4_shoreline_impacts": "output/phase4/CASE_MINDORO_RETRO_2023/qa_phase4_shoreline_impacts.png",
+    "qa_phase4_oiltype_comparison": "output/phase4/CASE_MINDORO_RETRO_2023/qa_phase4_oiltype_comparison.png",
+    "phase4_methodology_sync_memo": "output/phase4/CASE_MINDORO_RETRO_2023/phase4_methodology_sync_memo.md",
+    "phase4_final_verdict": "output/phase4/CASE_MINDORO_RETRO_2023/phase4_final_verdict.md"
+  },
+  "scenarios": [
+    {
+      "scenario_id": "lighter_oil",
+      "oil_record_id": "GENERIC_DIESEL",
+      "oil_label": "Light oil",
+      "category": "light_distillate",
+      "source_note": "Light-end representative scenario for higher evaporation and faster weathering",
+      "enabled_yes_no": "yes",
+      "display_name": "Light oil",
+      "adios_id": "GENERIC DIESEL",
+      "density_kg_m3": 850.0,
+      "color": "#FF8C00",
+      "openoil_overrides": {
+        "drift:vertical_mixing": false,
+        "drift:wind_uncertainty": 0.0,
+        "drift:current_uncertainty": 0.0,
+        "processes:dispersion": true,
+        "processes:evaporation": true,
+        "processes:emulsification": true,
+        "processes:update_oilfilm_thickness": true,
+        "general:coastline_action": "stranding",
+        "wave_entrainment:droplet_size_distribution": "Johansen et al. (2015)",
+        "seed:droplet_diameter_min_subsea": 0.0005,
+        "seed:droplet_diameter_max_subsea": 0.005
+      }
+    },
+    {
+      "scenario_id": "fixed_base_medium_heavy_proxy",
+      "oil_record_id": "GENERIC_INTERMEDIATE_FUEL_OIL_180",
+      "oil_label": "Fixed base medium-heavy proxy",
+      "category": "medium_heavy_proxy",
+      "source_note": "Fixed base marine-fuel proxy used as the main Phase 4 comparison anchor",
+      "enabled_yes_no": "yes",
+      "display_name": "Fixed base medium-heavy proxy",
+      "adios_id": "GENERIC INTERMEDIATE FUEL OIL 180",
+      "density_kg_m3": 930.0,
+      "color": "#8C564B",
+      "openoil_overrides": {
+        "drift:vertical_mixing": false,
+        "drift:wind_uncertainty": 0.0,
+        "drift:current_uncertainty": 0.0,
+        "processes:dispersion": true,
+        "processes:evaporation": true,
+        "processes:emulsification": true,
+        "processes:update_oilfilm_thickness": true,
+        "general:coastline_action": "stranding",
+        "wave_entrainment:droplet_size_distribution": "Johansen et al. (2015)",
+        "seed:droplet_diameter_min_subsea": 0.0008,
+        "seed:droplet_diameter_max_subsea": 0.008
+      }
+    },
+    {
+      "scenario_id": "heavier_oil",
+      "oil_record_id": "GENERIC_HEAVY_FUEL_OIL",
+      "oil_label": "Heavier oil",
+      "category": "heavy_residual",
+      "source_note": "Heavier persistent residual-fuel scenario for slower weathering and higher stranding persistence",
+      "enabled_yes_no": "yes",
+      "display_name": "Heavier oil",
+      "adios_id": "GENERIC HEAVY FUEL OIL",
+      "density_kg_m3": 990.0,
+      "color": "#4B0082",
+      "openoil_overrides": {
+        "drift:vertical_mixing": false,
+        "drift:wind_uncertainty": 0.0,
+        "drift:current_uncertainty": 0.0,
+        "processes:dispersion": true,
+        "processes:evaporation": true,
+        "processes:emulsification": true,
+        "processes:update_oilfilm_thickness": true,
+        "general:coastline_action": "stranding",
+        "wave_entrainment:droplet_size_distribution": "Johansen et al. (2015)",
+        "seed:droplet_diameter_min_subsea": 0.001,
+        "seed:droplet_diameter_max_subsea": 0.01
+      }
+    }
+  ],
+  "summary_rows": [
+    {
+      "scenario_id": "lighter_oil",
+      "oil_record_id": "GENERIC_DIESEL",
+      "oil_label": "Light oil",
+      "category": "light_distillate",
+      "source_note": "Light-end representative scenario for higher evaporation and faster weathering",
+      "color": "#FF8C00",
+      "adios_id": "GENERIC DIESEL",
+      "particle_count": 100000,
+      "initial_mass_tonnes": 50.0,
+      "final_surface_pct": 0.0,
+      "final_evaporated_pct": 0.84,
+      "final_dispersed_pct": 99.14,
+      "final_beached_pct": 0.02,
+      "qc_passed": true,
+      "max_mass_balance_deviation_pct": 0.69,
+      "first_shoreline_arrival_utc": "2023-03-03T13:59:00Z",
+      "first_shoreline_arrival_h": 4.0,
+      "impacted_segment_count": 11,
+      "total_beached_kg": 5291.754,
+      "provisional_inherited_from_transport": true,
+      "selected_transport_run_name": "CASE_MINDORO_RETRO_2023/convergence_after_shoreline/elements_100000"
+    },
+    {
+      "scenario_id": "fixed_base_medium_heavy_proxy",
+      "oil_record_id": "GENERIC_INTERMEDIATE_FUEL_OIL_180",
+      "oil_label": "Fixed base medium-heavy proxy",
+      "category": "medium_heavy_proxy",
+      "source_note": "Fixed base marine-fuel proxy used as the main Phase 4 comparison anchor",
+      "color": "#8C564B",
+      "adios_id": "GENERIC INTERMEDIATE FUEL OIL 180",
+      "particle_count": 100000,
+      "initial_mass_tonnes": 50.0,
+      "final_surface_pct": 0.0,
+      "final_evaporated_pct": 0.3,
+      "final_dispersed_pct": 99.14,
+      "final_beached_pct": 0.57,
+      "qc_passed": false,
+      "max_mass_balance_deviation_pct": 4.23,
+      "first_shoreline_arrival_utc": "2023-03-03T13:59:00Z",
+      "first_shoreline_arrival_h": 4.0,
+      "impacted_segment_count": 11,
+      "total_beached_kg": 34868.672,
+      "provisional_inherited_from_transport": true,
+      "selected_transport_run_name": "CASE_MINDORO_RETRO_2023/convergence_after_shoreline/elements_100000"
+    },
+    {
+      "scenario_id": "heavier_oil",
+      "oil_record_id": "GENERIC_HEAVY_FUEL_OIL",
+      "oil_label": "Heavier oil",
+      "category": "heavy_residual",
+      "source_note": "Heavier persistent residual-fuel scenario for slower weathering and higher stranding persistence",
+      "color": "#4B0082",
+      "adios_id": "GENERIC HEAVY FUEL OIL",
+      "particle_count": 100000,
+      "initial_mass_tonnes": 50.0,
+      "final_surface_pct": 0.0,
+      "final_evaporated_pct": 0.23,
+      "final_dispersed_pct": 99.13,
+      "final_beached_pct": 0.64,
+      "qc_passed": true,
+      "max_mass_balance_deviation_pct": 0.03,
+      "first_shoreline_arrival_utc": "2023-03-03T13:59:00Z",
+      "first_shoreline_arrival_h": 4.0,
+      "impacted_segment_count": 11,
+      "total_beached_kg": 37373.206,
+      "provisional_inherited_from_transport": true,
+      "selected_transport_run_name": "CASE_MINDORO_RETRO_2023/convergence_after_shoreline/elements_100000"
+    }
+  ],
+  "shoreline_arrival_rows": [
+    {
+      "scenario_id": "lighter_oil",
+      "oil_label": "Light oil",
+      "shoreline_arrival_generated": true,
+      "first_shoreline_arrival_utc": "2023-03-03T13:59:00Z",
+      "first_shoreline_arrival_h": 4.0,
+      "impacted_segment_count": 11,
+      "total_beached_kg": 5291.754,
+      "segment_assignment_method": "canonical_shoreline_segments_gpkg"
+    },
+    {
+      "scenario_id": "fixed_base_medium_heavy_proxy",
+      "oil_label": "Fixed base medium-heavy proxy",
+      "shoreline_arrival_generated": true,
+      "first_shoreline_arrival_utc": "2023-03-03T13:59:00Z",
+      "first_shoreline_arrival_h": 4.0,
+      "impacted_segment_count": 11,
+      "total_beached_kg": 34868.672,
+      "segment_assignment_method": "canonical_shoreline_segments_gpkg"
+    },
+    {
+      "scenario_id": "heavier_oil",
+      "oil_label": "Heavier oil",
+      "shoreline_arrival_generated": true,
+      "first_shoreline_arrival_utc": "2023-03-03T13:59:00Z",
+      "first_shoreline_arrival_h": 4.0,
+      "impacted_segment_count": 11,
+      "total_beached_kg": 37373.206,
+      "segment_assignment_method": "canonical_shoreline_segments_gpkg"
+    }
+  ],
+  "dwh_appendix_phase4_pilot_status": "deferred_not_run",
+  "overall_verdict": {
+    "scientifically_reportable_now": true,
+    "provisional_inherited_from_transport": true,
+    "requires_phase1_production_rerun_for_full_freeze": true,
+    "legacy_recipe_drift_still_present": true,
+    "scenario_mass_balance_follow_up_required": true,
+    "scenario_qc_failures": [
+      "fixed_base_medium_heavy_proxy"
+    ],
+    "architecture_gaps_remaining": false,
+    "next_step_label": "later_final_rerun_needed_only",
+    "biggest_remaining_phase4_blocker": "The frozen recipe still comes from three legacy prototype dates, not from a completed 2016-2022 regional drifter-segment study."
+  }
+}

@@ -405,6 +405,14 @@ class SourceHistoryReconstructionR1Service:
 
         if wind_file.startswith("era5"):
             downloads["wind"] = service.download_era5()
+        elif wind_file.startswith("gfs"):
+            gfs_path = self.forcing_dir / wind_file
+            if not gfs_path.exists():
+                raise FileNotFoundError(
+                    f"GFS wind forcing was requested for source-history reconstruction but is not available locally: {gfs_path}. "
+                    "The official Phase 1 recipe family is still only partially available in the current repo state."
+                )
+            downloads["wind"] = str(gfs_path)
         elif wind_file.startswith("ncep"):
             downloads["wind"] = service.download_ncep()
         else:

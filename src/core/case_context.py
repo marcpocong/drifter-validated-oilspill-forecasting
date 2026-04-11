@@ -149,14 +149,14 @@ class CaseContext:
     @property
     def transport_track(self) -> str:
         if self.is_prototype:
-            return "historical transport calibration"
-        return "official spill case"
+            return "legacy prototype historical transport calibration (not the final Chapter 3 regional study)"
+        return "official spill case kept separate from historical regional transport validation"
 
     @property
     def recipe_resolution_mode(self) -> str:
         if self.is_prototype:
-            return "case-local Phase 1 validation ranking"
-        return "frozen Phase 1 baseline selection"
+            return "prototype case-local Phase 1 ranking (not the final frozen regional baseline)"
+        return "frozen Phase 1 baseline selection for spill-case workflows"
 
     @property
     def arcgis_layers(self) -> list[CaseLayerConfig]:

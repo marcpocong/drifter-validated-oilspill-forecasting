@@ -46,6 +46,7 @@ from src.utils.io import (
     get_official_mask_p50_datecomposite_path,
     get_official_mask_threshold_path,
     get_official_prob_presence_path,
+    get_phase2_recipe_family_status,
     get_phase2_loading_audit_paths,
     resolve_spill_origin,
 )
@@ -235,6 +236,7 @@ class EnsembleForecastService:
         self.audit_json_path = audit_paths["json"]
         self.audit_csv_path = audit_paths["csv"]
         self.audit_records: list[dict] = []
+        self.active_recipe_selection: RecipeSelection | None = None
 
         self.config_path = Path("config/ensemble.yaml")
         if not self.config_path.exists():
@@ -338,6 +340,52 @@ class EnsembleForecastService:
             "valid": valid,
             "provisional": provisional,
             "rerun_required": rerun_required,
+        }
+
+    def _build_phase2_finalization_context(self, selection: RecipeSelection | None = None) -> dict:
+        selected_recipe = selection.recipe if selection is not None else ""
+        recipe_family_status = get_phase2_recipe_family_status(
+            run_name=self.case.run_name,
+            selected_recipe=selected_recipe,
+        )
+        status_flags = self._build_status_flags(selection)
+        provisional_reasons: list[str] = []
+        if self.provisional_transport_model:
+            provisional_reasons.append("transport.provisional_transport_model=true")
+        if status_flags["rerun_required"]:
+            provisional_reasons.append("selection.rerun_required=true")
+        if recipe_family_status["requires_phase1_production_rerun_for_full_freeze"]:
+            provisional_reasons.append("phase1.full_production_rerun_required=true")
+        if not recipe_family_status["official_recipe_family_locally_available"]:
+            provisional_reasons.append("phase1.official_recipe_family_locally_available=none")
+        elif recipe_family_status["official_recipe_family_unavailable"]:
+            provisional_reasons.append("phase1.official_recipe_family_locally_available=partial")
+        if recipe_family_status["legacy_recipe_drift_leaks_into_official_mode"]:
+            provisional_reasons.append("phase1.recipe_family_drift_leaks_into_official_mode=true")
+        if recipe_family_status["selected_recipe_id_is_legacy_alias"]:
+            provisional_reasons.append("selection.recipe_is_legacy_alias=true")
+
+        scientifically_usable = not status_flags["rerun_required"]
+        scientifically_frozen = bool(
+            scientifically_usable
+            and not self.provisional_transport_model
+            and not recipe_family_status["requires_phase1_production_rerun_for_full_freeze"]
+            and not recipe_family_status["official_recipe_family_unavailable"]
+            and not recipe_family_status["selected_recipe_id_is_legacy_alias"]
+        )
+        status_label = (
+            "implemented_and_scientifically_ready"
+            if scientifically_frozen and not provisional_reasons
+            else "implemented_but_provisional"
+        )
+
+        return {
+            "schema_version": "phase2_finalization_v1",
+            "status_label": status_label,
+            "scientifically_usable_as_implemented": scientifically_usable,
+            "scientifically_frozen": scientifically_frozen,
+            "provisional_reasons": provisional_reasons,
+            **recipe_family_status,
         }
 
     def _init_run_audit(
@@ -1389,7 +1437,22 @@ class EnsembleForecastService:
         return written_files
 
     def _write_loading_audit_artifacts(self):
-        audit_payload = {"runs": self.audit_records}
+        phase2_finalization = self._build_phase2_finalization_context(self.active_recipe_selection)
+        audit_payload = {
+            "manifest_type": "official_phase2_loading_audit" if self.case.is_official else "prototype_phase2_loading_audit",
+            "workflow_mode": self.case.workflow_mode,
+            "case_id": self.case.case_id,
+            "run_name": self.output_run_name,
+            "transport": {
+                "model": self.transport_model_name,
+                "provisional_transport_model": self.provisional_transport_model,
+                "wave_forcing_required": self.require_wave_forcing,
+                "stokes_drift_enabled": self.enable_stokes_drift,
+            },
+            "status_flags": self._build_status_flags(self.active_recipe_selection),
+            "phase2_finalization": phase2_finalization,
+            "runs": self.audit_records,
+        }
         _write_json_atomic(self.audit_json_path, audit_payload)
 
         rows: list[dict] = []
@@ -1411,6 +1474,22 @@ class EnsembleForecastService:
                 "root_cause": audit["root_cause"],
                 "exception_text": audit["exception_text"],
                 "exception_chain": " | ".join(audit["exception_chain"]),
+                "phase2_status_label": phase2_finalization["status_label"],
+                "scientifically_usable_as_implemented": phase2_finalization["scientifically_usable_as_implemented"],
+                "scientifically_frozen": phase2_finalization["scientifically_frozen"],
+                "official_recipe_family_expected": ";".join(phase2_finalization["official_recipe_family_expected"]),
+                "official_recipe_family_runtime_defined": ";".join(phase2_finalization["official_recipe_family_runtime_defined"]),
+                "official_recipe_family_locally_available": ";".join(phase2_finalization["official_recipe_family_locally_available"]),
+                "official_recipe_family_unavailable": ";".join(phase2_finalization["official_recipe_family_unavailable"]),
+                "legacy_recipe_id_detected": phase2_finalization["legacy_recipe_id_detected"],
+                "legacy_recipe_ids_present_in_runtime": ";".join(phase2_finalization["legacy_recipe_ids_present_in_runtime"]),
+                "legacy_recipe_drift_leaks_into_official_mode": phase2_finalization["legacy_recipe_drift_leaks_into_official_mode"],
+                "selected_recipe_id_is_legacy_alias": phase2_finalization["selected_recipe_id_is_legacy_alias"],
+                "selected_recipe_chapter3_target": phase2_finalization["selected_recipe_chapter3_target"],
+                "gfs_wind_present_for_active_case": phase2_finalization["gfs_wind_present_for_active_case"],
+                "requires_phase1_production_rerun_for_full_freeze": phase2_finalization["requires_phase1_production_rerun_for_full_freeze"],
+                "phase1_finalization_classification": phase2_finalization["phase1_finalization_classification"],
+                "phase2_provisional_reasons": " | ".join(phase2_finalization["provisional_reasons"]),
             }
             if not audit["forcings"]:
                 rows.append(base_row)
@@ -1461,6 +1540,7 @@ class EnsembleForecastService:
         grid = GridBuilder()
         simulation_start, simulation_end, _ = self._get_official_simulation_window()
         status_flags = self._build_status_flags(selection)
+        phase2_finalization = self._build_phase2_finalization_context(selection)
         ensemble_cfg = self.official_config.get("ensemble") or {}
         return {
             "manifest_type": "official_phase2_ensemble",
@@ -1500,6 +1580,7 @@ class EnsembleForecastService:
                 "rerun_required": selection.rerun_required if selection is not None else False,
             },
             "status_flags": status_flags,
+            "phase2_finalization": phase2_finalization,
             "loading_audit": {
                 "json": str(self.audit_json_path),
                 "csv": str(self.audit_csv_path),
@@ -1600,6 +1681,7 @@ class EnsembleForecastService:
     ) -> dict:
         """Run a single deterministic spill forecast for official Phase 3B scoring."""
         logger.info("Starting deterministic control forecast for recipe %s", recipe_name)
+        self.active_recipe_selection = selection
         if self.case.is_official:
             simulation_start, simulation_end, duration_hours = self._get_official_simulation_window()
             deterministic_cfg = self.official_config.get("deterministic") or {}
@@ -1695,6 +1777,7 @@ class EnsembleForecastService:
         """
         Runs the ensemble and writes official or prototype products.
         """
+        self.active_recipe_selection = selection
         active_ensemble_size = self.official_ensemble_size if self.case.is_official else self.ensemble_size
         logger.info("Starting Phase 2: Ensemble Forecast (%s members)...", active_ensemble_size)
         logger.info("Spill Location: %s, %s", start_lat, start_lon)
@@ -1892,6 +1975,7 @@ class EnsembleForecastService:
         simulation_start, simulation_end, _ = self._get_official_simulation_window()
         validation_time = pd.Timestamp(self.case.validation_layer.event_time_utc or self.case.simulation_end_utc)
         status_flags = self._build_status_flags(selection)
+        phase2_finalization = self._build_phase2_finalization_context(selection)
         payload = {
             "manifest_type": "official_phase2_forecast",
             "workflow_mode": self.case.workflow_mode,
@@ -1928,6 +2012,7 @@ class EnsembleForecastService:
                 "note": selection.note,
             },
             "status_flags": status_flags,
+            "phase2_finalization": phase2_finalization,
             "loading_audit": {
                 "json": str(self.audit_json_path),
                 "csv": str(self.audit_csv_path),

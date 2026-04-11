@@ -28,6 +28,10 @@ Container routing via the PIPELINE_PHASE environment variable:
   PIPELINE_PHASE=phase3c_external_case_ensemble_comparison -> DWH Phase 3C deterministic-vs-ensemble comparison
   PIPELINE_PHASE=phase3c_dwh_pygnome_comparator -> DWH Phase 3C cross-model PyGNOME comparator
   PIPELINE_PHASE=final_validation_package -> Read-only thesis package built from completed Mindoro + DWH outputs
+  PIPELINE_PHASE=phase1_finalization_audit -> Read-only Chapter 3 Phase 1 architecture audit and verdict
+  PIPELINE_PHASE=phase2_finalization_audit -> Read-only Chapter 3 Phase 2 semantics/manifests audit and verdict
+  PIPELINE_PHASE=phase4_oiltype_and_shoreline -> Mindoro Phase 4 oil-type fate and shoreline-impact workflow
+  PIPELINE_PHASE=phase5_launcher_and_docs_sync -> Read-only launcher/docs/reproducibility package sync
   PIPELINE_PHASE=3               -> Phase 3 (oil weathering & PyGNOME comparison)
   PIPELINE_PHASE=benchmark       -> Phase 3A cross-model benchmark
 
@@ -189,10 +193,12 @@ def print_phase2_outputs(results):
         print(f"  - {BASE_OUTPUT_DIR}/forecast/control_footprint_mask_2023-03-06T09-59-00Z.tif")
         print(f"  - {BASE_OUTPUT_DIR}/forecast/control_density_norm_2023-03-06T09-59-00Z.tif")
         print(f"  - {BASE_OUTPUT_DIR}/forecast/phase2_loading_audit.json")
+        print(f"  - {BASE_OUTPUT_DIR}/forecast/phase2_loading_audit.csv")
         print(f"  - {BASE_OUTPUT_DIR}/ensemble/ensemble_manifest.json")
         print(f"  - {BASE_OUTPUT_DIR}/ensemble/prob_presence_2023-03-06T09-59-00Z.tif")
         print(f"  - {BASE_OUTPUT_DIR}/ensemble/mask_p50_2023-03-06T09-59-00Z.tif")
         print(f"  - {BASE_OUTPUT_DIR}/ensemble/mask_p90_2023-03-06T09-59-00Z.tif")
+        print(f"  - {BASE_OUTPUT_DIR}/ensemble/prob_presence_2023-03-06_datecomposite.tif")
         print(f"  - {BASE_OUTPUT_DIR}/ensemble/mask_p50_2023-03-06_datecomposite.tif")
     else:
         print("Phase 2 probability outputs:")
@@ -211,6 +217,9 @@ def print_phase2_outputs(results):
 
 
 def print_recipe_selection(selection, label: str = "Recipe selection"):
+    from src.core.case_context import get_case_context
+    from src.utils.io import get_phase2_recipe_family_status
+
     print(f"{label}: {selection.recipe}")
     print(f"Selection source: {selection.source_kind}")
     print(
@@ -221,6 +230,17 @@ def print_recipe_selection(selection, label: str = "Recipe selection"):
         print(f"Selection artifact: {selection.source_path}")
     if selection.note:
         print(f"Selection note: {selection.note}")
+
+    case = get_case_context()
+    if case.is_official:
+        phase2_status = get_phase2_recipe_family_status(
+            run_name=case.run_name,
+            selected_recipe=selection.recipe,
+        )
+        if phase2_status["requires_phase1_production_rerun_for_full_freeze"]:
+            print("Phase 1 freeze note: later full Phase 1 production rerun is still required for the final frozen-baseline story.")
+        if phase2_status["legacy_recipe_drift_leaks_into_official_mode"]:
+            print("Recipe-family note: official recipe-family support is still partial locally; legacy *_ncep IDs remain and gfs_wind.nc is not present.")
 
 
 def run_phase1_and_2():
@@ -268,6 +288,7 @@ def run_phase1_and_2():
 
     print("Starting Phase 1: Transport Validation Pipeline...")
     print_workflow_context()
+    print("Prototype mode is preserved for debugging and regression checks only; it is not the final Chapter 3 Phase 1 study.")
 
     ensure_data_exists(RUN_NAME, require_drifter=True)
     drifter_path = Path(f"data/drifters/{RUN_NAME}/drifters_noaa.csv")
@@ -1373,6 +1394,118 @@ def run_final_validation_package_phase():
     print(f"Summary memo: {results['artifacts']['final_validation_summary']}")
 
 
+def run_phase1_finalization_audit_phase():
+    from src.services.phase1_finalization_audit import run_phase1_finalization_audit
+
+    print("Starting Phase 1 finalization audit...")
+    print("This phase is read-only and will not rerun the expensive 2016-2022 regional transport study.")
+    print("Existing Mindoro, DWH, and final validation outputs will not be overwritten.")
+
+    results = run_phase1_finalization_audit()
+    verdict = results["overall_verdict"]
+
+    print("\nPhase 1 finalization audit complete.")
+    print(f"Outputs saved to: {results['output_dir']}")
+    print(f"Status CSV: {results['status_csv']}")
+    print(f"Status JSON: {results['status_json']}")
+    print(f"Memo: {results['memo_md']}")
+    print(f"Verdict: {results['verdict_md']}")
+    print(f"Phase 1 architecture scientifically ready: {verdict['scientifically_ready']}")
+    print(f"Full production rerun still needed: {verdict['full_production_rerun_required']}")
+    print(f"Biggest remaining blocker: {verdict['biggest_remaining_blocker']}")
+
+
+def run_phase2_finalization_audit_phase():
+    from src.services.phase2_finalization_audit import run_phase2_finalization_audit
+
+    print("Starting Phase 2 finalization audit...")
+    print("This phase is read-only and will not rerun the expensive official Mindoro forecast path.")
+    print("Existing Mindoro, DWH, and final validation outputs will not be overwritten.")
+
+    results = run_phase2_finalization_audit()
+    verdict = results["overall_verdict"]
+
+    print("\nPhase 2 finalization audit complete.")
+    print(f"Outputs saved to: {results['output_dir']}")
+    print(f"Status CSV: {results['status_csv']}")
+    print(f"Status JSON: {results['status_json']}")
+    print(f"Memo: {results['memo_md']}")
+    print(f"Output catalog: {results['output_catalog_csv']}")
+    print(f"Verdict: {results['verdict_md']}")
+    print(f"Phase 2 scientifically usable as implemented: {verdict['scientifically_usable_as_implemented']}")
+    print(f"Phase 2 scientifically frozen: {verdict['scientifically_frozen']}")
+    print(f"Later Phase 1 production rerun still needed for full freeze: {verdict['requires_phase1_production_rerun_for_full_freeze']}")
+    print(f"Legacy recipe drift still leaks into official mode: {verdict['legacy_recipe_drift_leaks_into_official_mode']}")
+    print(f"Biggest remaining provisional item: {verdict['biggest_remaining_phase2_provisional_item']}")
+
+
+def run_phase4_oiltype_and_shoreline_phase():
+    from src.services.phase4_oiltype_and_shoreline import run_phase4_oiltype_and_shoreline
+
+    print("Starting Phase 4 oil-type fate and shoreline-impact workflow...")
+    print("This phase writes a separate Phase 4 output bundle and does not overwrite the stored Mindoro or DWH Phase 3 validation outputs.")
+
+    results = run_phase4_oiltype_and_shoreline()
+    verdict = results["verdict"]
+
+    print("\nPhase 4 complete.")
+    print(f"Outputs saved to: {results['output_dir']}")
+    print(f"Manifest: {results['manifest_path']}")
+    print(f"Summary CSV: {results['summary_csv']}")
+    print(f"Shoreline arrival CSV: {results['shoreline_arrival_csv']}")
+    print(f"Shoreline segments CSV: {results['shoreline_segments_csv']}")
+    print(f"Oil-type comparison CSV: {results['oiltype_comparison_csv']}")
+    print(f"Methodology memo: {results['methodology_memo_md']}")
+    print(f"Verdict: {results['final_verdict_md']}")
+    print(f"Scenarios run: {', '.join(results['scenario_ids'])}")
+    print(f"Shoreline arrival outputs generated: {results['shoreline_arrival_generated']}")
+    print(f"Weathering path audit decision: {results['weathering_path_audit']['decision']}")
+    print(
+        "Existing weathering path reused: "
+        f"{results['weathering_path_audit']['reused_existing_weathering_path']}"
+    )
+    print(f"Selected transport loading audit: {results['selected_transport_loading_audit_path']}")
+    print(f"Phase 4 scientifically reportable now: {verdict['scientifically_reportable_now']}")
+    print(f"Phase 4 provisional because of inherited transport: {verdict['provisional_inherited_from_transport']}")
+    print(f"Biggest remaining blocker: {verdict['biggest_remaining_phase4_blocker']}")
+
+
+def run_phase5_launcher_and_docs_sync_phase():
+    from src.services.phase5_launcher_and_docs_sync import run_phase5_launcher_and_docs_sync
+
+    print("Starting Phase 5 launcher/docs/package sync...")
+    print("This phase is read-only with respect to scientific outputs and will not rerun expensive science by default.")
+
+    results = run_phase5_launcher_and_docs_sync()
+    verdict = results["overall_verdict"]
+
+    print("\nPhase 5 sync complete.")
+    print(f"Outputs saved to: {results['output_dir']}")
+    print(f"Launcher entrypoint: {results['launcher_entrypoint']}")
+    print(f"Menu categories: {', '.join(results['menu_categories'])}")
+    print(f"Safe read-only launcher IDs: {', '.join(results['safe_read_only_entry_ids'])}")
+    print(f"Docs updated: {', '.join(results['docs_updated'])}")
+    print(f"Phase status registry: {results['final_phase_status_registry_csv']}")
+    print(f"Manifest index: {results['final_manifest_index_csv']}")
+    print(f"Output catalog: {results['final_output_catalog_csv']}")
+    print(f"Summary: {results['final_reproducibility_summary_md']}")
+    print(f"Verdict: {results['phase5_final_verdict_md']}")
+    print(f"Phase 5 reportable now: {verdict['phase5_reportable_now']}")
+    print(f"Launcher/menu honest and current: {verdict['launcher_menu_honest_and_current']}")
+    print(
+        "Later Phase 1 production rerun still needed for full freeze: "
+        f"{verdict['requires_phase1_production_rerun_for_full_freeze']}"
+    )
+    print(
+        "Legacy recipe drift still leaks into official mode: "
+        f"{verdict['legacy_recipe_drift_leaks_into_official_mode']}"
+    )
+    print(
+        "Biggest remaining project-science blocker: "
+        f"{verdict['biggest_remaining_project_scientific_blocker']}"
+    )
+
+
 def main():
     import subprocess
 
@@ -1382,6 +1515,18 @@ def main():
     phase = os.environ.get("PIPELINE_PHASE", "1_2")
     if phase == "final_validation_package":
         run_final_validation_package_phase()
+        return
+    if phase == "phase1_finalization_audit":
+        run_phase1_finalization_audit_phase()
+        return
+    if phase == "phase2_finalization_audit":
+        run_phase2_finalization_audit_phase()
+        return
+    if phase == "phase4_oiltype_and_shoreline":
+        run_phase4_oiltype_and_shoreline_phase()
+        return
+    if phase == "phase5_launcher_and_docs_sync":
+        run_phase5_launcher_and_docs_sync_phase()
         return
 
     case = get_case_context()
@@ -1453,6 +1598,14 @@ def main():
         run_phase3c_dwh_pygnome_comparator_phase()
     elif phase == "final_validation_package":
         run_final_validation_package_phase()
+    elif phase == "phase1_finalization_audit":
+        run_phase1_finalization_audit_phase()
+    elif phase == "phase2_finalization_audit":
+        run_phase2_finalization_audit_phase()
+    elif phase == "phase4_oiltype_and_shoreline":
+        run_phase4_oiltype_and_shoreline_phase()
+    elif phase == "phase5_launcher_and_docs_sync":
+        run_phase5_launcher_and_docs_sync_phase()
     elif phase == "3":
         run_phase3()
     elif phase == "3b":

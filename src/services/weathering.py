@@ -1,9 +1,9 @@
 """
-Phase 3: Oil Weathering & Fate Service.
+Oil weathering and fate service shared by the legacy Phase 3 path and Phase 4.
 
-Runs OpenOil (OpenDrift) simulations for two representative ADIOS oil types
-(light distillate vs heavy bunker fuel) along the validated transport pathway.
-Produces 72-hour time-series mass budgets: surface, evaporated, dispersed, beached.
+Runs OpenOil (OpenDrift) simulations for one or more configured oil scenarios
+along the selected transport pathway and writes 72-hour time-series mass budgets:
+surface, evaporated, dispersed, and beached.
 """
 
 import logging
@@ -11,6 +11,7 @@ import yaml
 import pandas as pd
 from datetime import timedelta
 from pathlib import Path
+from typing import Any
 
 from opendrift.models.openoil import OpenOil
 from opendrift.readers import reader_netCDF_CF_generic
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 class OilWeatheringService:
     """
-    Runs OpenOil weathering simulations for Phase 3.
+    Runs OpenOil weathering simulations for Phase 3 and the standardized Phase 4.
 
     Model settings (per the paper's Phase 3 fate-assessment specification):
 
@@ -38,7 +39,7 @@ class OilWeatheringService:
     |                       | emulsification, and spreading.               |
     +-----------------------+----------------------------------------------+
 
-    For each oil type defined in config/oil.yaml, it:
+    For each configured oil scenario, it:
       1. Seeds N Lagrangian particles (N from config; default 10,000) using the validated best-recipe forcing.
       2. Runs for 72 hours using OpenDrift’s OpenOil physical weathering model.
       3. Extracts a time-series mass budget from the NetCDF output:
@@ -49,15 +50,28 @@ class OilWeatheringService:
       4. Saves budget to CSV and triggers mass-budget chart generation.
     """
 
-    def __init__(self, currents_file: str, winds_file: str):
+    def __init__(
+        self,
+        currents_file: str,
+        winds_file: str,
+        *,
+        wave_file: str | Path | None = None,
+        output_dir: str | Path | None = None,
+        config_path: str | Path = "config/oil.yaml",
+        scenarios: dict[str, dict[str, Any]] | None = None,
+        phase_label: str = "Phase 3",
+    ):
         from src.core.constants import BASE_OUTPUT_DIR
-        self.output_dir = BASE_OUTPUT_DIR / "weathering"
+
+        self.output_dir = Path(output_dir) if output_dir else BASE_OUTPUT_DIR / "weathering"
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self.currents_file = currents_file
         self.winds_file = winds_file
+        self.wave_file = Path(wave_file) if wave_file else None
+        self.phase_label = str(phase_label)
 
-        config_path = Path("config/oil.yaml")
+        config_path = Path(config_path)
         if not config_path.exists():
             raise FileNotFoundError(f"Phase 3 config required at {config_path}")
 
@@ -65,7 +79,7 @@ class OilWeatheringService:
             self.config = yaml.safe_load(f)
 
         self.sim_cfg = self.config["simulation"]
-        self.oils_cfg = self.config["oils"]
+        self.oils_cfg = scenarios or self.config["oils"]
 
     # ------------------------------------------------------------------
     # Public API
@@ -84,9 +98,9 @@ class OilWeatheringService:
         results = {}
         for oil_key, oil_cfg in self.oils_cfg.items():
             logger.info(f"\n{'='*60}")
-            logger.info(f"Phase 3 | Oil Type: {oil_cfg['display_name']}")
+            logger.info(f"{self.phase_label} | Oil Type: {oil_cfg['display_name']}")
             logger.info(f"{'='*60}")
-            print(f"\n🛢️  Running Phase 3 weathering: {oil_cfg['display_name']}")
+            print(f"\nRunning {self.phase_label} weathering: {oil_cfg['display_name']}")
             budget_df, nc_path = self._run_single(
                 oil_key=oil_key,
                 oil_cfg=oil_cfg,
@@ -210,8 +224,12 @@ class OilWeatheringService:
         o.add_reader(reader_wind)
 
         try:
-            from src.core.constants import RUN_NAME
-            reader_wave = reader_netCDF_CF_generic.Reader(f"data/forcing/{RUN_NAME}/cmems_wave.nc")
+            wave_path = self.wave_file
+            if wave_path is None:
+                from src.core.constants import RUN_NAME
+
+                wave_path = Path(f"data/forcing/{RUN_NAME}/cmems_wave.nc")
+            reader_wave = reader_netCDF_CF_generic.Reader(str(wave_path))
             o.add_reader(reader_wave)
         except Exception as e:
             pass
@@ -273,7 +291,10 @@ class OilWeatheringService:
         # NOTE: OpenOil always computes mass_oil from m3_per_hour;
         # passing mass_oil directly is overwritten.  We therefore
         # supply the volume-rate equivalent of the desired M₀.
+        from src.services.ensemble import normalize_model_timestamp
         from src.utils.io import resolve_polygon_seeding
+
+        release_time = normalize_model_timestamp(start_time)
         lons, lats, _ = resolve_polygon_seeding(num_particles)
         
         logger.info("Seeding elements across Official Layer 3 target.")
@@ -281,7 +302,7 @@ class OilWeatheringService:
             lon=lons,
             lat=lats,
             number=num_particles,
-            time=pd.to_datetime(start_time),
+            time=release_time,
             oil_type=adios_id,
             m3_per_hour=m3_per_hour,
         )
@@ -305,12 +326,15 @@ class OilWeatheringService:
         if temp_nc_path.exists():
             temp_nc_path.unlink()
 
-        o.run(
-            duration=timedelta(hours=duration_hours),
-            time_step=timedelta(minutes=time_step_minutes),
-            time_step_output=timedelta(hours=1),   # hourly budget snapshots
-            outfile=str(temp_nc_path),
-        )
+        from src.services.ensemble import intercept_sys_exit
+
+        with intercept_sys_exit():
+            o.run(
+                duration=timedelta(hours=duration_hours),
+                time_step=timedelta(minutes=time_step_minutes),
+                time_step_output=timedelta(hours=1),   # hourly budget snapshots
+                outfile=str(temp_nc_path),
+            )
 
         import shutil
         shutil.move(str(temp_nc_path), str(nc_path))
@@ -337,7 +361,7 @@ class OilWeatheringService:
             plot_mass_budget_chart(
                 budget_df=res["budget_df"],
                 output_file=str(chart_path),
-                title=f"Phase 3 – Mass Budget: {res['display_name']}",
+                title=f"{self.phase_label} - Mass Budget: {res['display_name']}",
                 color=self.oils_cfg[oil_key]["color"],
             )
             print(f"   📈 Mass budget chart → {chart_path.name}")
@@ -356,10 +380,25 @@ class OilWeatheringService:
 # Convenience wrapper (mirrors run_ensemble pattern)
 # ---------------------------------------------------------------------------
 
-def _resolve_forcing_paths(best_recipe: str) -> tuple[str, str]:
-    """Resolve currents and wind forcing files for a recipe key from recipes config."""
+def _resolve_forcing_paths(
+    best_recipe: str,
+    forcing_paths: dict[str, str | Path] | None = None,
+) -> tuple[str, str, str | None]:
+    """Resolve forcing files for a recipe key or explicit caller-supplied paths."""
+    if forcing_paths:
+        wave_path = forcing_paths.get("wave")
+        return (
+            str(forcing_paths["currents"]),
+            str(forcing_paths["wind"]),
+            str(wave_path) if wave_path else None,
+        )
+
     forcing = get_forcing_files(best_recipe)
-    return str(forcing["currents"]), str(forcing["wind"])
+    return (
+        str(forcing["currents"]),
+        str(forcing["wind"]),
+        str(forcing["wave"]) if forcing.get("wave") else None,
+    )
 
 
 def run_weathering(
@@ -374,7 +413,7 @@ def run_weathering(
     Parameters
     ----------
     best_recipe : str
-        Winning recipe key from Phase 1 (e.g. 'cmems_ncep').
+        Winning or selected recipe key from Phase 1/official baseline selection (e.g. 'cmems_era5').
     start_time : str
         ISO-format simulation start time.
     start_lat, start_lon : float
@@ -384,9 +423,37 @@ def run_weathering(
     -------
     dict  – keyed by oil type, each containing budget_df + paths.
     """
-    currents_file, winds_file = _resolve_forcing_paths(best_recipe)
+    currents_file, winds_file, wave_file = _resolve_forcing_paths(best_recipe)
 
-    service = OilWeatheringService(currents_file, winds_file)
+    service = OilWeatheringService(currents_file, winds_file, wave_file=wave_file)
+    return service.run_all(
+        start_lat=start_lat,
+        start_lon=start_lon,
+        start_time=start_time,
+    )
+
+
+def run_weathering_scenarios(
+    best_recipe: str,
+    start_time: str,
+    start_lat: float,
+    start_lon: float,
+    *,
+    scenarios: dict[str, dict[str, Any]],
+    output_dir: str | Path,
+    phase_label: str = "Phase 4",
+    forcing_paths: dict[str, str | Path] | None = None,
+) -> dict:
+    """Run a caller-supplied scenario registry without changing the legacy Phase 3 path."""
+    currents_file, winds_file, wave_file = _resolve_forcing_paths(best_recipe, forcing_paths=forcing_paths)
+    service = OilWeatheringService(
+        currents_file,
+        winds_file,
+        wave_file=wave_file,
+        output_dir=output_dir,
+        scenarios=scenarios,
+        phase_label=phase_label,
+    )
     return service.run_all(
         start_lat=start_lat,
         start_lon=start_lon,
@@ -406,11 +473,11 @@ def run_refined_weathering(
     Returns None if Stage 3b is not enabled in config/oil.yaml.
     """
     try:
-        currents_file, winds_file = _resolve_forcing_paths(best_recipe)
+        currents_file, winds_file, wave_file = _resolve_forcing_paths(best_recipe)
     except Exception:
         return None
 
-    service = OilWeatheringService(currents_file, winds_file)
+    service = OilWeatheringService(currents_file, winds_file, wave_file=wave_file)
     return service.run_refined_oil(
         start_lat=start_lat,
         start_lon=start_lon,

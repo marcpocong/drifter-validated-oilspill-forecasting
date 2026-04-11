@@ -21,6 +21,11 @@ from src.utils.io import find_current_vars, find_wind_vars, get_forcing_files
 
 logger = logging.getLogger(__name__)
 
+PHASE1_LOADING_AUDIT_SCHEMA_VERSION = "phase1_loading_audit_v2"
+PHASE1_LOADING_AUDIT_POLICY = (
+    "invalidate_recipe_on_required_forcing_or_simulation_failure_and_raise_if_no_valid_recipes_remain"
+)
+
 
 class TransportValidationService:
     def __init__(self, recipes_config: str = "config/recipes.yaml"):
@@ -315,6 +320,8 @@ class TransportValidationService:
 
     def _init_audit_row(self, recipe_name: str, forcing: dict, output_file: Path) -> dict:
         return {
+            "loading_audit_schema_version": PHASE1_LOADING_AUDIT_SCHEMA_VERSION,
+            "loading_audit_policy": PHASE1_LOADING_AUDIT_POLICY,
             "case_name": RUN_NAME,
             "recipe": recipe_name,
             "description": forcing.get("description", recipe_name),
@@ -330,6 +337,9 @@ class TransportValidationService:
             "wave_forcing_present": False,
             "wave_loading_status": "not_attempted",
             "validity_flag": "valid",
+            "status_flag": "valid",
+            "hard_fail": False,
+            "hard_fail_reason": "",
             "invalidity_reason": "",
             "output_path": str(output_file),
             "map_file": "",
@@ -338,12 +348,15 @@ class TransportValidationService:
 
     def _invalidate(self, audit: dict, reason: str, fallback_flag: str | None = None) -> None:
         audit["validity_flag"] = "invalid"
+        audit["status_flag"] = "invalid"
+        audit["hard_fail"] = True
         if fallback_flag:
             audit[fallback_flag] = True
         if audit["invalidity_reason"]:
             audit["invalidity_reason"] = f"{audit['invalidity_reason']}; {reason}"
         else:
             audit["invalidity_reason"] = reason
+        audit["hard_fail_reason"] = audit["invalidity_reason"]
 
     @staticmethod
     def _max_abs(data_array: xr.DataArray) -> float:

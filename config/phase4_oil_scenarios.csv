@@ -1,0 +1,4 @@
+scenario_id,oil_record_id,oil_label,category,source_note,enabled_yes_no,adios_id,density_kg_m3,color_hex
+lighter_oil,GENERIC_DIESEL,Light oil,light_distillate,Light-end representative scenario for higher evaporation and faster weathering,yes,GENERIC DIESEL,850,#FF8C00
+fixed_base_medium_heavy_proxy,GENERIC_INTERMEDIATE_FUEL_OIL_180,Fixed base medium-heavy proxy,medium_heavy_proxy,Fixed base marine-fuel proxy used as the main Phase 4 comparison anchor,yes,GENERIC INTERMEDIATE FUEL OIL 180,930,#8C564B
+heavier_oil,GENERIC_HEAVY_FUEL_OIL,Heavier oil,heavy_residual,Heavier persistent residual-fuel scenario for slower weathering and higher stranding persistence,yes,GENERIC HEAVY FUEL OIL,990,#4B0082

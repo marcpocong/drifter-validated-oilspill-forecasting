@@ -1,0 +1,356 @@
+import json
+import tempfile
+import unittest
+from pathlib import Path
+
+import pandas as pd
+
+from src.services.phase5_launcher_and_docs_sync import (
+    Phase5LauncherAndDocsSyncService,
+    load_launcher_matrix,
+)
+
+
+def _write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+class Phase5LauncherAndDocsSyncTests(unittest.TestCase):
+    def test_load_launcher_matrix_reads_safe_defaults(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            matrix_path = root / "config" / "launcher_matrix.json"
+            matrix_path.parent.mkdir(parents=True, exist_ok=True)
+            _write_json(
+                matrix_path,
+                {
+                    "catalog_version": "test",
+                    "entrypoint": "start.ps1",
+                    "categories": [
+                        {"category_id": "read_only_packaging_help_utilities", "label": "Read-only", "description": "Safe"},
+                    ],
+                    "entries": [
+                        {
+                            "entry_id": "phase5_sync",
+                            "menu_order": 1,
+                            "category_id": "read_only_packaging_help_utilities",
+                            "workflow_mode": "mindoro_retro_2023",
+                            "label": "Phase 5 sync",
+                            "description": "Read-only sync",
+                            "rerun_cost": "cheap_read_only",
+                            "safe_default": True,
+                            "steps": [{"phase": "phase5_launcher_and_docs_sync", "service": "pipeline", "description": "Sync"}],
+                        }
+                    ],
+                },
+            )
+
+            matrix = load_launcher_matrix(matrix_path)
+
+            self.assertEqual(matrix["entrypoint"], "start.ps1")
+            self.assertEqual(matrix["entries"][0]["entry_id"], "phase5_sync")
+            self.assertTrue(matrix["entries"][0]["safe_default"])
+
+    def test_phase5_service_generates_outputs_and_handles_missing_optional_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "config").mkdir(parents=True, exist_ok=True)
+            (root / "docs").mkdir(parents=True, exist_ok=True)
+            (root / "logs").mkdir(parents=True, exist_ok=True)
+
+            _write_json(
+                root / "config" / "launcher_matrix.json",
+                {
+                    "catalog_version": "phase5_test_matrix",
+                    "entrypoint": "start.ps1",
+                    "categories": [
+                        {
+                            "category_id": "scientific_reportable_tracks",
+                            "label": "Scientific / reportable tracks",
+                            "description": "Intentional reruns only.",
+                        },
+                        {
+                            "category_id": "read_only_packaging_help_utilities",
+                            "label": "Read-only packaging / help utilities",
+                            "description": "Safe summary tools.",
+                        },
+                        {
+                            "category_id": "legacy_prototype_tracks",
+                            "label": "Legacy prototype tracks",
+                            "description": "Regression only.",
+                        },
+                    ],
+                    "entries": [
+                        {
+                            "entry_id": "mindoro_reportable_core",
+                            "menu_order": 10,
+                            "category_id": "scientific_reportable_tracks",
+                            "workflow_mode": "mindoro_retro_2023",
+                            "label": "Mindoro reportable core bundle",
+                            "description": "Intentional scientific rerun.",
+                            "rerun_cost": "expensive",
+                            "safe_default": False,
+                            "notes": "Manual scientific rerun only.",
+                            "steps": [
+                                {"phase": "prep", "service": "pipeline", "description": "Prep"},
+                                {"phase": "1_2", "service": "pipeline", "description": "Forecast"},
+                            ],
+                        },
+                        {
+                            "entry_id": "phase5_sync",
+                            "menu_order": 20,
+                            "category_id": "read_only_packaging_help_utilities",
+                            "workflow_mode": "mindoro_retro_2023",
+                            "label": "Phase 5 launcher/docs/package sync",
+                            "description": "Read-only sync.",
+                            "rerun_cost": "cheap_read_only",
+                            "safe_default": True,
+                            "notes": "Safe first run.",
+                            "steps": [
+                                {
+                                    "phase": "phase5_launcher_and_docs_sync",
+                                    "service": "pipeline",
+                                    "description": "Phase 5 sync",
+                                }
+                            ],
+                        },
+                        {
+                            "entry_id": "prototype_legacy_bundle",
+                            "menu_order": 30,
+                            "category_id": "legacy_prototype_tracks",
+                            "workflow_mode": "prototype_2016",
+                            "label": "Prototype legacy bundle",
+                            "description": "Debug only.",
+                            "rerun_cost": "moderate",
+                            "safe_default": False,
+                            "notes": "Not the final study.",
+                            "steps": [
+                                {"phase": "prep", "service": "pipeline", "description": "Prep"},
+                            ],
+                        },
+                    ],
+                    "optional_future_work": [
+                        {"work_id": "trajectory_gallery", "label": "Trajectory gallery", "status": "not_implemented"},
+                        {"work_id": "read_only_browser_ui", "label": "Read-only browser UI", "status": "not_implemented"},
+                        {"work_id": "dwh_phase4_appendix_pilot", "label": "DWH Phase 4 appendix pilot", "status": "deferred"},
+                    ],
+                },
+            )
+
+            (root / "config" / "case_mindoro_retro_2023.yaml").write_text(
+                "\n".join(
+                    [
+                        "case_id: CASE_MINDORO_RETRO_2023",
+                        "workflow_mode: mindoro_retro_2023",
+                        "mode_label: Mindoro retro 2023",
+                        "description: Main Philippine spill case",
+                        "notes:",
+                        "  - Mindoro main-text case",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (root / "config" / "case_dwh_retro_2010_72h.yaml").write_text(
+                "\n".join(
+                    [
+                        "case_id: CASE_DWH_RETRO_2010_72H",
+                        "workflow_mode: dwh_retro_2010",
+                        "mode_label: DWH retro 2010",
+                        "description: External transfer-validation case",
+                        "notes:",
+                        "  - DWH appendix and transfer validation",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            for rel_path in (
+                "config/settings.yaml",
+                "config/phase1_baseline_selection.yaml",
+                "config/recipes.yaml",
+                "README.md",
+                "docs/PHASE_STATUS.md",
+                "docs/ARCHITECTURE.md",
+                "docs/OUTPUT_CATALOG.md",
+                "docs/QUICKSTART.md",
+                "docs/COMMAND_MATRIX.md",
+                "docs/LAUNCHER_USER_GUIDE.md",
+                "start.ps1",
+                ".gitignore",
+            ):
+                path = root / rel_path
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(f"{rel_path}\n", encoding="utf-8")
+
+            final_validation_dir = root / "output" / "final_validation_package"
+            final_validation_dir.mkdir(parents=True, exist_ok=True)
+            (root / "output" / "CASE_MINDORO_RETRO_2023" / "phase3b").mkdir(parents=True, exist_ok=True)
+            (root / "output" / "CASE_DWH_RETRO_2010_72H" / "phase3c_external_case_run").mkdir(parents=True, exist_ok=True)
+            (root / "output" / "phase1_finalization_audit").mkdir(parents=True, exist_ok=True)
+            (root / "output" / "phase2_finalization_audit").mkdir(parents=True, exist_ok=True)
+            (root / "output" / "phase4" / "CASE_MINDORO_RETRO_2023").mkdir(parents=True, exist_ok=True)
+
+            (root / "output" / "CASE_MINDORO_RETRO_2023" / "phase3b" / "phase3b_summary.csv").write_text(
+                "metric,value\nfss_1km,0.0\n",
+                encoding="utf-8",
+            )
+            (root / "output" / "CASE_DWH_RETRO_2010_72H" / "phase3c_external_case_run" / "phase3c_summary.csv").write_text(
+                "metric,value\nfss_1km,0.5\n",
+                encoding="utf-8",
+            )
+
+            for artifact_name in (
+                "final_validation_main_table.csv",
+                "final_validation_benchmark_table.csv",
+                "final_validation_observation_table.csv",
+                "final_validation_limitations.csv",
+                "final_validation_claims_guardrails.md",
+                "final_validation_chapter_sync_memo.md",
+                "final_validation_interpretation_memo.md",
+                "final_validation_summary.md",
+            ):
+                (final_validation_dir / artifact_name).write_text(f"{artifact_name}\n", encoding="utf-8")
+
+            _write_json(
+                final_validation_dir / "final_validation_manifest.json",
+                {
+                    "phase": "final_validation_package",
+                    "artifacts": {
+                        "final_validation_summary": "output/final_validation_package/final_validation_summary.md",
+                        "final_validation_main_table": "output/final_validation_package/final_validation_main_table.csv",
+                    },
+                    "inputs_preserved": [
+                        "output/CASE_MINDORO_RETRO_2023/phase3b/phase3b_summary.csv",
+                        "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_run/phase3c_summary.csv",
+                    ],
+                    "headlines": {
+                        "mindoro_strict": {"fss_1km": 0.0, "fss_3km": 0.0, "fss_5km": 0.0, "fss_10km": 0.0},
+                        "mindoro_broader_support": {"fss_1km": 0.17, "fss_3km": 0.20, "fss_5km": 0.22, "fss_10km": 0.24},
+                        "dwh_deterministic_event": {"fss_1km": 0.50, "fss_3km": 0.55, "fss_5km": 0.57, "fss_10km": 0.60},
+                        "dwh_ensemble_p50_event": {"fss_1km": 0.49, "fss_3km": 0.53, "fss_5km": 0.55, "fss_10km": 0.58},
+                        "dwh_pygnome_event": {"fss_1km": 0.32, "fss_3km": 0.35, "fss_5km": 0.37, "fss_10km": 0.41},
+                        "mindoro_benchmark_top": {"eventcorridor_mean_fss": 0.31},
+                    },
+                },
+            )
+            (final_validation_dir / "final_validation_case_registry.csv").write_text(
+                "\n".join(
+                    [
+                        "case_id,track_id,track_label,status,truth_source,primary_output_dir,reporting_role,main_text_priority,notes",
+                        "CASE_MINDORO_RETRO_2023,A,Mindoro benchmark,complete,public masks,output/CASE_MINDORO_RETRO_2023/pygnome_public_comparison,comparative discussion,secondary,Comparator",
+                        "CASE_MINDORO_RETRO_2023,B1,Mindoro strict,complete,WWF March 6 mask,output/CASE_MINDORO_RETRO_2023/phase3b,main-text stress test,primary,Strict stress test",
+                        "CASE_MINDORO_RETRO_2023,B2,Mindoro broader support,complete,public union,output/CASE_MINDORO_RETRO_2023/public_obs_appendix,supporting interpretation,secondary,Support track",
+                        "CASE_DWH_RETRO_2010_72H,C1,DWH deterministic,complete,DWH public masks,output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_run,main-text scientific result,primary,Transfer validation",
+                        "CASE_DWH_RETRO_2010_72H,C2,DWH ensemble,complete,DWH public masks,output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_ensemble_comparison,comparative discussion,primary,Ensemble validation",
+                        "CASE_DWH_RETRO_2010_72H,C3,DWH PyGNOME,complete,DWH public masks,output/CASE_DWH_RETRO_2010_72H/phase3c_dwh_pygnome_comparator,comparative discussion,secondary,Comparator only",
+                        "CASE_MINDORO_RETRO_2023,appendix_sensitivity,Mindoro appendix sensitivity,reviewed_not_promoted,public masks,output/CASE_MINDORO_RETRO_2023/recipe_sensitivity_r1_multibranch,appendix_only,appendix,Support only",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            _write_json(
+                root / "output" / "phase1_finalization_audit" / "phase1_finalization_status.json",
+                {
+                    "overall_verdict": {
+                        "biggest_remaining_blocker": "The accepted/rejected 72 h segment registry is still missing.",
+                    }
+                },
+            )
+            _write_json(
+                root / "output" / "phase2_finalization_audit" / "phase2_finalization_status.json",
+                {
+                    "overall_verdict": {
+                        "scientifically_frozen": False,
+                        "requires_phase1_production_rerun_for_full_freeze": True,
+                        "legacy_recipe_drift_leaks_into_official_mode": True,
+                        "biggest_remaining_phase2_provisional_item": "Phase 2 is usable but not frozen.",
+                    }
+                },
+            )
+
+            phase4_dir = root / "output" / "phase4" / "CASE_MINDORO_RETRO_2023"
+            (phase4_dir / "phase4_oil_budget_summary.csv").write_text("scenario_id,final_surface_pct\nlighter_oil,0.0\n", encoding="utf-8")
+            (phase4_dir / "phase4_shoreline_arrival.csv").write_text("scenario_id,shoreline_arrival_generated\nlighter_oil,true\n", encoding="utf-8")
+            (phase4_dir / "phase4_final_verdict.md").write_text("Phase 4 verdict\n", encoding="utf-8")
+            _write_json(
+                phase4_dir / "phase4_run_manifest.json",
+                {
+                    "phase1_frozen_story_complete": False,
+                    "provisional_inherited_from_transport": True,
+                    "artifacts": {
+                        "phase4_oil_budget_summary": "output/phase4/CASE_MINDORO_RETRO_2023/phase4_oil_budget_summary.csv",
+                        "phase4_shoreline_arrival": "output/phase4/CASE_MINDORO_RETRO_2023/phase4_shoreline_arrival.csv",
+                        "phase4_final_verdict": "output/phase4/CASE_MINDORO_RETRO_2023/phase4_final_verdict.md",
+                    },
+                    "overall_verdict": {
+                        "scientifically_reportable_now": True,
+                        "provisional_inherited_from_transport": True,
+                        "biggest_remaining_phase4_blocker": "Phase 1 is still not fully frozen.",
+                    },
+                },
+            )
+
+            (root / "logs" / "run_phase5_sync.log").write_text("phase5 log\n", encoding="utf-8")
+
+            service = Phase5LauncherAndDocsSyncService(
+                repo_root=root,
+                launcher_matrix_path=root / "config" / "launcher_matrix.json",
+            )
+            results = service.run()
+
+            for key in (
+                "software_versions_csv",
+                "final_case_registry_csv",
+                "final_config_snapshot_index_csv",
+                "final_manifest_index_csv",
+                "final_output_catalog_csv",
+                "final_log_index_csv",
+                "final_phase_status_registry_csv",
+                "final_reproducibility_summary_md",
+                "final_reproducibility_manifest_json",
+                "phase5_packaging_sync_memo_md",
+                "phase5_final_verdict_md",
+                "launcher_user_guide_md",
+            ):
+                self.assertTrue(Path(results[key]).exists(), key)
+
+            self.assertEqual(results["launcher_entrypoint"], "./start.ps1 -List -NoPause")
+            self.assertIn("phase5_sync", results["safe_read_only_entry_ids"])
+
+            phase_status_df = pd.read_csv(results["final_phase_status_registry_csv"])
+            self.assertTrue(((phase_status_df["phase_id"] == "phase5") & (phase_status_df["track_id"] == "phase5_sync")).any())
+            self.assertTrue(((phase_status_df["phase_id"] == "phase4") & (phase_status_df["track_id"] == "mindoro_phase4")).any())
+
+            manifest_index_df = pd.read_csv(results["final_manifest_index_csv"])
+            optional_row = manifest_index_df[manifest_index_df["track_id"] == "dwh_phase4_appendix_pilot"].iloc[0]
+            self.assertEqual(str(optional_row["exists"]).lower(), "false")
+            self.assertEqual(str(optional_row["optional"]).lower(), "true")
+
+            output_catalog_df = pd.read_csv(results["final_output_catalog_csv"])
+            self.assertTrue(
+                (
+                    (output_catalog_df["phase_id"] == "phase4")
+                    & (output_catalog_df["artifact_type"] == "phase4_oil_budget_summary")
+                ).any()
+            )
+
+            final_manifest = json.loads(Path(results["final_reproducibility_manifest_json"]).read_text(encoding="utf-8"))
+            self.assertTrue(final_manifest["phase5_verdict"]["phase5_reportable_now"])
+            self.assertTrue(final_manifest["phase5_verdict"]["launcher_menu_honest_and_current"])
+            self.assertTrue(final_manifest["phase5_verdict"]["legacy_recipe_drift_leaks_into_official_mode"])
+            self.assertIn(
+                "output/phase4/CASE_DWH_RETRO_2010_72H/phase4_run_manifest.json",
+                final_manifest["phase5_verdict"]["missing_optional_artifacts"],
+            )
+
+            launcher_guide_text = Path(results["launcher_user_guide_md"]).read_text(encoding="utf-8")
+            self.assertIn("phase5_sync", launcher_guide_text)
+            self.assertIn("trajectory_gallery", launcher_guide_text)
+
+
+if __name__ == "__main__":
+    unittest.main()
