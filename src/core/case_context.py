@@ -399,9 +399,9 @@ def _load_prototype_context(settings: dict) -> CaseContext:
         legacy_prototype_display_domain=legacy_prototype_display_domain,
         is_prototype=True,
         initialization_mode="initialization_polygon",
-        source_point_role="active_release_fallback",
+        source_point_role="legacy_metadata_context_only",
         release_mode="prototype_debug",
-        release_reference="provenance_source_point_or_drifter",
+        release_reference="phase1_drifter_of_record",
         validation_target="validation_polygon",
         release_start_utc=start_time_utc,
         release_end_utc=start_time_utc,
@@ -575,10 +575,12 @@ def get_case_context() -> CaseContext:
         return _load_configured_prototype_context(settings, workflow_mode)
     if workflow_mode == "prototype_2016":
         return _load_prototype_context(settings)
-    if workflow_mode == "phase1_regional_2016_2022":
-        return _load_historical_regional_context(settings, workflow_mode)
     case_files = settings.get("workflow_case_files") or {}
     if workflow_mode in case_files:
+        case_path = Path(os.environ.get("CASE_CONFIG_PATH") or case_files.get(workflow_mode, ""))
+        cfg = _load_yaml(case_path) if case_path.exists() else {}
+        if str(cfg.get("workflow_track") or "").strip() == "historical_regional_validation":
+            return _load_historical_regional_context(settings, workflow_mode)
         return _load_official_context(settings, workflow_mode)
     raise ValueError(f"Unsupported workflow_mode '{workflow_mode}'.")
 

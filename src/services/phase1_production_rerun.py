@@ -30,8 +30,16 @@ except ImportError:  # pragma: no cover - runtime dependency
 
 from src.core.base import BaseService
 from src.core.case_context import get_case_context
+from src.core.constants import CMEMS_SURFACE_CURRENT_MAX_DEPTH_M
 from src.core.domain_semantics import resolve_phase1_validation_box
+from src.exceptions.custom import ForcingOutagePhaseSkipped
 from src.services.validation import TransportValidationService
+from src.utils.forcing_outage_policy import (
+    FORCING_OUTAGE_POLICY_CONTINUE_DEGRADED,
+    forcing_factor_id_for_source,
+    is_remote_outage_error,
+    resolve_forcing_outage_policy,
+)
 from src.utils.gfs_wind import (
     GFSWindDownloader,
     apply_wind_cf_metadata as _apply_wind_cf_metadata,
@@ -102,13 +110,16 @@ class Phase1ProductionRerunService(BaseService):
         self,
         *,
         repo_root: str | Path | None = None,
-        config_path: str | Path = "config/phase1_regional_2016_2022.yaml",
+        config_path: str | Path | None = None,
         recipes_path: str | Path = "config/recipes.yaml",
         baseline_path: str | Path = "config/phase1_baseline_selection.yaml",
         validation_service_factory=TransportValidationService,
     ):
         self.repo_root = Path(repo_root or Path(__file__).resolve().parents[2])
-        self.config_path = self.repo_root / Path(config_path)
+        self.case = get_case_context()
+        self.pipeline_phase = os.environ.get("PIPELINE_PHASE", "phase1_production_rerun").strip() or "phase1_production_rerun"
+        resolved_config = config_path or getattr(self.case, "case_definition_path", None) or "config/phase1_regional_2016_2022.yaml"
+        self.config_path = self.repo_root / Path(resolved_config)
         self.recipes_path = self.repo_root / Path(recipes_path)
         self.baseline_path = self.repo_root / Path(baseline_path)
 
@@ -120,10 +131,9 @@ class Phase1ProductionRerunService(BaseService):
         with open(self.recipes_path, "r", encoding="utf-8") as handle:
             self.recipes_config = yaml.safe_load(handle) or {}
 
-        self.case = get_case_context()
         if not self.case.is_historical_regional:
             raise RuntimeError(
-                "Phase1ProductionRerunService requires WORKFLOW_MODE=phase1_regional_2016_2022."
+                "Phase1ProductionRerunService requires a historical/regional validation workflow mode."
             )
 
         historical_window = self.config.get("historical_window") or {}
@@ -179,7 +189,23 @@ class Phase1ProductionRerunService(BaseService):
         configured_family = list(self.config.get("phase1_recipe_family") or [])
         official_family = get_official_phase1_recipe_family(self.recipes_path)
         self.official_recipe_family = configured_family or official_family
+        self.forcing_outage_policy = resolve_forcing_outage_policy(
+            workflow_mode=self.case.workflow_mode,
+            phase=self.pipeline_phase,
+        )
+        self.degraded_continue_used = False
+        self.upstream_outage_detected = False
+        self.missing_forcing_factors: set[str] = set()
+        self.skipped_recipe_ids: set[str] = set()
+        self.skipped_recipe_missing_factors: dict[str, list[str]] = {}
         self.transport_settings = dict(self.config.get("transport_settings") or {})
+        self.ranking_subset_config = dict(self.config.get("ranking_subset") or {})
+        self.ranking_subset_label = str(
+            self.ranking_subset_config.get("label") or "official_phase1_production"
+        )
+        self.distance_audit_config = dict(self.config.get("distance_audit_source_point") or {})
+        self.distance_audit_source = self._load_distance_audit_source_point()
+        self.candidate_baseline_config = dict(self.config.get("candidate_baseline") or {})
         self.required_drifter_fields = [
             str(value)
             for value in ((self.config.get("drifter") or {}).get("required_fields") or [])
@@ -195,6 +221,8 @@ class Phase1ProductionRerunService(BaseService):
             "drifter_registry": self.output_root / "phase1_drifter_registry.csv",
             "accepted_registry": self.output_root / "phase1_accepted_segment_registry.csv",
             "rejected_registry": self.output_root / "phase1_rejected_segment_registry.csv",
+            "ranking_subset_registry": self.output_root / "phase1_ranking_subset_registry.csv",
+            "ranking_subset_report": self.output_root / "phase1_ranking_subset_report.md",
             "loading_audit": self.output_root / "phase1_loading_audit.csv",
             "segment_metrics": self.output_root / "phase1_segment_metrics.csv",
             "recipe_summary": self.output_root / "phase1_recipe_summary.csv",
@@ -202,6 +230,158 @@ class Phase1ProductionRerunService(BaseService):
             "manifest": self.output_root / "phase1_production_manifest.json",
             "baseline_candidate": self.output_root / "phase1_baseline_selection_candidate.yaml",
         }
+
+    def _load_distance_audit_source_point(self) -> dict[str, Any] | None:
+        path_text = str(self.distance_audit_config.get("path") or "").strip()
+        if not path_text:
+            return None
+
+        path = self.repo_root / Path(path_text)
+        if not path.exists():
+            raise FileNotFoundError(f"Phase 1 distance-audit source point not found: {path}")
+
+        with open(path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle) or {}
+        features = payload.get("features") or []
+        if not features:
+            raise RuntimeError(f"Phase 1 distance-audit source point has no features: {path}")
+        geometry = (features[0] or {}).get("geometry") or {}
+        coordinates = geometry.get("coordinates") or []
+        if len(coordinates) < 2:
+            raise RuntimeError(f"Phase 1 distance-audit source point is missing lon/lat coordinates: {path}")
+        return {
+            "path": path,
+            "label": str(self.distance_audit_config.get("label") or "source_point"),
+            "lon": float(coordinates[0]),
+            "lat": float(coordinates[1]),
+        }
+
+    @staticmethod
+    def _haversine_km(lon1: Any, lat1: Any, lon2: float, lat2: float) -> np.ndarray:
+        lon1_arr = np.asarray(lon1, dtype=float)
+        lat1_arr = np.asarray(lat1, dtype=float)
+        lon2_rad = np.radians(float(lon2))
+        lat2_rad = np.radians(float(lat2))
+        lon1_rad = np.radians(lon1_arr)
+        lat1_rad = np.radians(lat1_arr)
+        delta_lon = lon2_rad - lon1_rad
+        delta_lat = lat2_rad - lat1_rad
+        a = (
+            np.sin(delta_lat / 2.0) ** 2
+            + np.cos(lat1_rad) * np.cos(lat2_rad) * np.sin(delta_lon / 2.0) ** 2
+        )
+        return 6371.0088 * 2.0 * np.arcsin(np.minimum(1.0, np.sqrt(a)))
+
+    def _augment_registry_with_distance_audit(self, registry_df: pd.DataFrame) -> pd.DataFrame:
+        if registry_df.empty or self.distance_audit_source is None:
+            return registry_df
+
+        source_lon = float(self.distance_audit_source["lon"])
+        source_lat = float(self.distance_audit_source["lat"])
+        start_distance = self._haversine_km(
+            registry_df["start_lon"],
+            registry_df["start_lat"],
+            source_lon,
+            source_lat,
+        )
+        end_distance = self._haversine_km(
+            registry_df["end_lon"],
+            registry_df["end_lat"],
+            source_lon,
+            source_lat,
+        )
+        augmented = registry_df.copy()
+        augmented["distance_audit_source_label"] = str(self.distance_audit_source["label"])
+        augmented["distance_audit_source_lon"] = source_lon
+        augmented["distance_audit_source_lat"] = source_lat
+        augmented["distance_to_source_start_km"] = start_distance
+        augmented["distance_to_source_end_km"] = end_distance
+        augmented["nearest_endpoint_distance_to_source_km"] = np.fmin(start_distance, end_distance)
+        augmented["nearest_endpoint_label"] = np.where(start_distance <= end_distance, "start", "end")
+        return augmented
+
+    def _select_ranking_subset(self, accepted_df: pd.DataFrame) -> pd.DataFrame:
+        if accepted_df.empty:
+            return accepted_df.copy()
+        if not self.ranking_subset_config:
+            return accepted_df.copy()
+
+        mode = str(self.ranking_subset_config.get("mode") or "").strip()
+        if mode != "seasonal_start_months":
+            raise RuntimeError(f"Unsupported Phase 1 ranking_subset mode '{mode}'.")
+
+        months = {
+            int(value)
+            for value in (self.ranking_subset_config.get("months") or [])
+            if str(value).strip()
+        }
+        if not months:
+            raise RuntimeError("Phase 1 ranking_subset.months must contain at least one calendar month.")
+
+        start_times = pd.to_datetime(accepted_df["start_time_utc"], utc=True, errors="coerce")
+        mask = start_times.dt.month.isin(sorted(months))
+        return accepted_df.loc[mask].copy().reset_index(drop=True)
+
+    def _annotate_ranking_subset_membership(
+        self,
+        registry_df: pd.DataFrame,
+        ranking_subset_df: pd.DataFrame,
+    ) -> pd.DataFrame:
+        subset_ids = set(ranking_subset_df["segment_id"].astype(str).tolist())
+        annotated = registry_df.copy()
+        annotated["ranking_subset_label"] = self.ranking_subset_label
+        annotated["ranking_subset_included"] = annotated["segment_id"].astype(str).isin(subset_ids)
+        return annotated
+
+    def _write_ranking_subset_report(
+        self,
+        accepted_df: pd.DataFrame,
+        ranking_subset_df: pd.DataFrame,
+    ) -> Path:
+        months = [
+            int(value)
+            for value in (self.ranking_subset_config.get("months") or [])
+            if str(value).strip()
+        ]
+        if self.ranking_subset_config:
+            lines = [
+                "# Phase 1 Ranking Subset Report",
+                "",
+                f"- Workflow mode: `{self.case.workflow_mode}`",
+                f"- Ranking subset label: `{self.ranking_subset_label}`",
+                f"- Ranking subset mode: `{self.ranking_subset_config.get('mode', '')}`",
+                f"- Ranking subset months: `{', '.join(str(value) for value in months) or 'none'}`",
+                f"- Accepted segments in full strict registry: `{len(accepted_df)}`",
+                f"- Accepted segments included in ranking subset: `{len(ranking_subset_df)}`",
+                f"- Empty-subset behavior: `{self.ranking_subset_config.get('empty_subset_behavior', 'allow')}`",
+            ]
+        else:
+            lines = [
+                "# Phase 1 Ranking Subset Report",
+                "",
+                f"- Workflow mode: `{self.case.workflow_mode}`",
+                "- Ranking subset mode: `all_accepted_segments`",
+                f"- Accepted segments in full strict registry: `{len(accepted_df)}`",
+                f"- Accepted segments included in ranking subset: `{len(ranking_subset_df)}`",
+            ]
+        if self.distance_audit_source is not None:
+            lines.extend(
+                [
+                    f"- Distance audit source: `{self.distance_audit_source['label']}`",
+                    f"- Distance audit source lon/lat: `{self.distance_audit_source['lon']:.6f}, {self.distance_audit_source['lat']:.6f}`",
+                    "- Distance audit role: `diagnostic_only`",
+                ]
+            )
+        if ranking_subset_df.empty:
+            lines.extend(
+                [
+                    "",
+                    "No accepted drifter segments satisfied the configured ranking subset.",
+                    "This workflow stops here instead of silently widening the months, box, or historical window.",
+                ]
+            )
+        self.paths["ranking_subset_report"].write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return self.paths["ranking_subset_report"]
 
     def run(self) -> dict[str, Any]:
         baseline_hash_before = _sha256(self.baseline_path)
@@ -211,6 +391,7 @@ class Phase1ProductionRerunService(BaseService):
 
         drifter_df, drifter_chunk_status = self._fetch_full_drifter_pool()
         registry_df = self._build_segment_registry(drifter_df)
+        registry_df = self._augment_registry_with_distance_audit(registry_df)
         accepted_df = registry_df[registry_df["segment_status"] == "accepted"].copy()
         rejected_df = registry_df[registry_df["segment_status"] == "rejected"].copy()
 
@@ -219,18 +400,68 @@ class Phase1ProductionRerunService(BaseService):
                 "Phase 1 production rerun found zero accepted drifter windows after strict gating."
             )
 
+        ranking_subset_df = self._select_ranking_subset(accepted_df)
+        registry_df = self._annotate_ranking_subset_membership(registry_df, ranking_subset_df)
+        accepted_df = registry_df[registry_df["segment_status"] == "accepted"].copy()
+        rejected_df = registry_df[registry_df["segment_status"] == "rejected"].copy()
+
         registry_df.to_csv(self.paths["drifter_registry"], index=False)
         accepted_df.to_csv(self.paths["accepted_registry"], index=False)
         rejected_df.to_csv(self.paths["rejected_registry"], index=False)
+        ranking_subset_df.to_csv(self.paths["ranking_subset_registry"], index=False)
+        ranking_subset_report = self._write_ranking_subset_report(accepted_df, ranking_subset_df)
+
+        if ranking_subset_df.empty and (
+            str(self.ranking_subset_config.get("empty_subset_behavior") or "").strip().lower() == "hard_fail"
+        ):
+            baseline_hash_after = _sha256(self.baseline_path)
+            _write_json(
+                self.paths["manifest"],
+                {
+                    "phase": "phase1_production_rerun",
+                    "workflow_mode": self.case.workflow_mode,
+                    "status": "failed_empty_ranking_subset",
+                    "time_window": {
+                        "start_utc": self.window_start.isoformat(),
+                        "end_utc": self.window_end.isoformat(),
+                    },
+                    "validation_box": self.validation_box,
+                    "accepted_segment_count": int(len(accepted_df)),
+                    "rejected_segment_count": int(len(rejected_df)),
+                    "ranking_subset": {
+                        "label": self.ranking_subset_label,
+                        "config": self.ranking_subset_config,
+                        "segment_count": 0,
+                        "report": _relative(self.repo_root, ranking_subset_report),
+                    },
+                    "canonical_baseline_integrity": {
+                        "path": _relative(self.repo_root, self.baseline_path),
+                        "sha256_before": baseline_hash_before,
+                        "sha256_after": baseline_hash_after,
+                        "unchanged": baseline_hash_before == baseline_hash_after,
+                    },
+                    "artifacts": {
+                        key: _relative(self.repo_root, path)
+                        for key, path in self.paths.items()
+                    },
+                },
+            )
+            raise RuntimeError(
+                "Phase 1 production rerun found zero accepted drifter windows in the configured ranking subset. "
+                f"See {self.paths['ranking_subset_report']} and {self.paths['manifest']}."
+            )
 
         loading_audit_df, segment_metrics_df, forcing_status = self._evaluate_accepted_segments(
-            accepted_df,
+            ranking_subset_df,
             drifter_df,
         )
         loading_audit_df.to_csv(self.paths["loading_audit"], index=False)
         segment_metrics_df.to_csv(self.paths["segment_metrics"], index=False)
 
-        recipe_summary_df, recipe_ranking_df, winning_recipe = self._build_recipe_tables(segment_metrics_df)
+        recipe_summary_df, recipe_ranking_df, winning_recipe = self._build_recipe_tables(
+            segment_metrics_df,
+            recipe_rank_pool=self.ranking_subset_label,
+        )
         recipe_summary_df.to_csv(self.paths["recipe_summary"], index=False)
         recipe_ranking_df.to_csv(self.paths["recipe_ranking"], index=False)
 
@@ -238,6 +469,7 @@ class Phase1ProductionRerunService(BaseService):
             winning_recipe=winning_recipe,
             accepted_df=accepted_df,
             rejected_df=rejected_df,
+            ranking_subset_df=ranking_subset_df,
         )
         _write_yaml(self.paths["baseline_candidate"], candidate_payload)
 
@@ -253,6 +485,7 @@ class Phase1ProductionRerunService(BaseService):
             forcing_status=forcing_status,
             accepted_df=accepted_df,
             rejected_df=rejected_df,
+            ranking_subset_df=ranking_subset_df,
             loading_audit_df=loading_audit_df,
             recipe_ranking_df=recipe_ranking_df,
             winning_recipe=winning_recipe,
@@ -271,10 +504,19 @@ class Phase1ProductionRerunService(BaseService):
             "output_dir": str(self.output_root),
             "accepted_segment_count": int(len(accepted_df)),
             "rejected_segment_count": int(len(rejected_df)),
+            "ranking_subset_segment_count": int(len(ranking_subset_df)),
             "winning_recipe": winning_recipe,
             "gfs_capable_recipes_ran": gfs_capable_recipes_ran,
+            "forcing_outage_policy": self.forcing_outage_policy,
+            "degraded_continue_used": self.degraded_continue_used,
+            "upstream_outage_detected": self.upstream_outage_detected,
+            "missing_forcing_factors": sorted(self.missing_forcing_factors),
+            "skipped_recipe_ids": sorted(self.skipped_recipe_ids),
+            "rerun_required": bool(candidate_payload.get("rerun_required", False)),
             "candidate_baseline_path": str(self.paths["baseline_candidate"]),
             "drifter_registry_csv": str(self.paths["drifter_registry"]),
+            "ranking_subset_registry_csv": str(self.paths["ranking_subset_registry"]),
+            "ranking_subset_report_md": str(self.paths["ranking_subset_report"]),
             "loading_audit_csv": str(self.paths["loading_audit"]),
             "segment_metrics_csv": str(self.paths["segment_metrics"]),
             "recipe_summary_csv": str(self.paths["recipe_summary"]),
@@ -549,6 +791,62 @@ class Phase1ProductionRerunService(BaseService):
         )
         return currents, wave
 
+    def _continue_degraded_enabled(self) -> bool:
+        return self.forcing_outage_policy == FORCING_OUTAGE_POLICY_CONTINUE_DEGRADED
+
+    def _recipe_required_factor_ids(self, recipe_name: str) -> set[str]:
+        recipes = (self.recipes_config.get("recipes") or {})
+        recipe = recipes.get(recipe_name) or {}
+        required: set[str] = set()
+        if recipe.get("currents_file"):
+            required.add(str(recipe["currents_file"]))
+        if recipe.get("wind_file"):
+            required.add(str(recipe["wind_file"]))
+        wave_file = str(recipe.get("wave_file") or "").strip()
+        if wave_file:
+            required.add(wave_file)
+        return required
+
+    def _download_forcing_source_with_policy(
+        self,
+        *,
+        source_id: str,
+        start_time: pd.Timestamp,
+        end_time: pd.Timestamp,
+        forcing_dir: Path,
+    ) -> dict[str, Any]:
+        source_id = str(source_id)
+        factor_id = forcing_factor_id_for_source(source_id)
+        downloaders = {
+            "hycom": self._download_hycom_currents,
+            "cmems": self._download_cmems_currents,
+            "cmems_wave": self._download_cmems_wave,
+            "era5": self._download_era5_winds,
+            "gfs": self._download_gfs_winds,
+        }
+        try:
+            record = dict(downloaders[source_id](start_time, end_time, forcing_dir))
+        except Exception as exc:
+            outage = is_remote_outage_error(exc)
+            self.upstream_outage_detected = bool(self.upstream_outage_detected or outage)
+            if outage and self._continue_degraded_enabled():
+                self.degraded_continue_used = True
+                self.missing_forcing_factors.add(factor_id)
+                return {
+                    "status": "skipped_outage_continue_degraded",
+                    "source_id": source_id,
+                    "forcing_factor": factor_id,
+                    "upstream_outage_detected": True,
+                    "error": str(exc),
+                }
+            raise
+
+        record.setdefault("status", "downloaded")
+        record["source_id"] = source_id
+        record["forcing_factor"] = factor_id
+        record["upstream_outage_detected"] = False
+        return record
+
     def _download_cmems_currents(
         self,
         start_time: pd.Timestamp,
@@ -573,8 +871,7 @@ class Phase1ProductionRerunService(BaseService):
             maximum_longitude=self.forcing_box[1],
             minimum_latitude=self.forcing_box[2],
             maximum_latitude=self.forcing_box[3],
-            minimum_depth=0,
-            maximum_depth=1,
+            maximum_depth=CMEMS_SURFACE_CURRENT_MAX_DEPTH_M,
             start_datetime=start_time.tz_localize(None).strftime("%Y-%m-%dT%H:%M:%S"),
             end_datetime=end_time.tz_localize(None).strftime("%Y-%m-%dT%H:%M:%S"),
             variables=["uo", "vo"],
@@ -812,12 +1109,33 @@ class Phase1ProductionRerunService(BaseService):
             "month_key": month_key,
             "start_time_utc": start_time.isoformat(),
             "end_time_utc": end_time.isoformat(),
+            "forcing_outage_policy": self.forcing_outage_policy,
         }
-        status["hycom"] = self._download_hycom_currents(start_time, end_time, forcing_dir)
-        status["cmems"] = self._download_cmems_currents(start_time, end_time, forcing_dir)
-        status["cmems_wave"] = self._download_cmems_wave(start_time, end_time, forcing_dir)
-        status["era5"] = self._download_era5_winds(start_time, end_time, forcing_dir)
-        status["gfs"] = self._download_gfs_winds(start_time, end_time, forcing_dir)
+        for source_id in ("hycom", "cmems", "cmems_wave", "era5", "gfs"):
+            status[source_id] = self._download_forcing_source_with_policy(
+                source_id=source_id,
+                start_time=start_time,
+                end_time=end_time,
+                forcing_dir=forcing_dir,
+            )
+        status["available_forcing_factors"] = sorted(
+            item["forcing_factor"]
+            for key, item in status.items()
+            if key in {"hycom", "cmems", "cmems_wave", "era5", "gfs"}
+            and item.get("status") in {"downloaded", "cached"}
+        )
+        status["missing_forcing_factors"] = sorted(
+            item["forcing_factor"]
+            for key, item in status.items()
+            if key in {"hycom", "cmems", "cmems_wave", "era5", "gfs"}
+            and item.get("status") == "skipped_outage_continue_degraded"
+        )
+        status["degraded_continue_used"] = bool(status["missing_forcing_factors"])
+        status["upstream_outage_detected"] = any(
+            bool(item.get("upstream_outage_detected", False))
+            for key, item in status.items()
+            if key in {"hycom", "cmems", "cmems_wave", "era5", "gfs"}
+        )
         return forcing_dir, status
 
     def _segment_observations(
@@ -845,6 +1163,7 @@ class Phase1ProductionRerunService(BaseService):
     ) -> tuple[pd.DataFrame, pd.DataFrame, list[dict[str, Any]]]:
         forcing_cache_by_month: dict[str, Path] = {}
         forcing_status: list[dict[str, Any]] = []
+        available_factors_by_month: dict[str, set[str]] = {}
         for window in self._forcing_month_windows(accepted_df):
             forcing_dir, cache_status = self._prepare_forcing_cache(
                 window["month_key"],
@@ -853,6 +1172,42 @@ class Phase1ProductionRerunService(BaseService):
             )
             forcing_cache_by_month[window["month_key"]] = forcing_dir
             forcing_status.append(cache_status)
+            available_factors_by_month[str(window["month_key"])] = set(cache_status.get("available_forcing_factors") or [])
+
+        eligible_recipes: list[str] = []
+        skipped_recipe_ids: set[str] = set()
+        skipped_recipe_missing_factors: dict[str, list[str]] = {}
+        for recipe_name in self.official_recipe_family:
+            required_factors = self._recipe_required_factor_ids(recipe_name)
+            missing_for_recipe: set[str] = set()
+            for month_key, available_factors in available_factors_by_month.items():
+                month_missing = required_factors.difference(available_factors)
+                if month_missing:
+                    missing_for_recipe.update(month_missing)
+            if missing_for_recipe:
+                skipped_recipe_ids.add(str(recipe_name))
+                skipped_recipe_missing_factors[str(recipe_name)] = sorted(missing_for_recipe)
+                continue
+            eligible_recipes.append(str(recipe_name))
+
+        self.skipped_recipe_ids.update(skipped_recipe_ids)
+        self.skipped_recipe_missing_factors.update(skipped_recipe_missing_factors)
+        for missing_list in skipped_recipe_missing_factors.values():
+            self.missing_forcing_factors.update(missing_list)
+
+        if not eligible_recipes:
+            if self._continue_degraded_enabled() and self.upstream_outage_detected:
+                raise ForcingOutagePhaseSkipped(
+                    phase=self.pipeline_phase,
+                    workflow_mode=self.case.workflow_mode,
+                    forcing_outage_policy=self.forcing_outage_policy,
+                    reason="No recipe retained complete forcing coverage across the evaluated month subset.",
+                    missing_forcing_factors=sorted(self.missing_forcing_factors),
+                    skipped_recipe_ids=sorted(skipped_recipe_ids),
+                )
+            raise RuntimeError(
+                "Phase 1 production rerun has no recipe with complete forcing coverage across the evaluated month subset."
+            )
 
         loading_audit_rows: list[pd.DataFrame] = []
         segment_metric_rows: list[pd.DataFrame] = []
@@ -870,7 +1225,7 @@ class Phase1ProductionRerunService(BaseService):
             payload = self.validation_service.run_validation_summary(
                 drifter_df=segment_obs,
                 forcing_dir=forcing_dir,
-                recipe_names=self.official_recipe_family,
+                recipe_names=eligible_recipes,
                 output_dir=None,
                 keep_scratch=False,
                 transport_settings=self.transport_settings,
@@ -879,9 +1234,9 @@ class Phase1ProductionRerunService(BaseService):
                 verbose=False,
             )
             audit_df = payload["audit_df"].copy()
-            if sorted(audit_df["recipe"].astype(str).tolist()) != sorted(self.official_recipe_family):
+            if sorted(audit_df["recipe"].astype(str).tolist()) != sorted(eligible_recipes):
                 raise RuntimeError(
-                    f"Segment {row.segment_id} did not evaluate the full official recipe family."
+                    f"Segment {row.segment_id} did not evaluate the expected complete-forcing recipe subset."
                 )
             audit_df["segment_id"] = row.segment_id
             audit_df["drifter_id"] = row.drifter_id
@@ -913,7 +1268,7 @@ class Phase1ProductionRerunService(BaseService):
                     "wave_fallback_used",
                 ]
             ].copy()
-            metrics_df["recipe_family"] = "official_phase1_production"
+            metrics_df["recipe_family"] = self.ranking_subset_label
             metrics_df["is_gfs_recipe"] = metrics_df["recipe"].astype(str).str.endswith("_gfs")
             segment_metric_rows.append(metrics_df)
 
@@ -928,8 +1283,11 @@ class Phase1ProductionRerunService(BaseService):
     def _build_recipe_tables(
         self,
         segment_metrics_df: pd.DataFrame,
+        *,
+        recipe_rank_pool: str,
     ) -> tuple[pd.DataFrame, pd.DataFrame, str]:
         summary_rows: list[dict[str, Any]] = []
+        evaluated_segment_count = int(segment_metrics_df["segment_id"].nunique()) if not segment_metrics_df.empty else 0
         for recipe, group in segment_metrics_df.groupby("recipe", sort=True):
             valid_group = group[group["validity_flag"] == "valid"].copy()
             if valid_group.empty:
@@ -937,7 +1295,7 @@ class Phase1ProductionRerunService(BaseService):
             summary_rows.append(
                 {
                     "recipe": recipe,
-                    "recipe_rank_pool": "official_phase1_production",
+                    "recipe_rank_pool": recipe_rank_pool,
                     "segment_count": int(len(group)),
                     "valid_segment_count": int(len(valid_group)),
                     "invalid_segment_count": int(len(group) - len(valid_group)),
@@ -947,14 +1305,39 @@ class Phase1ProductionRerunService(BaseService):
                     "min_ncs_score": float(valid_group["ncs_score"].min()),
                     "max_ncs_score": float(valid_group["ncs_score"].max()),
                     "is_gfs_recipe": bool(str(recipe).endswith("_gfs")),
+                    "status": "completed",
+                    "excluded_from_ranking": False,
+                    "missing_forcing_factors": "",
+                }
+            )
+
+        for recipe in sorted(self.skipped_recipe_ids):
+            summary_rows.append(
+                {
+                    "recipe": recipe,
+                    "recipe_rank_pool": recipe_rank_pool,
+                    "segment_count": evaluated_segment_count,
+                    "valid_segment_count": 0,
+                    "invalid_segment_count": 0,
+                    "mean_ncs_score": np.nan,
+                    "median_ncs_score": np.nan,
+                    "std_ncs_score": np.nan,
+                    "min_ncs_score": np.nan,
+                    "max_ncs_score": np.nan,
+                    "is_gfs_recipe": bool(str(recipe).endswith("_gfs")),
+                    "status": "skipped_missing_forcing",
+                    "excluded_from_ranking": True,
+                    "missing_forcing_factors": ";".join(self.skipped_recipe_missing_factors.get(str(recipe), [])),
                 }
             )
 
         recipe_summary_df = pd.DataFrame(summary_rows).sort_values("recipe").reset_index(drop=True)
-        recipe_ranking_df = recipe_summary_df.sort_values(
+        recipe_ranking_df = recipe_summary_df[recipe_summary_df["status"] == "completed"].sort_values(
             ["mean_ncs_score", "median_ncs_score", "invalid_segment_count", "recipe"],
             ascending=[True, True, True, True],
         ).reset_index(drop=True)
+        if recipe_ranking_df.empty:
+            raise RuntimeError("No recipes remain rankable after forcing-outage filtering.")
         recipe_ranking_df.insert(0, "rank", np.arange(1, len(recipe_ranking_df) + 1))
         winning_recipe = str(recipe_ranking_df.iloc[0]["recipe"])
         return recipe_summary_df, recipe_ranking_df, winning_recipe
@@ -965,36 +1348,78 @@ class Phase1ProductionRerunService(BaseService):
         winning_recipe: str,
         accepted_df: pd.DataFrame,
         rejected_df: pd.DataFrame,
+        ranking_subset_df: pd.DataFrame,
     ) -> dict[str, Any]:
+        default_workflow_scope = [
+            "phase1_regional_2016_2022",
+            "mindoro_retro_2023",
+            "dwh_retro_2010",
+        ]
+        candidate_cfg = self.candidate_baseline_config
+        default_notes = [
+            "This artifact is staged only and does not overwrite config/phase1_baseline_selection.yaml.",
+            "Downstream trial runs may set BASELINE_SELECTION_PATH to this candidate artifact explicitly.",
+        ]
+        notes = [str(value) for value in candidate_cfg.get("notes") or [] if str(value).strip()] if candidate_cfg else []
+        if not notes:
+            notes = default_notes
+        if self.degraded_continue_used:
+            notes = [
+                *notes,
+                "This candidate was produced under degraded continuation because at least one upstream forcing factor was temporarily unavailable.",
+                "Only recipes with complete forcing coverage across the evaluated subset were ranked; skipped recipes remain excluded from ranking and a clean rerun is still required.",
+            ]
+        status_flag = str(candidate_cfg.get("status_flag") or "valid")
+        valid = bool(candidate_cfg.get("valid", True))
+        provisional = bool(candidate_cfg.get("provisional", False))
+        rerun_required = bool(candidate_cfg.get("rerun_required", False))
+        if self.degraded_continue_used:
+            status_flag = "provisional"
+            valid = False
+            provisional = True
+            rerun_required = True
         return {
-            "baseline_id": "phase1_historical_transport_baseline_candidate_2016_2022_v1",
-            "description": "Staged candidate Phase 1 baseline from the completed 2016-2022 regional transport-validation rerun",
+            "baseline_id": str(
+                candidate_cfg.get("baseline_id")
+                or "phase1_historical_transport_baseline_candidate_2016_2022_v1"
+            ),
+            "description": str(
+                candidate_cfg.get("description")
+                or "Staged candidate Phase 1 baseline from the completed 2016-2022 regional transport-validation rerun"
+            ),
             "selected_recipe": winning_recipe,
-            "source_kind": "staged_production_candidate",
-            "status_flag": "valid",
-            "valid": True,
-            "provisional": False,
-            "rerun_required": False,
-            "promotion_required": True,
-            "selection_basis": "Completed 2016-2022 regional drogued-only non-overlapping 72 h transport-validation rerun",
+            "source_kind": str(candidate_cfg.get("source_kind") or "staged_production_candidate"),
+            "status_flag": status_flag,
+            "valid": valid,
+            "provisional": provisional,
+            "rerun_required": rerun_required,
+            "promotion_required": bool(candidate_cfg.get("promotion_required", True)),
+            "selection_basis": str(
+                candidate_cfg.get("selection_basis")
+                or "Completed 2016-2022 regional drogued-only non-overlapping 72 h transport-validation rerun"
+            ),
+            "forcing_outage_policy": self.forcing_outage_policy,
+            "degraded_continue_used": self.degraded_continue_used,
+            "upstream_outage_detected": self.upstream_outage_detected,
+            "missing_forcing_factors": sorted(self.missing_forcing_factors),
+            "skipped_recipe_ids": sorted(self.skipped_recipe_ids),
             "workflow_scope": [
-                "phase1_regional_2016_2022",
-                "mindoro_retro_2023",
-                "dwh_retro_2010",
+                str(value)
+                for value in (candidate_cfg.get("workflow_scope") or default_workflow_scope)
+                if str(value).strip()
             ],
             "historical_validation_artifacts": [
                 _relative(self.repo_root, self.paths["drifter_registry"]),
                 _relative(self.repo_root, self.paths["accepted_registry"]),
                 _relative(self.repo_root, self.paths["rejected_registry"]),
+                _relative(self.repo_root, self.paths["ranking_subset_registry"]),
+                _relative(self.repo_root, self.paths["ranking_subset_report"]),
                 _relative(self.repo_root, self.paths["loading_audit"]),
                 _relative(self.repo_root, self.paths["segment_metrics"]),
                 _relative(self.repo_root, self.paths["recipe_summary"]),
                 _relative(self.repo_root, self.paths["recipe_ranking"]),
             ],
-            "notes": [
-                "This artifact is staged only and does not overwrite config/phase1_baseline_selection.yaml.",
-                "Downstream trial runs may set BASELINE_SELECTION_PATH to this candidate artifact explicitly.",
-            ],
+            "notes": notes,
             "chapter3_finalization_audit": {
                 "target_historical_window": {
                     "start_date": self.window_start.strftime("%Y-%m-%d"),
@@ -1007,28 +1432,49 @@ class Phase1ProductionRerunService(BaseService):
                     "overlap_policy": "non_overlapping",
                 },
                 "official_recipe_family": list(self.official_recipe_family),
-                "current_local_evidence_scope": "completed_2016_2022_regional_transport_validation_rerun",
+                "ranking_subset": {
+                    "label": self.ranking_subset_label,
+                    "config": self.ranking_subset_config,
+                    "accepted_segment_count": int(len(ranking_subset_df)),
+                },
+                "current_local_evidence_scope": str(
+                    candidate_cfg.get("current_local_evidence_scope")
+                    or "completed_2016_2022_regional_transport_validation_rerun"
+                ),
                 "accepted_segment_count": int(len(accepted_df)),
                 "rejected_segment_count": int(len(rejected_df)),
                 "expected_phase1_artifacts": {
                     "drifter_registry": _relative(self.repo_root, self.paths["drifter_registry"]),
                     "accepted_segment_registry": _relative(self.repo_root, self.paths["accepted_registry"]),
                     "rejected_segment_registry": _relative(self.repo_root, self.paths["rejected_registry"]),
+                    "ranking_subset_registry": _relative(self.repo_root, self.paths["ranking_subset_registry"]),
+                    "ranking_subset_report": _relative(self.repo_root, self.paths["ranking_subset_report"]),
                     "loading_audit": _relative(self.repo_root, self.paths["loading_audit"]),
                     "segment_metrics": _relative(self.repo_root, self.paths["segment_metrics"]),
                     "recipe_summary": _relative(self.repo_root, self.paths["recipe_summary"]),
                     "recipe_ranking": _relative(self.repo_root, self.paths["recipe_ranking"]),
                     "frozen_baseline_candidate": _relative(self.repo_root, self.paths["baseline_candidate"]),
                 },
+                "distance_audit": {
+                    "enabled": bool(self.distance_audit_source is not None),
+                    "source_point_path": _relative(self.repo_root, Path(self.distance_audit_source["path"]))
+                    if self.distance_audit_source is not None
+                    else "",
+                    "diagnostic_only": bool(self.distance_audit_config.get("diagnostic_only", True)),
+                },
                 "loading_audit_policy": {
-                    "hard_fail_on_missing_required_forcing": True,
+                    "hard_fail_on_missing_required_forcing": not self.degraded_continue_used,
                     "hard_fail_on_empty_valid_recipe_set": True,
                     "require_wave_stokes_reader": bool(self.transport_settings.get("require_wave_stokes_reader", False)),
                 },
                 "audit_status": {
-                    "classification": "implemented_and_scientifically_ready",
-                    "full_production_rerun_required": False,
-                    "blocker": "",
+                    "classification": "provisional_due_to_forcing_outage" if self.degraded_continue_used else "implemented_and_scientifically_ready",
+                    "full_production_rerun_required": bool(self.degraded_continue_used),
+                    "blocker": (
+                        "Upstream forcing outage reduced the evaluated recipe family; rerun required after provider recovery."
+                        if self.degraded_continue_used
+                        else ""
+                    ),
                 },
             },
         }
@@ -1040,6 +1486,7 @@ class Phase1ProductionRerunService(BaseService):
         forcing_status: list[dict[str, Any]],
         accepted_df: pd.DataFrame,
         rejected_df: pd.DataFrame,
+        ranking_subset_df: pd.DataFrame,
         loading_audit_df: pd.DataFrame,
         recipe_ranking_df: pd.DataFrame,
         winning_recipe: str,
@@ -1053,6 +1500,12 @@ class Phase1ProductionRerunService(BaseService):
             "workflow_mode": self.case.workflow_mode,
             "workflow_flavor": self.case.workflow_flavor,
             "transport_track": self.case.transport_track,
+            "forcing_outage_policy": self.forcing_outage_policy,
+            "degraded_continue_used": self.degraded_continue_used,
+            "upstream_outage_detected": self.upstream_outage_detected,
+            "missing_forcing_factors": sorted(self.missing_forcing_factors),
+            "skipped_recipe_ids": sorted(self.skipped_recipe_ids),
+            "rerun_required": bool(candidate_payload.get("rerun_required", False)),
             "time_window": {
                 "start_utc": self.window_start.isoformat(),
                 "end_utc": self.window_end.isoformat(),
@@ -1065,9 +1518,27 @@ class Phase1ProductionRerunService(BaseService):
                 "overlap_policy": "non_overlapping",
                 "drogue_policy": "drogued_only_strict",
             },
+            "ranking_subset": {
+                "label": self.ranking_subset_label,
+                "config": self.ranking_subset_config,
+                "segment_count": int(len(ranking_subset_df)),
+            },
+            "distance_audit": {
+                "enabled": bool(self.distance_audit_source is not None),
+                "source_point": {
+                    "label": str(self.distance_audit_source["label"]),
+                    "lon": float(self.distance_audit_source["lon"]),
+                    "lat": float(self.distance_audit_source["lat"]),
+                    "path": _relative(self.repo_root, Path(self.distance_audit_source["path"])),
+                }
+                if self.distance_audit_source is not None
+                else {},
+                "diagnostic_only": bool(self.distance_audit_config.get("diagnostic_only", True)),
+            },
             "official_recipe_family": list(self.official_recipe_family),
             "accepted_segment_count": int(len(accepted_df)),
             "rejected_segment_count": int(len(rejected_df)),
+            "ranking_subset_segment_count": int(len(ranking_subset_df)),
             "winning_recipe": winning_recipe,
             "gfs_capable_recipes_ran": bool(
                 not gfs_rows.empty and (gfs_rows["valid_segment_count"] > 0).all()
@@ -1078,7 +1549,11 @@ class Phase1ProductionRerunService(BaseService):
             "baseline_candidate": {
                 "path": _relative(self.repo_root, self.paths["baseline_candidate"]),
                 "selected_recipe": candidate_payload["selected_recipe"],
-                "promotion_required": True,
+                "promotion_required": bool(candidate_payload.get("promotion_required", True)),
+                "status_flag": candidate_payload.get("status_flag"),
+                "valid": bool(candidate_payload.get("valid", False)),
+                "provisional": bool(candidate_payload.get("provisional", False)),
+                "rerun_required": bool(candidate_payload.get("rerun_required", False)),
             },
             "canonical_baseline_integrity": {
                 "path": _relative(self.repo_root, self.baseline_path),

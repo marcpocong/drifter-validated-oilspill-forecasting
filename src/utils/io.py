@@ -141,7 +141,7 @@ def get_transport_recipe_family_for_workflow(
         return get_official_phase1_recipe_family(config_path)
     if mode == "prototype_2016":
         return get_prototype_debug_recipe_family(config_path)
-    if mode == "phase1_regional_2016_2022":
+    if mode.startswith("phase1_"):
         return get_official_phase1_recipe_family(config_path)
     return get_runtime_recipe_ids(config_path)
 
@@ -486,6 +486,42 @@ def load_drifter_data(path: str | Path) -> pd.DataFrame:
         cols_to_keep.append("ID")
 
     return df[cols_to_keep].sort_values("time").reset_index(drop=True)
+
+
+def select_drifter_of_record(drifter_df: pd.DataFrame) -> dict[str, Any]:
+    """Select the legacy prototype drifter-of-record using the Phase 1 rule."""
+    if drifter_df.empty:
+        raise ValueError("Cannot select a drifter of record from an empty drifter DataFrame.")
+
+    selected_df = drifter_df.copy()
+    selected_df["time"] = pd.to_datetime(selected_df["time"], utc=True, errors="coerce")
+    selected_df = selected_df.dropna(subset=["time", "lat", "lon"]).copy()
+    if selected_df.empty:
+        raise ValueError("Cannot select a drifter of record because the drifter data has no valid time/lat/lon rows.")
+
+    selected_id: str | None = None
+    point_count = int(len(selected_df))
+    if "ID" in selected_df.columns:
+        normalized_ids = selected_df["ID"].astype(str).str.strip()
+        valid_ids = normalized_ids[normalized_ids != ""]
+        if not valid_ids.empty:
+            counts = valid_ids.value_counts()
+            selected_id = str(counts.idxmax())
+            point_count = int(counts[selected_id])
+            selected_df = selected_df.loc[normalized_ids == selected_id].copy()
+
+    selected_df["time"] = selected_df["time"].dt.tz_convert("UTC").dt.tz_localize(None)
+    selected_df = selected_df.sort_values("time").reset_index(drop=True)
+    first_row = selected_df.iloc[0]
+    start_time = pd.Timestamp(first_row["time"]).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return {
+        "drifter_df": selected_df,
+        "selected_id": selected_id,
+        "point_count": point_count,
+        "start_time": start_time,
+        "start_lat": float(first_row["lat"]),
+        "start_lon": float(first_row["lon"]),
+    }
 
 
 def get_forcing_files(
@@ -1093,6 +1129,25 @@ def resolve_spill_origin(
         )
         return lat, lon, case.release_start_utc
 
+    if case.workflow_mode == "prototype_2016":
+        if drifter_csv is None:
+            drifter_csv = Path(f"data/drifters/{RUN_NAME}/drifters_noaa.csv")
+        path = Path(drifter_csv)
+        if not path.exists():
+            raise FileNotFoundError(
+                f"Cannot resolve the prototype_2016 drifter-of-record origin: '{path}' not found."
+            )
+
+        selection = select_drifter_of_record(load_drifter_data(path))
+        logger.info(
+            "Loaded prototype_2016 drifter-of-record origin from drifter %s: (%.4f, %.4f) at %s",
+            selection["selected_id"] or "<unlabeled>",
+            selection["start_lat"],
+            selection["start_lon"],
+            selection["start_time"],
+        )
+        return selection["start_lat"], selection["start_lon"], selection["start_time"]
+
     provenance_point = resolve_provenance_source_point()
     if provenance_point is not None:
         lat, lon = provenance_point
@@ -1106,14 +1161,8 @@ def resolve_spill_origin(
     if not path.exists():
         raise FileNotFoundError(f"Cannot resolve spill origin: '{path}' not found. Drifter data is required.")
 
-    df = load_drifter_data(path)
-    if "ID" in df.columns:
-        best_id = df["ID"].value_counts().idxmax()
-        row = df[df["ID"] == best_id].sort_values("time").iloc[0]
-    else:
-        row = df.sort_values("time").iloc[0]
-
-    return float(row["lat"]), float(row["lon"]), str(row["time"])
+    selection = select_drifter_of_record(load_drifter_data(path))
+    return selection["start_lat"], selection["start_lon"], selection["start_time"]
 
 
 def resolve_polygon_seeding(

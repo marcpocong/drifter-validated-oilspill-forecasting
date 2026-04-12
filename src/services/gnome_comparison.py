@@ -80,6 +80,7 @@ class GnomeComparisonService:
         seed_time_override: str | None = None,
         duration_hours: int | None = None,
         time_step_minutes: int | None = None,
+        use_start_point_release: bool = False,
     ) -> tuple[Path, dict]:
         """
         Run a deterministic transport-style PyGNOME scenario for Phase 3A benchmarking.
@@ -131,16 +132,21 @@ class GnomeComparisonService:
             benchmark_particles,
         )
 
-        from src.utils.io import resolve_polygon_seeding
+        if use_start_point_release:
+            cluster_lons = [float(start_lon)]
+            cluster_lats = [float(start_lat)]
+            cluster_counts = np.array([benchmark_particles], dtype=int)
+        else:
+            from src.utils.io import resolve_polygon_seeding
 
-        cluster_lons, cluster_lats, _ = resolve_polygon_seeding(
-            num_clusters,
-            random_seed=random_seed,
-            polygon_path=polygon_path,
-            seed_time_override=seed_time_override,
-        )
-        cluster_counts = np.full(num_clusters, benchmark_particles // num_clusters, dtype=int)
-        cluster_counts[: benchmark_particles % num_clusters] += 1
+            cluster_lons, cluster_lats, _ = resolve_polygon_seeding(
+                num_clusters,
+                random_seed=random_seed,
+                polygon_path=polygon_path,
+                seed_time_override=seed_time_override,
+            )
+            cluster_counts = np.full(num_clusters, benchmark_particles // num_clusters, dtype=int)
+            cluster_counts[: benchmark_particles % num_clusters] += 1
 
         for cl_lon, cl_lat, particle_count in zip(cluster_lons, cluster_lats, cluster_counts):
             if particle_count <= 0:
@@ -184,6 +190,7 @@ class GnomeComparisonService:
             ),
             "polygon_path_override": str(polygon_path) if polygon_path else "",
             "custom_polygon_override_used": bool(polygon_path),
+            "start_point_release_used": bool(use_start_point_release),
             "duration_hours": int(duration_hours),
             "time_step_minutes": int(time_step_minutes),
         }

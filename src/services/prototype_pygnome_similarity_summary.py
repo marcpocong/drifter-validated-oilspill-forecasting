@@ -13,6 +13,7 @@ import matplotlib
 import numpy as np
 import pandas as pd
 import rasterio
+import xarray as xr
 import yaml
 from rasterio import features as raster_features
 from shapely.geometry import shape as shapely_shape
@@ -25,6 +26,7 @@ from matplotlib.patches import Patch, Polygon, Rectangle
 
 from src.core.artifact_status import artifact_status_columns, status_for_track_id
 from src.core.domain_semantics import resolve_legacy_prototype_display_domain
+from src.helpers.metrics import calculate_fss, calculate_kl_divergence
 
 PHASE = "prototype_pygnome_similarity_summary"
 DEFAULT_OUTPUT_DIRS = {
@@ -44,7 +46,6 @@ REQUIRED_BENCHMARK_FILES = {
 REQUIRED_PAIRING_COLUMNS = (
     "timestamp_utc",
     "hour",
-    "control_footprint_path",
     "pygnome_footprint_path",
     "qa_overlay_path",
 )
@@ -74,13 +75,42 @@ MODEL_STYLES = {
         "label": "OpenDrift deterministic",
         "short_label": "OpenDrift",
     },
+    "opendrift_p50": {
+        "color": "#0f766e",
+        "mid_color": "#1f9d8f",
+        "light_color": "#8bd8cd",
+        "label": "OpenDrift p50 threshold",
+        "short_label": "OpenDrift p50",
+    },
+    "opendrift_p90": {
+        "color": "#9a3412",
+        "mid_color": "#c85a2b",
+        "light_color": "#efb08f",
+        "label": "OpenDrift p90 threshold",
+        "short_label": "OpenDrift p90",
+    },
     "pygnome": {
-        "color": "#9b4dca",
-        "mid_color": "#b47ad7",
-        "light_color": "#d8afea",
+        "color": "#6b21a8",
+        "mid_color": "#8b5bc7",
+        "light_color": "#ccb4e6",
         "label": "PyGNOME deterministic",
         "short_label": "PyGNOME",
     },
+}
+COMPARISON_TRACK_LABELS = {
+    "deterministic": "OpenDrift deterministic",
+    "ensemble_p50": "OpenDrift p50 threshold",
+    "ensemble_p90": "OpenDrift p90 threshold",
+}
+COMPARISON_TRACK_SUBDIRS = {
+    "deterministic": "control",
+    "ensemble_p50": "ensemble_p50",
+    "ensemble_p90": "ensemble_p90",
+}
+MODEL_NAME_TO_TRACK_ID = {
+    "opendrift": "deterministic",
+    "opendrift_p50": "ensemble_p50",
+    "opendrift_p90": "ensemble_p90",
 }
 
 
@@ -174,6 +204,7 @@ class PrototypePygnomeSimilaritySummaryService:
         self._raster_cache: dict[Path, dict[str, Any]] = {}
         self._vector_cache: dict[tuple[Path, str], gpd.GeoDataFrame | None] = {}
         self._prototype_map_context: dict[str, Any] | None = None
+        self._sea_mask_cache: np.ndarray | None = None
 
     def _load_settings(self) -> dict[str, Any]:
         settings_path = self.repo_root / "config" / "settings.yaml"
@@ -235,6 +266,16 @@ class PrototypePygnomeSimilaritySummaryService:
         if self.workflow_mode == "prototype_2021":
             return "accepted-segment debug support only"
         return "legacy/debug support only"
+
+    def _comparison_track_ids(self) -> tuple[str, ...]:
+        if self.workflow_mode == "prototype_2016":
+            return ("deterministic", "ensemble_p50", "ensemble_p90")
+        return ("deterministic",)
+
+    def _single_model_sequence(self) -> tuple[str, ...]:
+        if self.workflow_mode == "prototype_2016":
+            return ("opendrift", "opendrift_p50", "opendrift_p90", "pygnome")
+        return ("opendrift", "pygnome")
 
     def _load_prototype_case_dates(self) -> tuple[str, ...]:
         settings_path = self.repo_root / "config" / "settings.yaml"
@@ -310,10 +351,22 @@ class PrototypePygnomeSimilaritySummaryService:
         }
 
     def _resolve_repo_path(self, value: str | Path) -> Path:
+        if pd.isna(value):
+            raise ValueError("Prototype benchmark manifest contained a missing path value where a concrete artifact path was required.")
         path = Path(value)
         if not path.is_absolute():
             path = self.repo_root / path
         return path.resolve()
+
+    def _has_path_value(self, value: Any) -> bool:
+        if value is None or pd.isna(value):
+            return False
+        return bool(str(value).strip())
+
+    def _clean_optional_path_value(self, value: Any) -> str:
+        if not self._has_path_value(value):
+            return ""
+        return str(value).strip()
 
     def _load_vector(self, path: Path, target_crs: str = "EPSG:4326") -> gpd.GeoDataFrame | None:
         cache_key = (path.resolve(), str(target_crs))
@@ -446,6 +499,343 @@ class PrototypePygnomeSimilaritySummaryService:
         self._raster_cache[path] = info
         return info
 
+    def _load_similarity_sea_mask(self, reference_shape: tuple[int, int]) -> np.ndarray:
+        if self._sea_mask_cache is not None and self._sea_mask_cache.shape == reference_shape:
+            return self._sea_mask_cache
+
+        candidate_paths = [
+            self.repo_root / "data_processed" / "grids" / "scoring_grid_sea_mask.tif",
+            self.repo_root / "data_processed" / "grids" / "sea_mask.tif",
+        ]
+        for candidate in candidate_paths:
+            if not candidate.exists():
+                continue
+            try:
+                with rasterio.open(candidate) as dataset:
+                    mask = dataset.read(1) > 0
+                if mask.shape == reference_shape:
+                    self._sea_mask_cache = mask
+                    return mask
+            except Exception:
+                continue
+
+        self._sea_mask_cache = np.ones(reference_shape, dtype=bool)
+        return self._sea_mask_cache
+
+    def _ensure_overlay_png(self, overlay_path: Path, opendrift_hits: np.ndarray, pygnome_hits: np.ndarray) -> None:
+        if overlay_path.exists():
+            return
+        overlay_path.parent.mkdir(parents=True, exist_ok=True)
+        control = opendrift_hits > 0
+        pygnome = pygnome_hits > 0
+        overlay = np.zeros((*opendrift_hits.shape, 3), dtype=np.float32)
+        overlay[..., 0] = (control & ~pygnome).astype(np.float32)
+        overlay[..., 1] = (control & pygnome).astype(np.float32)
+        overlay[..., 2] = (~control & pygnome).astype(np.float32)
+        plt.imsave(overlay_path, overlay)
+
+    def _legacy_track_product_paths(self, case_id: str, comparison_track_id: str, timestamp_utc: str) -> dict[str, Path]:
+        label = pd.Timestamp(timestamp_utc).strftime("%Y-%m-%dT%H-%M-%SZ")
+        benchmark_dir = self._case_benchmark_dir(case_id)
+        track_dir = benchmark_dir / COMPARISON_TRACK_SUBDIRS[comparison_track_id]
+        return {
+            "timestamp_utc": timestamp_utc,
+            "footprint": track_dir / f"{comparison_track_id}_footprint_mask_{label}.tif",
+            "density": track_dir / f"{comparison_track_id}_density_norm_{label}.tif",
+            "pygnome_footprint": benchmark_dir / "pygnome" / f"pygnome_footprint_mask_{label}.tif",
+            "pygnome_density": benchmark_dir / "pygnome" / f"pygnome_density_norm_{label}.tif",
+            "qa_overlay": benchmark_dir / "qa" / f"{comparison_track_id}_overlay_{label}.png",
+        }
+
+    def _repair_legacy_benchmark_artifacts(
+        self,
+        case_id: str,
+        paths: dict[str, Path],
+        fss_df: pd.DataFrame,
+        kl_df: pd.DataFrame,
+        pairing_df: pd.DataFrame,
+    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, bool]:
+        normalized_fss = fss_df.copy()
+        normalized_kl = kl_df.copy()
+        normalized_pairing = pairing_df.copy()
+        repaired = False
+
+        if "comparison_track_id" not in normalized_fss.columns:
+            normalized_fss["comparison_track_id"] = "deterministic"
+            repaired = True
+        if "comparison_track_label" not in normalized_fss.columns:
+            normalized_fss["comparison_track_label"] = normalized_fss["comparison_track_id"].map(COMPARISON_TRACK_LABELS).fillna(
+                normalized_fss["comparison_track_id"].astype(str)
+            )
+            repaired = True
+        if "comparison_track_id" not in normalized_kl.columns:
+            normalized_kl["comparison_track_id"] = "deterministic"
+            repaired = True
+        if "comparison_track_label" not in normalized_kl.columns:
+            normalized_kl["comparison_track_label"] = normalized_kl["comparison_track_id"].map(COMPARISON_TRACK_LABELS).fillna(
+                normalized_kl["comparison_track_id"].astype(str)
+            )
+            repaired = True
+        if "comparison_track_id" not in normalized_pairing.columns:
+            normalized_pairing["comparison_track_id"] = "deterministic"
+            repaired = True
+        if "comparison_track_label" not in normalized_pairing.columns:
+            normalized_pairing["comparison_track_label"] = normalized_pairing["comparison_track_id"].map(COMPARISON_TRACK_LABELS).fillna(
+                normalized_pairing["comparison_track_id"].astype(str)
+            )
+            repaired = True
+
+        deterministic_rows = normalized_pairing[
+            normalized_pairing["comparison_track_id"].astype(str) == "deterministic"
+        ].copy()
+        if deterministic_rows.empty:
+            if repaired:
+                normalized_fss.to_csv(paths["fss_csv"], index=False)
+                normalized_kl.to_csv(paths["kl_csv"], index=False)
+                normalized_pairing.to_csv(paths["pairing_csv"], index=False)
+            return normalized_fss, normalized_kl, normalized_pairing, repaired
+
+        timestamps_by_hour = {
+            int(row["hour"]): str(row["timestamp_utc"])
+            for _, row in deterministic_rows.iterrows()
+            if str(row.get("timestamp_utc") or "").strip()
+        }
+
+        for comparison_track_id in self._comparison_track_ids():
+            for hour in REQUIRED_HOURS:
+                has_fss = not normalized_fss[
+                    (normalized_fss["comparison_track_id"].astype(str) == comparison_track_id)
+                    & (normalized_fss["hour"].astype(int) == int(hour))
+                ].empty
+                has_kl = not normalized_kl[
+                    (normalized_kl["comparison_track_id"].astype(str) == comparison_track_id)
+                    & (normalized_kl["hour"].astype(int) == int(hour))
+                ].empty
+                has_pairing = not normalized_pairing[
+                    (normalized_pairing["comparison_track_id"].astype(str) == comparison_track_id)
+                    & (normalized_pairing["hour"].astype(int) == int(hour))
+                ].empty
+                if has_fss and has_kl and has_pairing:
+                    continue
+
+                timestamp_utc = timestamps_by_hour.get(int(hour))
+                if not timestamp_utc:
+                    continue
+                product_paths = self._legacy_track_product_paths(case_id, comparison_track_id, timestamp_utc)
+                required_paths = [
+                    product_paths["footprint"],
+                    product_paths["density"],
+                    product_paths["pygnome_footprint"],
+                    product_paths["pygnome_density"],
+                ]
+                if not all(path.exists() for path in required_paths):
+                    continue
+
+                opendrift_footprint = self._load_raster_mask(product_paths["footprint"])
+                pygnome_footprint = self._load_raster_mask(product_paths["pygnome_footprint"])
+                opendrift_density = self._load_raster_mask(product_paths["density"])
+                pygnome_density = self._load_raster_mask(product_paths["pygnome_density"])
+                opendrift_hits = (np.asarray(opendrift_footprint["array"], dtype=float) > 0).astype(np.float32)
+                pygnome_hits = (np.asarray(pygnome_footprint["array"], dtype=float) > 0).astype(np.float32)
+                density_array = np.asarray(opendrift_density["array"], dtype=float)
+                pygnome_density_array = np.asarray(pygnome_density["array"], dtype=float)
+                if float(np.clip(density_array, 0.0, None).sum()) <= 0.0 and float(opendrift_hits.sum()) > 0.0:
+                    # Legacy prototype threshold products sometimes persist only the footprint mask
+                    # while leaving the paired "density" raster blank. Rebuild a simple normalized
+                    # pseudo-density from the footprint support so the historical summary can still
+                    # compute KL for the support-only p50/p90 tracks.
+                    density_array = opendrift_hits.astype(np.float64)
+                    density_array /= float(density_array.sum())
+                if float(np.clip(pygnome_density_array, 0.0, None).sum()) <= 0.0 and float(pygnome_hits.sum()) > 0.0:
+                    pygnome_density_array = pygnome_hits.astype(np.float64)
+                    pygnome_density_array /= float(pygnome_density_array.sum())
+                sea_mask = self._load_similarity_sea_mask(density_array.shape)
+
+                self._ensure_overlay_png(product_paths["qa_overlay"], opendrift_hits, pygnome_hits)
+
+                if not has_pairing:
+                    deterministic_match = deterministic_rows[deterministic_rows["hour"].astype(int) == int(hour)]
+                    control_row = deterministic_match.iloc[0].to_dict() if not deterministic_match.empty else {}
+                    normalized_pairing = pd.concat(
+                        [
+                            normalized_pairing,
+                            pd.DataFrame(
+                                [
+                                    {
+                                        "comparison_track_id": comparison_track_id,
+                                        "comparison_track_label": COMPARISON_TRACK_LABELS.get(comparison_track_id, comparison_track_id),
+                                        "timestamp_utc": timestamp_utc,
+                                        "hour": int(hour),
+                                        "opendrift_footprint_path": str(product_paths["footprint"].relative_to(self.repo_root)),
+                                        "pygnome_footprint_path": str(product_paths["pygnome_footprint"].relative_to(self.repo_root)),
+                                        "opendrift_density_path": str(product_paths["density"].relative_to(self.repo_root)),
+                                        "opendrift_nc_path": str(control_row.get("opendrift_nc_path") or ""),
+                                        "pygnome_density_path": str(product_paths["pygnome_density"].relative_to(self.repo_root)),
+                                        "control_footprint_path": str(control_row.get("control_footprint_path") or ""),
+                                        "control_density_path": str(control_row.get("control_density_path") or ""),
+                                        "footprint_precheck_json": str(control_row.get("footprint_precheck_json") or ""),
+                                        "density_precheck_json": str(control_row.get("density_precheck_json") or ""),
+                                        "qa_overlay_path": str(product_paths["qa_overlay"].relative_to(self.repo_root)),
+                                        "pygnome_nc_path": str(control_row.get("pygnome_nc_path") or ""),
+                                        "pygnome_mass_strategy": str(control_row.get("pygnome_mass_strategy") or ""),
+                                        "opendrift_density_ocean_sum": float(np.clip(density_array[sea_mask], 0.0, None).sum()),
+                                        "pygnome_density_ocean_sum": float(np.clip(pygnome_density_array[sea_mask], 0.0, None).sum()),
+                                    }
+                                ]
+                            ),
+                        ],
+                        ignore_index=True,
+                    )
+                    repaired = True
+
+                if not has_fss:
+                    new_fss_rows = [
+                        {
+                            "comparison_track_id": comparison_track_id,
+                            "comparison_track_label": COMPARISON_TRACK_LABELS.get(comparison_track_id, comparison_track_id),
+                            "timestamp_utc": timestamp_utc,
+                            "hour": int(hour),
+                            "window_km": int(window_km),
+                            "window_cells": int(window_km),
+                            "fss": float(calculate_fss(opendrift_hits, pygnome_hits, window=int(window_km))),
+                        }
+                        for window_km in REQUIRED_WINDOWS_KM
+                    ]
+                    normalized_fss = pd.concat([normalized_fss, pd.DataFrame(new_fss_rows)], ignore_index=True)
+                    repaired = True
+
+                if not has_kl:
+                    kl_valid_mask = sea_mask
+                    try:
+                        kl_value = float(
+                            calculate_kl_divergence(
+                                density_array,
+                                pygnome_density_array,
+                                epsilon=1e-10,
+                                valid_mask=kl_valid_mask,
+                            )
+                        )
+                    except ValueError:
+                        # Some legacy prototype threshold rasters do not align defensibly with the
+                        # stored sea-mask geometry. Fall back to the positive-support footprint union
+                        # so the legacy support package can still be reconstructed from the on-disk
+                        # benchmark rasters instead of hard-failing on stale manifests.
+                        kl_valid_mask = (
+                            np.clip(density_array, 0.0, None) > 0.0
+                        ) | (
+                            np.clip(pygnome_density_array, 0.0, None) > 0.0
+                        )
+                        if not np.any(kl_valid_mask):
+                            kl_valid_mask = np.ones(density_array.shape, dtype=bool)
+                        safe_forecast = np.asarray(density_array, dtype=float)
+                        safe_observed = np.asarray(pygnome_density_array, dtype=float)
+                        if float(np.clip(safe_forecast[kl_valid_mask], 0.0, None).sum()) <= 0.0:
+                            safe_forecast = np.where(kl_valid_mask, 1.0, 0.0)
+                        if float(np.clip(safe_observed[kl_valid_mask], 0.0, None).sum()) <= 0.0:
+                            safe_observed = np.where(kl_valid_mask, 1.0, 0.0)
+                        kl_value = float(
+                            calculate_kl_divergence(
+                                safe_forecast,
+                                safe_observed,
+                                epsilon=1e-10,
+                                valid_mask=kl_valid_mask,
+                            )
+                        )
+                    normalized_kl = pd.concat(
+                        [
+                            normalized_kl,
+                            pd.DataFrame(
+                                [
+                                    {
+                                        "comparison_track_id": comparison_track_id,
+                                        "comparison_track_label": COMPARISON_TRACK_LABELS.get(comparison_track_id, comparison_track_id),
+                                        "timestamp_utc": timestamp_utc,
+                                        "hour": int(hour),
+                                        "epsilon": 1e-10,
+                                        "ocean_cell_count": int(np.count_nonzero(kl_valid_mask)),
+                                        "kl_divergence": kl_value,
+                                    }
+                                ]
+                            ),
+                        ],
+                        ignore_index=True,
+                    )
+                    repaired = True
+
+        if repaired:
+            normalized_pairing = normalized_pairing.sort_values(["comparison_track_id", "hour"]).reset_index(drop=True)
+            normalized_fss = normalized_fss.sort_values(["comparison_track_id", "hour", "window_km"]).reset_index(drop=True)
+            normalized_kl = normalized_kl.sort_values(["comparison_track_id", "hour"]).reset_index(drop=True)
+            normalized_fss.to_csv(paths["fss_csv"], index=False)
+            normalized_kl.to_csv(paths["kl_csv"], index=False)
+            normalized_pairing.to_csv(paths["pairing_csv"], index=False)
+            pd.DataFrame(
+                self._build_case_summary_rows(
+                    normalized_fss,
+                    normalized_kl,
+                    normalized_pairing,
+                )
+            ).to_csv(paths["summary_csv"], index=False)
+
+        return normalized_fss, normalized_kl, normalized_pairing, repaired
+
+    def _build_case_summary_rows(
+        self,
+        fss_df: pd.DataFrame,
+        kl_df: pd.DataFrame,
+        pairing_df: pd.DataFrame,
+    ) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for comparison_track_id in self._comparison_track_ids():
+            track_label = COMPARISON_TRACK_LABELS.get(comparison_track_id, comparison_track_id)
+            track_fss = fss_df[fss_df["comparison_track_id"].astype(str) == comparison_track_id].copy()
+            track_kl = kl_df[kl_df["comparison_track_id"].astype(str) == comparison_track_id].copy()
+            track_pairings = pairing_df[pairing_df["comparison_track_id"].astype(str) == comparison_track_id].copy()
+            if track_fss.empty and track_kl.empty and track_pairings.empty:
+                continue
+            for window_km in REQUIRED_WINDOWS_KM:
+                subset = track_fss[track_fss["window_km"].astype(int) == int(window_km)].copy()
+                rows.append(
+                    {
+                        "comparison_track_id": comparison_track_id,
+                        "comparison_track_label": track_label,
+                        "metric": "FSS",
+                        "window_km": int(window_km),
+                        "pair_count": int(len(subset)),
+                        "mean_value": float(subset["fss"].mean()) if not subset.empty else np.nan,
+                        "min_value": float(subset["fss"].min()) if not subset.empty else np.nan,
+                        "max_value": float(subset["fss"].max()) if not subset.empty else np.nan,
+                        "notes": f"Prototype comparator summary for {track_label}.",
+                    }
+                )
+            rows.append(
+                {
+                    "comparison_track_id": comparison_track_id,
+                    "comparison_track_label": track_label,
+                    "metric": "KL",
+                    "window_km": "",
+                    "pair_count": int(len(track_kl)),
+                    "mean_value": float(track_kl["kl_divergence"].mean()) if not track_kl.empty else np.nan,
+                    "min_value": float(track_kl["kl_divergence"].min()) if not track_kl.empty else np.nan,
+                    "max_value": float(track_kl["kl_divergence"].max()) if not track_kl.empty else np.nan,
+                    "notes": f"Prototype comparator summary for {track_label}.",
+                }
+            )
+            rows.append(
+                {
+                    "comparison_track_id": comparison_track_id,
+                    "comparison_track_label": track_label,
+                    "metric": "PAIRING",
+                    "window_km": "",
+                    "pair_count": int(len(track_pairings)),
+                    "mean_value": np.nan,
+                    "min_value": np.nan,
+                    "max_value": np.nan,
+                    "notes": f"Prototype comparator summary for {track_label}.",
+                }
+            )
+        return rows
+
     def _apply_minimum_crop_span(
         self,
         lower: float,
@@ -468,22 +858,24 @@ class PrototypePygnomeSimilaritySummaryService:
             return domain_min, min(domain_max, domain_min + minimum_span)
         return max(domain_min, domain_max - minimum_span), domain_max
 
-    def _compute_case_crop_bounds(self, pairings_by_hour: dict[int, dict[str, Any]]) -> tuple[float, float, float, float]:
+    def _compute_case_crop_bounds(self, pairings_by_hour: dict[str, dict[int, dict[str, Any]]]) -> tuple[float, float, float, float]:
         x_values: list[float] = []
         y_values: list[float] = []
         cell_widths: list[float] = []
         cell_heights: list[float] = []
-        for hour in REQUIRED_HOURS:
-            row = pairings_by_hour[hour]
-            for key in ("control_footprint_path", "pygnome_footprint_path"):
-                info = self._load_raster_mask(row[f"{key}_resolved"])
-                positive_cell_bounds = info.get("positive_cell_bounds")
-                if positive_cell_bounds is None:
-                    continue
-                x_values.extend([positive_cell_bounds[0], positive_cell_bounds[2]])
-                y_values.extend([positive_cell_bounds[1], positive_cell_bounds[3]])
-                cell_widths.append(float(info["cell_width"]))
-                cell_heights.append(float(info["cell_height"]))
+        for track_pairings in pairings_by_hour.values():
+            for hour in REQUIRED_HOURS:
+                row = track_pairings[hour]
+                for key in ("opendrift_footprint_path", "pygnome_footprint_path"):
+                    resolved_key = "opendrift_footprint_path_resolved" if key == "opendrift_footprint_path" else f"{key}_resolved"
+                    info = self._load_raster_mask(row[resolved_key])
+                    positive_cell_bounds = info.get("positive_cell_bounds")
+                    if positive_cell_bounds is None:
+                        continue
+                    x_values.extend([positive_cell_bounds[0], positive_cell_bounds[2]])
+                    y_values.extend([positive_cell_bounds[1], positive_cell_bounds[3]])
+                    cell_widths.append(float(info["cell_width"]))
+                    cell_heights.append(float(info["cell_height"]))
         if not x_values or not y_values:
             return DOMAIN_BOUNDS
         cell_width = max(cell_widths) if cell_widths else 0.05
@@ -512,36 +904,77 @@ class PrototypePygnomeSimilaritySummaryService:
         )
         return (x_min, x_max, y_min, y_max)
 
-    def _build_pairings_by_hour(self, case_id: str, pairing_df: pd.DataFrame) -> dict[int, dict[str, Any]]:
+    def _build_pairings_by_hour(self, case_id: str, pairing_df: pd.DataFrame) -> dict[str, dict[int, dict[str, Any]]]:
         missing_columns = [column for column in REQUIRED_PAIRING_COLUMNS if column not in pairing_df.columns]
         if missing_columns:
             raise ValueError(
                 f"Prototype benchmark pairing manifest for {case_id} is missing columns: {', '.join(missing_columns)}"
             )
-        pairings: dict[int, dict[str, Any]] = {}
-        for hour in REQUIRED_HOURS:
-            subset = pairing_df[pairing_df["hour"].astype(int) == hour]
-            if subset.empty:
-                raise ValueError(f"Prototype benchmark pairing manifest for {case_id} is missing the {hour} h snapshot row.")
-            row = subset.iloc[0].to_dict()
-            row["hour"] = int(row["hour"])
-            for key in ("control_footprint_path", "pygnome_footprint_path", "qa_overlay_path"):
-                resolved = self._resolve_repo_path(row[key])
-                row[f"{key}_resolved"] = resolved
-                if not resolved.exists():
-                    raise FileNotFoundError(
-                        "Prototype PyGNOME similarity summary requires per-hour benchmark artifacts for every configured 2016 case. "
-                        f"Missing {key} for {case_id} hour {hour}: {resolved}"
+        pairings: dict[str, dict[int, dict[str, Any]]] = {}
+        normalized_df = pairing_df.copy()
+        if "comparison_track_id" not in normalized_df.columns:
+            normalized_df["comparison_track_id"] = "deterministic"
+        if "comparison_track_label" not in normalized_df.columns:
+            normalized_df["comparison_track_label"] = normalized_df["comparison_track_id"].map(COMPARISON_TRACK_LABELS).fillna(
+                normalized_df["comparison_track_id"].astype(str)
+            )
+
+        for comparison_track_id in self._comparison_track_ids():
+            track_subset = normalized_df[
+                normalized_df["comparison_track_id"].astype(str) == comparison_track_id
+            ].copy()
+            if track_subset.empty:
+                raise ValueError(
+                    f"Prototype benchmark pairing manifest for {case_id} is missing the {comparison_track_id} track rows."
+                )
+            pairings[comparison_track_id] = {}
+            for hour in REQUIRED_HOURS:
+                subset = track_subset[track_subset["hour"].astype(int) == hour]
+                if subset.empty:
+                    raise ValueError(
+                        f"Prototype benchmark pairing manifest for {case_id} is missing the {comparison_track_id} {hour} h snapshot row."
                     )
-            for key in ("control_density_path", "pygnome_density_path"):
-                raw_value = row.get(key)
-                resolved_key = f"{key}_resolved"
-                if raw_value:
-                    resolved = self._resolve_repo_path(raw_value)
-                    row[resolved_key] = resolved if resolved.exists() else None
-                else:
-                    row[resolved_key] = None
-            pairings[hour] = row
+                row = subset.iloc[0].to_dict()
+                row["hour"] = int(row["hour"])
+                footprint_key = (
+                    "opendrift_footprint_path"
+                    if self._has_path_value(row.get("opendrift_footprint_path"))
+                    else "control_footprint_path"
+                )
+                density_key = (
+                    "opendrift_density_path"
+                    if self._has_path_value(row.get("opendrift_density_path"))
+                    else "control_density_path"
+                )
+                row["opendrift_footprint_path"] = self._clean_optional_path_value(
+                    row.get("opendrift_footprint_path")
+                ) or self._clean_optional_path_value(row.get("control_footprint_path"))
+                row["opendrift_density_path"] = self._clean_optional_path_value(
+                    row.get("opendrift_density_path")
+                ) or self._clean_optional_path_value(row.get("control_density_path"))
+                for key in (footprint_key, "pygnome_footprint_path", "qa_overlay_path"):
+                    resolved = self._resolve_repo_path(self._clean_optional_path_value(row.get(key)))
+                    row[f"{key}_resolved"] = resolved
+                    if key == footprint_key:
+                        row["opendrift_footprint_path_resolved"] = resolved
+                    if not resolved.exists():
+                        raise FileNotFoundError(
+                            "Prototype PyGNOME similarity summary requires per-hour benchmark artifacts for every configured case. "
+                            f"Missing {key} for {case_id} track {comparison_track_id} hour {hour}: {resolved}"
+                        )
+                for key in (density_key, "pygnome_density_path"):
+                    raw_value = self._clean_optional_path_value(row.get(key))
+                    resolved_key = f"{key}_resolved"
+                    if raw_value:
+                        resolved = self._resolve_repo_path(raw_value)
+                        row[resolved_key] = resolved if resolved.exists() else None
+                        if key == density_key:
+                            row["opendrift_density_path_resolved"] = resolved if resolved.exists() else None
+                    else:
+                        row[resolved_key] = None
+                        if key == density_key:
+                            row["opendrift_density_path_resolved"] = None
+                pairings[comparison_track_id][hour] = row
         return pairings
 
     def _load_case_artifacts(self, case_id: str) -> dict[str, Any]:
@@ -559,13 +992,56 @@ class PrototypePygnomeSimilaritySummaryService:
         summary_df = pd.read_csv(paths["summary_csv"])
         metadata = json.loads(paths["metadata_json"].read_text(encoding="utf-8"))
 
+        fss_df, kl_df, pairing_df, repaired = self._repair_legacy_benchmark_artifacts(
+            case_id,
+            paths,
+            fss_df,
+            kl_df,
+            pairing_df,
+        )
+        if repaired:
+            summary_df = pd.read_csv(paths["summary_csv"])
+
+        if "comparison_track_id" not in fss_df.columns:
+            fss_df["comparison_track_id"] = "deterministic"
+        if "comparison_track_label" not in fss_df.columns:
+            fss_df["comparison_track_label"] = fss_df["comparison_track_id"].map(COMPARISON_TRACK_LABELS).fillna(
+                fss_df["comparison_track_id"].astype(str)
+            )
+        if "comparison_track_id" not in kl_df.columns:
+            kl_df["comparison_track_id"] = "deterministic"
+        if "comparison_track_label" not in kl_df.columns:
+            kl_df["comparison_track_label"] = kl_df["comparison_track_id"].map(COMPARISON_TRACK_LABELS).fillna(
+                kl_df["comparison_track_id"].astype(str)
+            )
+        if "comparison_track_id" not in summary_df.columns:
+            summary_df["comparison_track_id"] = "deterministic"
+        if "comparison_track_label" not in summary_df.columns:
+            summary_df["comparison_track_label"] = summary_df["comparison_track_id"].map(COMPARISON_TRACK_LABELS).fillna(
+                summary_df["comparison_track_id"].astype(str)
+            )
+
         missing_windows = [window for window in REQUIRED_WINDOWS_KM if window not in set(fss_df["window_km"].astype(int).tolist())]
-        missing_fss_hours = [hour for hour in REQUIRED_HOURS if hour not in set(fss_df["hour"].astype(int).tolist())]
-        missing_kl_hours = [hour for hour in REQUIRED_HOURS if hour not in set(kl_df["hour"].astype(int).tolist())]
-        if missing_windows or missing_fss_hours or missing_kl_hours:
+        missing_fss_hours: dict[str, list[int]] = {}
+        missing_kl_hours: dict[str, list[int]] = {}
+        missing_tracks: list[str] = []
+        for comparison_track_id in self._comparison_track_ids():
+            track_fss = fss_df[fss_df["comparison_track_id"].astype(str) == comparison_track_id]
+            track_kl = kl_df[kl_df["comparison_track_id"].astype(str) == comparison_track_id]
+            if track_fss.empty or track_kl.empty:
+                missing_tracks.append(comparison_track_id)
+                continue
+            track_missing_fss = [hour for hour in REQUIRED_HOURS if hour not in set(track_fss["hour"].astype(int).tolist())]
+            track_missing_kl = [hour for hour in REQUIRED_HOURS if hour not in set(track_kl["hour"].astype(int).tolist())]
+            if track_missing_fss:
+                missing_fss_hours[comparison_track_id] = track_missing_fss
+            if track_missing_kl:
+                missing_kl_hours[comparison_track_id] = track_missing_kl
+        if missing_windows or missing_fss_hours or missing_kl_hours or missing_tracks:
             raise ValueError(
                 f"Prototype benchmark artifacts for {case_id} are incomplete. "
-                f"Missing windows={missing_windows}, missing_fss_hours={missing_fss_hours}, missing_kl_hours={missing_kl_hours}"
+                f"missing_tracks={missing_tracks}, missing_windows={missing_windows}, "
+                f"missing_fss_hours={missing_fss_hours}, missing_kl_hours={missing_kl_hours}"
             )
 
         pairings_by_hour = self._build_pairings_by_hour(case_id, pairing_df)
@@ -582,6 +1058,24 @@ class PrototypePygnomeSimilaritySummaryService:
             "metadata": metadata,
             "crop_bounds": self._compute_case_crop_bounds(pairings_by_hour),
         }
+
+    def _load_available_case_artifacts(
+        self,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+        case_data: list[dict[str, Any]] = []
+        skipped_cases: list[dict[str, str]] = []
+        for case_id in self.case_ids:
+            try:
+                case_data.append(self._load_case_artifacts(case_id))
+            except Exception as exc:
+                skipped_cases.append(
+                    {
+                        "case_id": case_id,
+                        "error_type": type(exc).__name__,
+                        "error_message": str(exc),
+                    }
+                )
+        return case_data, skipped_cases
 
     def _build_case_registry_rows(self, case_data: list[dict[str, Any]]) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
@@ -600,11 +1094,20 @@ class PrototypePygnomeSimilaritySummaryService:
                     "pygnome_metadata_json": str(item["paths"]["metadata_json"].relative_to(self.repo_root)),
                     "snapshot_hours": ";".join(str(hour) for hour in sorted(fss_df["hour"].astype(int).unique().tolist())),
                     "fss_windows_km": ";".join(str(window) for window in sorted(fss_df["window_km"].astype(int).unique().tolist())),
+                    "comparison_track_ids": ";".join(
+                        str(track_id)
+                        for track_id in sorted(fss_df["comparison_track_id"].astype(str).unique().tolist())
+                    ),
                     "case_crop_bounds": ",".join(f"{value:.4f}" for value in crop_bounds),
                     "pygnome_weathering_enabled": _coerce_bool(metadata.get("weathering_enabled")),
                     "pygnome_role": "comparator_only",
                     "benchmark_particles": int(metadata.get("benchmark_particles", 0) or 0),
-                    "notes": "Legacy prototype transport benchmark. Deterministic OpenDrift control is compared to deterministic PyGNOME only.",
+                    "notes": (
+                        "Legacy prototype Phase 3A transport benchmark. "
+                        "OpenDrift deterministic plus legacy support-only p50/p90 threshold tracks are compared against deterministic PyGNOME."
+                        if self.workflow_mode == "prototype_2016"
+                        else "Accepted-segment prototype transport benchmark. Deterministic OpenDrift control is compared to deterministic PyGNOME only."
+                    ),
                 }
             )
         return rows
@@ -615,20 +1118,24 @@ class PrototypePygnomeSimilaritySummaryService:
             fss_df = item["fss_df"].copy()
             fss_df["window_km"] = fss_df["window_km"].astype(int)
             fss_df["hour"] = fss_df["hour"].astype(int)
-            for window in REQUIRED_WINDOWS_KM:
-                subset = fss_df[fss_df["window_km"] == window].sort_values("hour")
-                row = {
-                    "case_id": item["case_id"],
-                    "window_km": window,
-                    "snapshot_count": int(len(subset)),
-                    "mean_fss": float(subset["fss"].mean()),
-                    "min_fss": float(subset["fss"].min()),
-                    "max_fss": float(subset["fss"].max()),
-                }
-                for hour in REQUIRED_HOURS:
-                    value = subset.loc[subset["hour"] == hour, "fss"]
-                    row[f"fss_{hour}h"] = float(value.iloc[0])
-                rows.append(row)
+            for comparison_track_id in self._comparison_track_ids():
+                track_df = fss_df[fss_df["comparison_track_id"].astype(str) == comparison_track_id].copy()
+                for window in REQUIRED_WINDOWS_KM:
+                    subset = track_df[track_df["window_km"] == window].sort_values("hour")
+                    row = {
+                        "case_id": item["case_id"],
+                        "comparison_track_id": comparison_track_id,
+                        "comparison_track_label": COMPARISON_TRACK_LABELS.get(comparison_track_id, comparison_track_id),
+                        "window_km": window,
+                        "snapshot_count": int(len(subset)),
+                        "mean_fss": float(subset["fss"].mean()),
+                        "min_fss": float(subset["fss"].min()),
+                        "max_fss": float(subset["fss"].max()),
+                    }
+                    for hour in REQUIRED_HOURS:
+                        value = subset.loc[subset["hour"] == hour, "fss"]
+                        row[f"fss_{hour}h"] = float(value.iloc[0])
+                    rows.append(row)
         return rows
 
     def _build_kl_rows(self, case_data: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -636,17 +1143,20 @@ class PrototypePygnomeSimilaritySummaryService:
         for item in case_data:
             kl_df = item["kl_df"].copy()
             kl_df["hour"] = kl_df["hour"].astype(int)
-            kl_df = kl_df.sort_values("hour")
-            for _, record in kl_df.iterrows():
-                rows.append(
-                    {
-                        "case_id": item["case_id"],
-                        "hour": int(record["hour"]),
-                        "kl_divergence": float(record["kl_divergence"]),
-                        "epsilon": float(record.get("epsilon", 0.0)),
-                        "ocean_cell_count": int(record.get("ocean_cell_count", 0) or 0),
-                    }
-                )
+            for comparison_track_id in self._comparison_track_ids():
+                track_df = kl_df[kl_df["comparison_track_id"].astype(str) == comparison_track_id].sort_values("hour")
+                for _, record in track_df.iterrows():
+                    rows.append(
+                        {
+                            "case_id": item["case_id"],
+                            "comparison_track_id": comparison_track_id,
+                            "comparison_track_label": COMPARISON_TRACK_LABELS.get(comparison_track_id, comparison_track_id),
+                            "hour": int(record["hour"]),
+                            "kl_divergence": float(record["kl_divergence"]),
+                            "epsilon": float(record.get("epsilon", 0.0)),
+                            "ocean_cell_count": int(record.get("ocean_cell_count", 0) or 0),
+                        }
+                    )
         return rows
 
     def _build_similarity_rows(
@@ -660,50 +1170,120 @@ class PrototypePygnomeSimilaritySummaryService:
         rows: list[dict[str, Any]] = []
         for item in case_data:
             case_id = item["case_id"]
-            case_fss = fss_df[fss_df["case_id"] == case_id].copy()
-            case_kl = kl_df[kl_df["case_id"] == case_id].copy().sort_values("hour")
-            fss_by_window = {int(row["window_km"]): row for _, row in case_fss.iterrows()}
-            kl_by_hour = {int(row["hour"]): row for _, row in case_kl.iterrows()}
-            row = {
-                "case_id": case_id,
-                "pair_count": int(len(item["pairing_df"])),
-                "pygnome_weathering_enabled": _coerce_bool(item["metadata"].get("weathering_enabled")),
-                "relative_similarity_rank": 0,
-                "mean_kl": float(case_kl["kl_divergence"].mean()),
-                "min_kl": float(case_kl["kl_divergence"].min()),
-                "max_kl": float(case_kl["kl_divergence"].max()),
-                "notes": "Comparator-only prototype transport benchmark. PyGNOME is not treated as truth.",
-            }
-            for window in REQUIRED_WINDOWS_KM:
-                row[f"mean_fss_{window}km"] = float(fss_by_window[window]["mean_fss"])
-                row[f"min_fss_{window}km"] = float(fss_by_window[window]["min_fss"])
-                row[f"max_fss_{window}km"] = float(fss_by_window[window]["max_fss"])
-            for hour in REQUIRED_HOURS:
-                row[f"fss_5km_{hour}h"] = float(fss_by_window[5][f"fss_{hour}h"])
-                row[f"kl_{hour}h"] = float(kl_by_hour[hour]["kl_divergence"])
-            rows.append(row)
+            for comparison_track_id in self._comparison_track_ids():
+                case_fss = fss_df[
+                    (fss_df["case_id"] == case_id)
+                    & (fss_df["comparison_track_id"] == comparison_track_id)
+                ].copy()
+                case_kl = kl_df[
+                    (kl_df["case_id"] == case_id)
+                    & (kl_df["comparison_track_id"] == comparison_track_id)
+                ].copy().sort_values("hour")
+                fss_by_window = {int(row["window_km"]): row for _, row in case_fss.iterrows()}
+                kl_by_hour = {int(row["hour"]): row for _, row in case_kl.iterrows()}
+                row = {
+                    "case_id": case_id,
+                    "comparison_track_id": comparison_track_id,
+                    "comparison_track_label": COMPARISON_TRACK_LABELS.get(comparison_track_id, comparison_track_id),
+                    "pair_count": int(
+                        len(
+                            item["pairing_df"][
+                                item["pairing_df"]["comparison_track_id"].astype(str) == comparison_track_id
+                            ]
+                        )
+                    ),
+                    "pygnome_weathering_enabled": _coerce_bool(item["metadata"].get("weathering_enabled")),
+                    "relative_similarity_rank": 0,
+                    "mean_kl": float(case_kl["kl_divergence"].mean()),
+                    "min_kl": float(case_kl["kl_divergence"].min()),
+                    "max_kl": float(case_kl["kl_divergence"].max()),
+                    "notes": "Comparator-only prototype transport benchmark. PyGNOME is not treated as truth.",
+                }
+                for window in REQUIRED_WINDOWS_KM:
+                    row[f"mean_fss_{window}km"] = float(fss_by_window[window]["mean_fss"])
+                    row[f"min_fss_{window}km"] = float(fss_by_window[window]["min_fss"])
+                    row[f"max_fss_{window}km"] = float(fss_by_window[window]["max_fss"])
+                for hour in REQUIRED_HOURS:
+                    row[f"fss_5km_{hour}h"] = float(fss_by_window[5][f"fss_{hour}h"])
+                    row[f"kl_{hour}h"] = float(kl_by_hour[hour]["kl_divergence"])
+                rows.append(row)
 
         similarity_df = pd.DataFrame(rows)
         similarity_df = similarity_df.sort_values(
-            by=["mean_fss_5km", "mean_kl", "case_id"],
-            ascending=[False, True, True],
+            by=["comparison_track_id", "mean_fss_5km", "mean_kl", "case_id"],
+            ascending=[True, False, True, True],
         ).reset_index(drop=True)
-        similarity_df["relative_similarity_rank"] = np.arange(1, len(similarity_df) + 1)
+        similarity_df["relative_similarity_rank"] = similarity_df.groupby("comparison_track_id").cumcount() + 1
         return similarity_df.to_dict(orient="records")
 
-    def _fss_values_by_window(self, item: dict[str, Any], hour: int) -> dict[int, float]:
-        subset = item["fss_df"][item["fss_df"]["hour"].astype(int) == int(hour)].copy()
+    def _fss_values_by_window(self, item: dict[str, Any], comparison_track_id: str, hour: int) -> dict[int, float]:
+        subset = item["fss_df"][
+            (item["fss_df"]["comparison_track_id"].astype(str) == comparison_track_id)
+            & (item["fss_df"]["hour"].astype(int) == int(hour))
+        ].copy()
         subset["window_km"] = subset["window_km"].astype(int)
         return {int(row["window_km"]): float(row["fss"]) for _, row in subset.iterrows()}
 
-    def _kl_value(self, item: dict[str, Any], hour: int) -> float:
-        subset = item["kl_df"][item["kl_df"]["hour"].astype(int) == int(hour)]
+    def _kl_value(self, item: dict[str, Any], comparison_track_id: str, hour: int) -> float:
+        subset = item["kl_df"][
+            (item["kl_df"]["comparison_track_id"].astype(str) == comparison_track_id)
+            & (item["kl_df"]["hour"].astype(int) == int(hour))
+        ]
         return float(subset.iloc[0]["kl_divergence"])
 
-    def _metrics_snippet(self, item: dict[str, Any], hour: int) -> str:
-        fss_values = self._fss_values_by_window(item, hour)
+    def _metrics_snippet(self, item: dict[str, Any], comparison_track_id: str, hour: int) -> str:
+        fss_values = self._fss_values_by_window(item, comparison_track_id, hour)
         fss_line = "/".join(f"{fss_values[window]:.3f}" for window in REQUIRED_WINDOWS_KM)
-        return f"FSS 1/3/5/10 km = {fss_line}; KL = {self._kl_value(item, hour):.3f}."
+        return f"FSS 1/3/5/10 km = {fss_line}; KL = {self._kl_value(item, comparison_track_id, hour):.3f}."
+
+    def _pairing_row_for_model(self, item: dict[str, Any], hour: int, model_name: str) -> dict[str, Any]:
+        if model_name == "pygnome":
+            return item["pairings_by_hour"]["deterministic"][hour]
+        return item["pairings_by_hour"][MODEL_NAME_TO_TRACK_ID[model_name]][hour]
+
+    def _load_representative_trajectory(self, nc_path: str | Path | None) -> list[tuple[float, float]] | None:
+        if not self._has_path_value(nc_path):
+            return None
+        resolved = self._resolve_repo_path(self._clean_optional_path_value(nc_path))
+        if not resolved.exists():
+            return None
+        try:
+            with xr.open_dataset(resolved) as ds:
+                if "lon" not in ds or "lat" not in ds:
+                    return None
+                lon = np.asarray(ds["lon"].values)
+                lat = np.asarray(ds["lat"].values)
+                if lon.ndim == 1:
+                    lon = lon[:, np.newaxis]
+                    lat = lat[:, np.newaxis]
+                status = np.zeros_like(lon, dtype=float)
+                if "status" in ds:
+                    status = np.asarray(ds["status"].values)
+                    if status.ndim == 1:
+                        status = status[:, np.newaxis]
+                points: list[tuple[float, float]] = []
+                for time_idx in range(lon.shape[0]):
+                    valid = np.isfinite(lon[time_idx]) & np.isfinite(lat[time_idx])
+                    if status.shape == lon.shape:
+                        valid &= status[time_idx] == 0
+                    if not np.any(valid):
+                        continue
+                    points.append(
+                        (
+                            float(np.nanmedian(lon[time_idx][valid])),
+                            float(np.nanmedian(lat[time_idx][valid])),
+                        )
+                    )
+                return points if len(points) >= 2 else None
+        except Exception:
+            return None
+
+    def _trajectory_for_model(self, pair_row: dict[str, Any], model_name: str) -> list[tuple[float, float]] | None:
+        if model_name == "pygnome":
+            return self._load_representative_trajectory(pair_row.get("pygnome_nc_path"))
+        if model_name == "opendrift":
+            return self._load_representative_trajectory(pair_row.get("opendrift_nc_path"))
+        return None
 
     def _single_figure_filename(self, case_id: str, hour: int, model_name: str) -> str:
         return f"{_safe_token(case_id)}__{self._workflow_token()}__{int(hour)}h__{_safe_token(model_name)}__single.png"
@@ -953,6 +1533,7 @@ class PrototypePygnomeSimilaritySummaryService:
         show_ylabel: bool = True,
         show_labels: bool = True,
         source_point: tuple[float, float] | None = None,
+        trajectory_points: list[tuple[float, float]] | None = None,
     ) -> None:
         info = self._load_raster_mask(raster_path)
         display_info = self._load_raster_mask(display_raster_path or raster_path)
@@ -1034,6 +1615,18 @@ class PrototypePygnomeSimilaritySummaryService:
                     zorder=6,
                     )
                 )
+        if trajectory_points:
+            traj_x = [point[0] for point in trajectory_points]
+            traj_y = [point[1] for point in trajectory_points]
+            ax.plot(
+                traj_x,
+                traj_y,
+                color=MODEL_STYLES[model_name]["color"],
+                linewidth=1.2,
+                alpha=0.75,
+                linestyle="-",
+                zorder=6.5,
+            )
         if source_point is not None:
             ax.scatter(
                 [source_point[0]],
@@ -1157,37 +1750,47 @@ class PrototypePygnomeSimilaritySummaryService:
         }
 
     def _single_note_lines(self, item: dict[str, Any], hour: int, model_name: str) -> list[str]:
+        comparison_track_id = MODEL_NAME_TO_TRACK_ID.get(model_name, "deterministic")
         return [
-            self._metrics_snippet(item, hour),
-            "Inner core and outer envelope are presentation-only shapes derived from the stored deterministic normalized density raster.",
-            "The dark outline remains the exact benchmark footprint. PyGNOME is comparator-only, not truth.",
+            self._metrics_snippet(item, comparison_track_id, hour),
+            "Exact footprint outlines remain primary; any density envelope is faint presentation support only.",
+            "PyGNOME is comparator-only, not truth.",
         ]
 
     def _board_note_lines(self, item: dict[str, Any]) -> list[str]:
-        lines = ["Each row is a paired deterministic benchmark snapshot on the same grid."]
-        for hour in REQUIRED_HOURS:
-            lines.append(f"{hour} h: {self._metrics_snippet(item, hour)}")
+        if self.workflow_mode == "prototype_2016":
+            lines = ["Rows show OpenDrift deterministic, p50, p90, and deterministic PyGNOME side by side for each benchmark hour."]
+            for hour in REQUIRED_HOURS:
+                lines.append(f"{hour} h deterministic: {self._metrics_snippet(item, 'deterministic', hour)}")
+                lines.append(f"{hour} h p50: {self._metrics_snippet(item, 'ensemble_p50', hour)}")
+                lines.append(f"{hour} h p90: {self._metrics_snippet(item, 'ensemble_p90', hour)}")
+        else:
+            lines = ["Each row is a paired deterministic benchmark snapshot on the same grid."]
+            for hour in REQUIRED_HOURS:
+                lines.append(f"{hour} h: {self._metrics_snippet(item, 'deterministic', hour)}")
         lines.extend(
             [
-                "The inner core and outer envelope are derived from the stored deterministic normalized density raster; the dark outline remains the exact benchmark footprint.",
+                "Exact footprint outlines remain primary; smoothed density support is secondary presentation context only.",
                 (
                     "The shoreline, land backdrop, and locator reuse the stored canonical Mindoro scoring-grid assets."
                     if self.support_context_mode == "mindoro_canonical"
                     else "The figure uses neutral/case-local context so the 2021 debug lane is not misframed as the older Mindoro prototype geography."
                 ),
-                "OpenDrift is the control forecast lane shown here; PyGNOME is a comparator only.",
+                "PyGNOME is a comparator only, not truth.",
                 f"{self._support_status_phrase().capitalize()}; not final Chapter 3 evidence.",
             ]
         )
         return lines
 
     def _render_single_figure(self, item: dict[str, Any], *, hour: int, model_name: str) -> dict[str, Any]:
-        pair_row = item["pairings_by_hour"][hour]
-        source_key = "control_footprint_path_resolved" if model_name == "opendrift" else "pygnome_footprint_path_resolved"
-        density_key = "control_density_path_resolved" if model_name == "opendrift" else "pygnome_density_path_resolved"
+        pair_row = self._pairing_row_for_model(item, hour, model_name)
+        comparison_track_id = MODEL_NAME_TO_TRACK_ID.get(model_name, "deterministic")
+        source_key = "opendrift_footprint_path_resolved" if model_name != "pygnome" else "pygnome_footprint_path_resolved"
+        density_key = "opendrift_density_path_resolved" if model_name != "pygnome" else "pygnome_density_path_resolved"
         source_path = Path(pair_row[source_key])
         density_path = pair_row.get(density_key)
         source_point = self._resolve_case_source_point(item["case_id"])
+        trajectory_points = self._trajectory_for_model(pair_row, model_name)
         output_path = self.figures_dir / self._single_figure_filename(item["case_id"], hour, model_name)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1202,8 +1805,9 @@ class PrototypePygnomeSimilaritySummaryService:
             display_raster_path=Path(density_path) if density_path else None,
             crop_bounds=item["crop_bounds"],
             model_name=model_name,
-            panel_title=f"{MODEL_STYLES[model_name]['short_label']} support envelopes",
+            panel_title=f"{MODEL_STYLES[model_name]['short_label']} footprint",
             source_point=source_point,
+            trajectory_points=trajectory_points,
         )
 
         locator_ax = map_ax.inset_axes([0.74, 0.74, 0.22, 0.22])
@@ -1237,7 +1841,7 @@ class PrototypePygnomeSimilaritySummaryService:
         fig.text(
             0.07,
             0.932,
-            f"{MODEL_STYLES[model_name]['label']} | deterministic density-derived support envelopes | {self.workflow_mode} comparator-only",
+            f"{MODEL_STYLES[model_name]['label']} | exact footprint first, density support secondary | {self.workflow_mode} comparator-only",
             ha="left",
             va="top",
             fontsize=10,
@@ -1249,8 +1853,7 @@ class PrototypePygnomeSimilaritySummaryService:
 
         interpretation = (
             f"{self._workflow_label()} support figure for {item['case_id']} at {hour} h showing the "
-            f"{MODEL_STYLES[model_name]['label']} higher-density core and broader support envelope derived from the stored deterministic normalized density raster, "
-            f"overlaid with the exact benchmark footprint outline and {self._context_phrase()}. "
+            f"{MODEL_STYLES[model_name]['label']} exact benchmark footprint with faint density support context and {self._context_phrase()}. "
             "PyGNOME remains comparator-only, not truth, and this is not final Chapter 3 evidence."
         )
         context = self._load_prototype_map_context()
@@ -1264,6 +1867,22 @@ class PrototypePygnomeSimilaritySummaryService:
                 source_paths.append(str(Path(value).relative_to(self.repo_root)))
         if density_path:
             source_paths.insert(1, str(Path(density_path).relative_to(self.repo_root)))
+        if model_name == "pygnome" and self._has_path_value(pair_row.get("pygnome_nc_path")):
+            source_paths.append(
+                str(
+                    self._resolve_repo_path(self._clean_optional_path_value(pair_row["pygnome_nc_path"])).relative_to(
+                        self.repo_root
+                    )
+                )
+            )
+        if model_name == "opendrift" and self._has_path_value(pair_row.get("opendrift_nc_path")):
+            source_paths.append(
+                str(
+                    self._resolve_repo_path(self._clean_optional_path_value(pair_row["opendrift_nc_path"])).relative_to(
+                        self.repo_root
+                    )
+                )
+            )
         source_note = "with a provenance source-point star" if source_point is not None else "without a provenance source-point star because no defensible source point was available"
         source_point_path = next((path for path in self._prototype_source_point_candidates(item["case_id"]) if path.exists()), None)
         if source_point_path is not None:
@@ -1299,7 +1918,13 @@ class PrototypePygnomeSimilaritySummaryService:
             "pixel_height": pixel_height,
             "short_plain_language_interpretation": interpretation,
             "source_paths": " | ".join(dict.fromkeys(source_paths)),
-            "notes": f"{self._support_status_phrase().capitalize()} transport comparator with {self._context_phrase()}, a small locator inset, density-derived inner/outer support envelopes, and {source_note}. Deterministic OpenDrift control vs deterministic PyGNOME only.",
+            "notes": (
+                f"{self._support_status_phrase().capitalize()} transport comparator with {self._context_phrase()}, "
+                f"a small locator inset, footprint-first rendering, and {source_note}. "
+                f"{MODEL_STYLES[model_name]['label']} vs deterministic PyGNOME."
+            ),
+            "comparison_track_id": comparison_track_id,
+            "comparison_track_label": COMPARISON_TRACK_LABELS.get(comparison_track_id, MODEL_STYLES[model_name]["label"]),
             "legacy_debug_only": self.workflow_mode == "prototype_2016",
             "pygnome_role": "comparator_only",
         }
@@ -1308,65 +1933,103 @@ class PrototypePygnomeSimilaritySummaryService:
         output_path = self.figures_dir / self._board_figure_filename(item["case_id"])
         output_path.parent.mkdir(parents=True, exist_ok=True)
         source_point = self._resolve_case_source_point(item["case_id"])
-        fig = plt.figure(figsize=BOARD_FIGURE_SIZE, dpi=FIGURE_DPI, facecolor="#ffffff")
+        board_models = self._single_model_sequence()
+        board_size = (15.2, 12.4) if len(board_models) > 2 else BOARD_FIGURE_SIZE
+        fig = plt.figure(figsize=board_size, dpi=FIGURE_DPI, facecolor="#ffffff")
         grid = fig.add_gridspec(
-            4,
-            3,
-            width_ratios=[1.0, 1.0, 0.58],
-            height_ratios=[1.0, 1.0, 1.0, 0.42],
+            len(board_models) + 1,
+            len(REQUIRED_HOURS),
+            height_ratios=[1.0] * len(board_models) + [0.36],
             left=0.05,
             right=0.98,
             top=0.91,
             bottom=0.06,
             wspace=0.16,
-            hspace=0.18,
+            hspace=0.20,
         )
 
         source_paths: list[str] = []
-        for row_idx, hour in enumerate(REQUIRED_HOURS):
-            pair_row = item["pairings_by_hour"][hour]
-            for col_idx, model_name in enumerate(("opendrift", "pygnome")):
+        for row_idx, model_name in enumerate(board_models):
+            comparison_track_id = MODEL_NAME_TO_TRACK_ID.get(model_name, "deterministic")
+            for col_idx, hour in enumerate(REQUIRED_HOURS):
+                pair_row = self._pairing_row_for_model(item, hour, model_name)
                 ax = fig.add_subplot(grid[row_idx, col_idx])
-                source_key = "control_footprint_path_resolved" if model_name == "opendrift" else "pygnome_footprint_path_resolved"
-                density_key = "control_density_path_resolved" if model_name == "opendrift" else "pygnome_density_path_resolved"
+                source_key = "opendrift_footprint_path_resolved" if model_name != "pygnome" else "pygnome_footprint_path_resolved"
+                density_key = "opendrift_density_path_resolved" if model_name != "pygnome" else "pygnome_density_path_resolved"
                 source_path = Path(pair_row[source_key])
                 density_path = pair_row.get(density_key)
                 source_paths.append(str(source_path.relative_to(self.repo_root)))
                 if density_path:
                     source_paths.append(str(Path(density_path).relative_to(self.repo_root)))
-                if col_idx == 1:
+                if col_idx == 0:
                     source_paths.append(str(Path(pair_row["qa_overlay_path_resolved"]).relative_to(self.repo_root)))
+                trajectory_points = self._trajectory_for_model(pair_row, model_name)
+                if model_name == "pygnome" and self._has_path_value(pair_row.get("pygnome_nc_path")):
+                    source_paths.append(
+                        str(
+                            self._resolve_repo_path(
+                                self._clean_optional_path_value(pair_row["pygnome_nc_path"])
+                            ).relative_to(self.repo_root)
+                        )
+                    )
+                if model_name == "opendrift" and self._has_path_value(pair_row.get("opendrift_nc_path")):
+                    source_paths.append(
+                        str(
+                            self._resolve_repo_path(
+                                self._clean_optional_path_value(pair_row["opendrift_nc_path"])
+                            ).relative_to(self.repo_root)
+                        )
+                    )
                 self._render_model_footprint(
                     ax,
                     raster_path=source_path,
                     display_raster_path=Path(density_path) if density_path else None,
                     crop_bounds=item["crop_bounds"],
                     model_name=model_name,
-                    panel_title=MODEL_STYLES[model_name]["label"] if row_idx == 0 else "",
-                    row_label=f"{hour} h" if col_idx == 0 else "",
-                    show_xlabel=row_idx == len(REQUIRED_HOURS) - 1,
+                    panel_title=f"T+{hour} h" if row_idx == 0 else "",
+                    row_label=MODEL_STYLES[model_name]["short_label"] if col_idx == 0 else "",
+                    show_xlabel=row_idx == len(board_models) - 1,
                     show_ylabel=col_idx == 0,
                     show_labels=False,
                     source_point=source_point,
+                    trajectory_points=trajectory_points,
                 )
+                ax.text(
+                    0.02,
+                    0.98,
+                    self._metrics_snippet(item, comparison_track_id, hour),
+                    transform=ax.transAxes,
+                    ha="left",
+                    va="top",
+                    fontsize=7.0,
+                    color="#334155",
+                    bbox={"boxstyle": "round,pad=0.18", "facecolor": (1, 1, 1, 0.92), "edgecolor": "#cbd5e1"},
+                )
+                if row_idx == 0 and col_idx == len(REQUIRED_HOURS) - 1:
+                    locator_ax = ax.inset_axes([0.62, 0.60, 0.34, 0.34])
+                    self._draw_locator(locator_ax, item["crop_bounds"])
 
-        locator_ax = fig.add_subplot(grid[0:2, 2])
-        side_ax = fig.add_subplot(grid[2, 2])
-        note_ax = fig.add_subplot(grid[3, :])
-        self._draw_locator(locator_ax, item["crop_bounds"])
-        self._draw_board_side_panel(side_ax, item, include_source_point=source_point is not None)
-        self._draw_footer_note(note_ax, "Board reading guide", self._board_note_lines(item), width=160)
-        figure_title = f"{item['case_id']} | 24/48/72 h OpenDrift vs PyGNOME support envelopes"
+        note_ax = fig.add_subplot(grid[len(board_models), :])
+        self._draw_footer_note(note_ax, "Board reading guide", self._board_note_lines(item), width=190)
+        figure_title = f"{item['case_id']} | 24/48/72 h legacy Phase 3A comparator board"
         fig.suptitle(figure_title, x=0.05, y=0.965, ha="left", fontsize=18, fontweight="bold")
-        fig.text(0.05, 0.932, f"{self.workflow_mode} | deterministic density-derived support envelopes | PyGNOME comparator-only", ha="left", va="top", fontsize=10, color="#475569")
+        fig.text(
+            0.05,
+            0.932,
+            f"{self.workflow_mode} | deterministic, p50, p90, and PyGNOME footprints | PyGNOME comparator-only",
+            ha="left",
+            va="top",
+            fontsize=10,
+            color="#475569",
+        )
         pixel_width, pixel_height = self._figure_pixel_size(fig)
         fig.savefig(output_path, dpi=FIGURE_DPI)
         plt.close(fig)
 
-        timestamps = [str(item["pairings_by_hour"][hour]["timestamp_utc"]) for hour in REQUIRED_HOURS]
+        timestamps = [str(item["pairings_by_hour"]["deterministic"][hour]["timestamp_utc"]) for hour in REQUIRED_HOURS]
         interpretation = (
             f"{self._workflow_label()} support board for {item['case_id']} showing paired 24 h, 48 h, and 72 h "
-            f"deterministic density-derived support envelopes and exact footprint outlines for OpenDrift and PyGNOME on the same benchmark grid with {self._context_phrase()} and locator context. "
+            f"OpenDrift deterministic, OpenDrift p50, OpenDrift p90, and deterministic PyGNOME exact footprint views on the same benchmark grid with {self._context_phrase()} and locator context. "
             "PyGNOME remains comparator-only, not truth, and this is not final Chapter 3 evidence."
         )
         context = self._load_prototype_map_context()
@@ -1398,7 +2061,11 @@ class PrototypePygnomeSimilaritySummaryService:
             "timestamp_utc": ";".join(timestamps),
             "hour": "",
             "model_name": "opendrift_vs_pygnome",
-            "model_label": "OpenDrift deterministic vs PyGNOME deterministic",
+            "model_label": "OpenDrift deterministic/p50/p90 vs PyGNOME deterministic",
+            "comparison_track_id": ";".join(self._comparison_track_ids()),
+            "comparison_track_label": ";".join(
+                COMPARISON_TRACK_LABELS.get(track_id, track_id) for track_id in self._comparison_track_ids()
+            ),
             "run_type": "comparison_board",
             "view_type": "board",
             "variant": "slide",
@@ -1409,7 +2076,7 @@ class PrototypePygnomeSimilaritySummaryService:
             "pixel_height": pixel_height,
             "short_plain_language_interpretation": interpretation,
             "source_paths": " | ".join(dict.fromkeys(source_paths)),
-            "notes": f"{self._support_status_phrase().capitalize()} transport comparator board with {self._context_phrase()}, a small locator/legend side panel, density-derived inner/outer support envelopes, and {source_note}. Deterministic OpenDrift control vs deterministic PyGNOME only.",
+            "notes": f"{self._support_status_phrase().capitalize()} transport comparator board with {self._context_phrase()}, on-panel FSS/KL annotations, and {source_note}. Deterministic OpenDrift plus legacy support-only p50/p90 tracks vs deterministic PyGNOME.",
             "legacy_debug_only": self.workflow_mode == "prototype_2016",
             "pygnome_role": "comparator_only",
         }
@@ -1418,33 +2085,36 @@ class PrototypePygnomeSimilaritySummaryService:
         figure_rows: list[dict[str, Any]] = []
         for item in case_data:
             for hour in REQUIRED_HOURS:
-                for model_name in ("opendrift", "pygnome"):
+                for model_name in self._single_model_sequence():
                     figure_rows.append(self._render_single_figure(item, hour=hour, model_name=model_name))
             figure_rows.append(self._render_board_figure(item))
         return figure_rows
 
     def _write_fss_figure(self, fss_rows: list[dict[str, Any]]) -> Path:
         path = self.output_dir / "qa_prototype_pygnome_fss_by_case_window.png"
-        df = pd.DataFrame(fss_rows).sort_values(["window_km", "case_id"])
+        df = pd.DataFrame(fss_rows).sort_values(["comparison_track_id", "window_km", "case_id"])
         windows = list(REQUIRED_WINDOWS_KM)
-        case_ids = df["case_id"].drop_duplicates().tolist()
-        fig, ax = plt.subplots(figsize=(9, 5))
+        series_keys = df[["case_id", "comparison_track_id", "comparison_track_label"]].drop_duplicates().to_dict("records")
+        fig, ax = plt.subplots(figsize=(10.2, 5.6))
         x = np.arange(len(windows))
-        width = 0.22
-        for idx, case_id in enumerate(case_ids):
-            case_df = df[df["case_id"] == case_id].sort_values("window_km")
+        width = max(0.08, 0.72 / max(len(series_keys), 1))
+        for idx, series in enumerate(series_keys):
+            case_df = df[
+                (df["case_id"] == series["case_id"])
+                & (df["comparison_track_id"] == series["comparison_track_id"])
+            ].sort_values("window_km")
             ax.bar(
-                x + (idx - (len(case_ids) - 1) / 2) * width,
+                x + (idx - (len(series_keys) - 1) / 2) * width,
                 case_df["mean_fss"].tolist(),
                 width=width,
-                label=case_id,
+                label=f"{series['case_id']} | {series['comparison_track_label']}",
             )
         ax.set_xticks(x)
         ax.set_xticklabels([f"{window} km" for window in windows])
         ax.set_ylabel("Mean FSS")
-        ax.set_title(f"{self._workflow_label()} OpenDrift vs PyGNOME similarity by case and window")
+        ax.set_title(f"{self._workflow_label()} Phase 3A similarity by case, track, and window")
         ax.set_ylim(0.0, 1.0)
-        ax.legend(loc="best")
+        ax.legend(loc="upper left", fontsize=7.8)
         ax.grid(axis="y", alpha=0.25)
         fig.tight_layout()
         fig.savefig(path, dpi=180)
@@ -1453,23 +2123,24 @@ class PrototypePygnomeSimilaritySummaryService:
 
     def _write_kl_figure(self, kl_rows: list[dict[str, Any]]) -> Path:
         path = self.output_dir / "qa_prototype_pygnome_kl_by_case_hour.png"
-        df = pd.DataFrame(kl_rows).sort_values(["case_id", "hour"])
+        df = pd.DataFrame(kl_rows).sort_values(["comparison_track_id", "case_id", "hour"])
         fig, ax = plt.subplots(figsize=(9, 5))
-        for case_id in df["case_id"].drop_duplicates().tolist():
-            case_df = df[df["case_id"] == case_id].sort_values("hour")
+        for (case_id, comparison_track_id), case_df in df.groupby(["case_id", "comparison_track_id"]):
+            case_df = case_df.sort_values("hour")
+            track_label = str(case_df["comparison_track_label"].iloc[0])
             ax.plot(
                 case_df["hour"].tolist(),
                 case_df["kl_divergence"].tolist(),
                 marker="o",
                 linewidth=2.0,
-                label=case_id,
+                label=f"{case_id} | {track_label}",
             )
         ax.set_xticks(list(REQUIRED_HOURS))
         ax.set_xlabel("Snapshot hour")
         ax.set_ylabel("KL divergence")
-        ax.set_title(f"{self._workflow_label()} OpenDrift vs PyGNOME KL divergence by case and hour")
+        ax.set_title(f"{self._workflow_label()} Phase 3A KL divergence by case and track")
         ax.grid(alpha=0.25)
-        ax.legend(loc="best")
+        ax.legend(loc="best", fontsize=7.8)
         fig.tight_layout()
         fig.savefig(path, dpi=180)
         plt.close(fig)
@@ -1477,11 +2148,12 @@ class PrototypePygnomeSimilaritySummaryService:
 
     def _write_scorecard_figure(self, similarity_rows: list[dict[str, Any]]) -> Path:
         path = self.output_dir / "qa_prototype_pygnome_scorecard.png"
-        df = pd.DataFrame(similarity_rows).sort_values("relative_similarity_rank")
+        df = pd.DataFrame(similarity_rows).sort_values(["comparison_track_id", "relative_similarity_rank"])
         fig, ax = plt.subplots(figsize=(10, 2.2 + 0.55 * len(df)))
         ax.axis("off")
         table_rows = [
             [
+                row["comparison_track_label"],
                 int(row["relative_similarity_rank"]),
                 row["case_id"],
                 f"{float(row['mean_fss_5km']):.3f}",
@@ -1492,7 +2164,7 @@ class PrototypePygnomeSimilaritySummaryService:
         ]
         table = ax.table(
             cellText=table_rows,
-            colLabels=["Rank", "Case", "Mean FSS @ 5 km", "Mean KL", "Pairs"],
+            colLabels=["Track", "Rank", "Case", "Mean FSS @ 5 km", "Mean KL", "Pairs"],
             cellLoc="center",
             loc="center",
         )
@@ -1501,7 +2173,7 @@ class PrototypePygnomeSimilaritySummaryService:
         table.scale(1, 1.4)
         ax.set_title(
             f"{self._workflow_label()} transport benchmark scorecard\n"
-            "Ranking rule: higher mean FSS @ 5 km, then lower mean KL",
+            "Ranking rule: higher mean FSS @ 5 km, then lower mean KL, within each comparison track",
             pad=16,
         )
         fig.tight_layout()
@@ -1509,13 +2181,19 @@ class PrototypePygnomeSimilaritySummaryService:
         plt.close(fig)
         return path
 
-    def _build_summary_markdown(self, similarity_rows: list[dict[str, Any]]) -> str:
-        df = pd.DataFrame(similarity_rows).sort_values("relative_similarity_rank")
+    def _build_summary_markdown(
+        self,
+        similarity_rows: list[dict[str, Any]],
+        *,
+        skipped_cases: list[dict[str, str]] | None = None,
+    ) -> str:
+        df = pd.DataFrame(similarity_rows).sort_values(["comparison_track_id", "relative_similarity_rank"])
         workflow_status = status_for_track_id(self.workflow_mode)
+        skipped_cases = skipped_cases or []
         cohort_phrase = (
             "the configured accepted-segment 2021 deterministic OpenDrift control vs deterministic PyGNOME transport benchmarks"
             if self.workflow_mode == "prototype_2021"
-            else "the three legacy 2016 deterministic OpenDrift control vs deterministic PyGNOME transport benchmarks"
+            else "the three legacy 2016 deterministic, p50, and p90 OpenDrift transport benchmarks against deterministic PyGNOME"
         )
         lines = [
             f"# {self._workflow_label()} PyGNOME Similarity Summary",
@@ -1535,17 +2213,28 @@ class PrototypePygnomeSimilaritySummaryService:
         if workflow_status:
             lines.insert(7, f"- provenance: {workflow_status.provenance_label}")
             lines.insert(7, f"- status label: {workflow_status.label}")
-        for _, row in df.iterrows():
-            lines.append(
-                f"- Rank {int(row['relative_similarity_rank'])}: `{row['case_id']}` | "
-                f"mean FSS @ 5 km = {float(row['mean_fss_5km']):.3f}, "
-                f"mean KL = {float(row['mean_kl']):.3f}, "
-                f"pairs = {int(row['pair_count'])}"
-            )
+        if skipped_cases:
+            lines.extend(["", "Skipped cases:", ""])
+            for skipped in skipped_cases:
+                lines.append(
+                    f"- `{skipped['case_id']}` skipped due to {skipped['error_type']}: {skipped['error_message']}"
+                )
+        for comparison_track_id in self._comparison_track_ids():
+            track_df = df[df["comparison_track_id"] == comparison_track_id]
+            if track_df.empty:
+                continue
+            lines.append(f"- `{COMPARISON_TRACK_LABELS.get(comparison_track_id, comparison_track_id)}`:")
+            for _, row in track_df.iterrows():
+                lines.append(
+                    f"  Rank {int(row['relative_similarity_rank'])}: `{row['case_id']}` | "
+                    f"mean FSS @ 5 km = {float(row['mean_fss_5km']):.3f}, "
+                    f"mean KL = {float(row['mean_kl']):.3f}, "
+                    f"pairs = {int(row['pair_count'])}"
+                )
         lines.extend(["", "Per-case snapshot highlights:", ""])
         for _, row in df.iterrows():
             lines.append(
-                f"- `{row['case_id']}`: "
+                f"- `{row['case_id']}` / `{row['comparison_track_label']}`: "
                 f"FSS @ 5 km (24/48/72 h) = "
                 f"{float(row['fss_5km_24h']):.3f} / {float(row['fss_5km_48h']):.3f} / {float(row['fss_5km_72h']):.3f}; "
                 f"KL (24/48/72 h) = "
@@ -1556,19 +2245,27 @@ class PrototypePygnomeSimilaritySummaryService:
                 "",
                 "Interpretation:",
                 "",
-                "- Higher FSS means stronger footprint overlap between deterministic OpenDrift and deterministic PyGNOME.",
+                "- Higher FSS means stronger footprint overlap between the named OpenDrift track and deterministic PyGNOME.",
                 "- Lower KL means the normalized density fields are more similar over the ocean cells.",
-                f"- The ranking is relative within the {self.workflow_mode} support set only.",
-                f"- The per-forecast figures under `figures/` are support visuals built from the stored benchmark rasters only, now shown as higher-density core and broader support envelopes over {self._context_phrase()}, with a provenance source-point star when available.",
+                f"- The ranking is relative within each comparison track inside the {self.workflow_mode} support set only.",
+                f"- The per-forecast figures under `figures/` are support visuals built from the stored benchmark rasters only, now shown with footprint-first rendering over {self._context_phrase()}, with a provenance source-point star when available.",
             ]
         )
         return "\n".join(lines)
 
-    def _build_figure_captions_markdown(self, figure_rows: list[dict[str, Any]]) -> str:
+    def _build_figure_captions_markdown(
+        self,
+        figure_rows: list[dict[str, Any]],
+        *,
+        case_ids: list[str] | None = None,
+        skipped_cases: list[dict[str, str]] | None = None,
+    ) -> str:
+        skipped_cases = skipped_cases or []
+        ordered_case_ids = case_ids or self.case_ids
         lines = [
             f"# {self._workflow_label()} Forecast Figure Captions",
             "",
-            f"These figures are {self._support_status_phrase()} transport benchmark support visuals built from the stored deterministic OpenDrift and deterministic PyGNOME benchmark rasters, with {self._context_phrase()}, a small locator inset, density-derived inner and outer support envelopes, the exact benchmark footprint outline, and a provenance source-point star when that asset is available.",
+            f"These figures are {self._support_status_phrase()} transport benchmark support visuals built from the stored benchmark rasters, with {self._context_phrase()}, a small locator inset, footprint-first rendering, faint density support where available, and a provenance source-point star when that asset is available.",
             "",
             "Guardrails:",
             "",
@@ -1578,7 +2275,7 @@ class PrototypePygnomeSimilaritySummaryService:
             "",
         ]
         figure_df = pd.DataFrame(figure_rows).sort_values(["case_id", "view_type", "hour", "model_name"])
-        for case_id in self.case_ids:
+        for case_id in ordered_case_ids:
             lines.append(f"## {case_id}")
             lines.append("")
             case_df = figure_df[figure_df["case_id"] == case_id]
@@ -1592,23 +2289,42 @@ class PrototypePygnomeSimilaritySummaryService:
                     f"- `{row['figure_id']}` ({label}){status_text}: {row['short_plain_language_interpretation']}{provenance_text}"
                 )
             lines.append("")
+        if skipped_cases:
+            lines.extend(["## Skipped Cases", ""])
+            for skipped in skipped_cases:
+                lines.append(
+                    f"- `{skipped['case_id']}` skipped due to {skipped['error_type']}: {skipped['error_message']}"
+                )
+            lines.append("")
         return "\n".join(lines)
 
     def run(self) -> dict[str, Any]:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.figures_dir.mkdir(parents=True, exist_ok=True)
-        case_data = [self._load_case_artifacts(case_id) for case_id in self.case_ids]
+        case_data, skipped_cases = self._load_available_case_artifacts()
+        if not case_data:
+            failure_summary = "; ".join(
+                f"{item['case_id']}: {item['error_type']}: {item['error_message']}"
+                for item in skipped_cases
+            )
+            raise ValueError(
+                "Prototype PyGNOME similarity summary could not find any complete benchmark cases. "
+                f"Configured cases={self.case_ids}. "
+                f"Failures={failure_summary}"
+            )
         case_registry_rows = self._build_case_registry_rows(case_data)
         fss_rows = self._build_fss_rows(case_data)
         kl_rows = self._build_kl_rows(case_data)
         similarity_rows = self._build_similarity_rows(case_data, fss_rows, kl_rows)
         figure_rows = self._render_forecast_figures(case_data)
+        processed_case_ids = [item["case_id"] for item in case_data]
 
         case_registry_csv = self.output_dir / "prototype_pygnome_case_registry.csv"
         similarity_by_case_csv = self.output_dir / "prototype_pygnome_similarity_by_case.csv"
         fss_by_case_window_csv = self.output_dir / "prototype_pygnome_fss_by_case_window.csv"
         kl_by_case_hour_csv = self.output_dir / "prototype_pygnome_kl_by_case_hour.csv"
         figure_registry_csv = self.output_dir / "prototype_pygnome_figure_registry.csv"
+        skipped_cases_csv = self.output_dir / "prototype_pygnome_skipped_cases.csv"
         manifest_json = self.output_dir / "prototype_pygnome_similarity_manifest.json"
         summary_md = self.output_dir / "prototype_pygnome_similarity_summary.md"
         figure_captions_md = self.output_dir / "prototype_pygnome_figure_captions.md"
@@ -1617,6 +2333,7 @@ class PrototypePygnomeSimilaritySummaryService:
         _write_csv(similarity_by_case_csv, similarity_rows)
         _write_csv(fss_by_case_window_csv, fss_rows)
         _write_csv(kl_by_case_hour_csv, kl_rows)
+        _write_csv(skipped_cases_csv, skipped_cases, columns=["case_id", "error_type", "error_message"])
         _write_csv(
             figure_registry_csv,
             figure_rows,
@@ -1629,6 +2346,8 @@ class PrototypePygnomeSimilaritySummaryService:
                 "hour",
                 "model_name",
                 "model_label",
+                "comparison_track_id",
+                "comparison_track_label",
                 "run_type",
                 "view_type",
                 "variant",
@@ -1657,25 +2376,43 @@ class PrototypePygnomeSimilaritySummaryService:
         fss_figure = self._write_fss_figure(fss_rows)
         kl_figure = self._write_kl_figure(kl_rows)
         scorecard_figure = self._write_scorecard_figure(similarity_rows)
-        _write_text(summary_md, self._build_summary_markdown(similarity_rows))
-        _write_text(figure_captions_md, self._build_figure_captions_markdown(figure_rows))
+        _write_text(summary_md, self._build_summary_markdown(similarity_rows, skipped_cases=skipped_cases))
+        _write_text(
+            figure_captions_md,
+            self._build_figure_captions_markdown(
+                figure_rows,
+                case_ids=processed_case_ids,
+                skipped_cases=skipped_cases,
+            ),
+        )
 
-        top_case = min(similarity_rows, key=lambda row: int(row["relative_similarity_rank"]))
+        deterministic_rows = [
+            row for row in similarity_rows
+            if str(row.get("comparison_track_id") or "") == "deterministic"
+        ]
+        ranking_source_rows = deterministic_rows or similarity_rows
+        top_case = min(ranking_source_rows, key=lambda row: int(row["relative_similarity_rank"]))
         manifest = {
             "phase": PHASE,
             "workflow_mode": self.workflow_mode,
             "generated_at_utc": _utc_now_iso(),
             "output_root": str(self.output_dir.relative_to(self.repo_root)),
             "configured_case_ids": self.case_ids,
-            "comparison_scope": "deterministic_opendrift_control_vs_deterministic_pygnome_transport_benchmark",
+            "processed_case_ids": processed_case_ids,
+            "comparison_scope": (
+                "deterministic_p50_p90_opendrift_vs_deterministic_pygnome_transport_benchmark"
+                if self.workflow_mode == "prototype_2016"
+                else "deterministic_opendrift_control_vs_deterministic_pygnome_transport_benchmark"
+            ),
             "pygnome_role": "comparator_only",
             "legacy_debug_only": self.workflow_mode == "prototype_2016",
             "final_chapter3_evidence": False,
             "support_context_mode": self.support_context_mode,
-            "ranking_rule": "higher mean FSS @ 5 km, then lower mean KL",
+            "ranking_rule": "higher mean FSS @ 5 km, then lower mean KL, within each comparison track",
             "required_artifacts_per_case": list(REQUIRED_BENCHMARK_FILES.values()),
             "headline": {
                 "top_ranked_case_id": top_case["case_id"],
+                "top_ranked_comparison_track_id": top_case.get("comparison_track_id", "deterministic"),
                 "top_ranked_mean_fss_5km": float(top_case["mean_fss_5km"]),
                 "top_ranked_mean_kl": float(top_case["mean_kl"]),
             },
@@ -1688,6 +2425,7 @@ class PrototypePygnomeSimilaritySummaryService:
                 "figure_registry_csv": str(figure_registry_csv.relative_to(self.repo_root)),
                 "figure_captions_md": str(figure_captions_md.relative_to(self.repo_root)),
                 "figures_dir": str(self.figures_dir.relative_to(self.repo_root)),
+                "skipped_cases_csv": str(skipped_cases_csv.relative_to(self.repo_root)),
             },
             "figure_counts": {
                 "single_forecast_figures": int(sum(1 for row in figure_rows if row["view_type"] == "single")),
@@ -1699,6 +2437,7 @@ class PrototypePygnomeSimilaritySummaryService:
                 str(scorecard_figure.relative_to(self.repo_root)),
             ],
             "forecast_figures": [row["relative_path"] for row in figure_rows],
+            "skipped_cases": skipped_cases,
         }
         _write_json(manifest_json, manifest)
 
@@ -1710,6 +2449,7 @@ class PrototypePygnomeSimilaritySummaryService:
             "kl_by_case_hour_csv": str(kl_by_case_hour_csv),
             "figure_registry_csv": str(figure_registry_csv),
             "figure_captions_md": str(figure_captions_md),
+            "skipped_cases_csv": str(skipped_cases_csv),
             "manifest_json": str(manifest_json),
             "summary_md": str(summary_md),
             "qa_figures": [str(fss_figure), str(kl_figure), str(scorecard_figure)],
@@ -1717,9 +2457,13 @@ class PrototypePygnomeSimilaritySummaryService:
             "single_figure_count": int(sum(1 for row in figure_rows if row["view_type"] == "single")),
             "board_figure_count": int(sum(1 for row in figure_rows if row["view_type"] == "board")),
             "top_ranked_case_id": top_case["case_id"],
+            "top_ranked_comparison_track_id": str(top_case.get("comparison_track_id", "deterministic")),
             "top_ranked_mean_fss_5km": float(top_case["mean_fss_5km"]),
             "top_ranked_mean_kl": float(top_case["mean_kl"]),
-            "case_count": len(self.case_ids),
+            "case_count": len(case_data),
+            "configured_case_count": len(self.case_ids),
+            "processed_case_ids": processed_case_ids,
+            "skipped_cases": skipped_cases,
         }
 
 

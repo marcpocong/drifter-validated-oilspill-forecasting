@@ -37,6 +37,23 @@ def _normalize_utc_timestamp(value: pd.Timestamp | str) -> pd.Timestamp:
     return timestamp.tz_convert("UTC")
 
 
+def _describe_remote_error(exc: Exception) -> str:
+    if isinstance(exc, requests.exceptions.ReadTimeout):
+        return "the remote server did not respond before the 180-second read timeout"
+    if isinstance(exc, requests.exceptions.ConnectTimeout):
+        return "the connection to the remote server timed out before it was established"
+    if isinstance(exc, requests.exceptions.Timeout):
+        return "the remote request timed out"
+    if isinstance(exc, requests.exceptions.ConnectionError):
+        return "the connection to the remote server failed"
+    if isinstance(exc, requests.exceptions.HTTPError):
+        response = getattr(exc, "response", None)
+        if response is not None:
+            return f"the remote service returned HTTP {response.status_code}"
+        return "the remote service returned an HTTP error"
+    return str(exc)
+
+
 def apply_wind_cf_metadata(ds: xr.Dataset) -> xr.Dataset:
     normalized = ds.copy()
     for coord_name, standard_name, units in (
@@ -138,6 +155,30 @@ class GFSWindDownloader:
                 analysis_urls[timestamp] = (lead_hours, candidate_url)
         return {timestamp: url for timestamp, (_, url) in analysis_urls.items()}
 
+    def fallback_analysis_urls(
+        self,
+        start_time: pd.Timestamp | str,
+        end_time: pd.Timestamp | str,
+    ) -> list[tuple[pd.Timestamp, str]]:
+        start_utc = _normalize_utc_timestamp(start_time)
+        end_utc = _normalize_utc_timestamp(end_time)
+        freq_hours = max(int(round(self.expected_delta.total_seconds() / 3600.0)), 1)
+        freq_label = f"{freq_hours}h"
+        lower_bound = (start_utc - self.expected_delta).floor(freq_label)
+        upper_bound = (end_utc + self.expected_delta).ceil(freq_label)
+        timestamps = pd.date_range(start=lower_bound, end=upper_bound, freq=freq_label, tz="UTC")
+
+        fallback_urls: list[tuple[pd.Timestamp, str]] = []
+        for timestamp in timestamps:
+            base = self.gfs_dataset_base(timestamp)
+            if base == GFS_OLD_BASE:
+                filename = f"gfsanl_4_{timestamp.strftime('%Y%m%d')}_{timestamp.strftime('%H')}00_000.grb2"
+            else:
+                filename = f"gfs_4_{timestamp.strftime('%Y%m%d')}_{timestamp.strftime('%H')}00_000.grb2"
+            url = f"{base}/{timestamp.strftime('%Y%m')}/{timestamp.strftime('%Y%m%d')}/{filename}"
+            fallback_urls.append((timestamp, url))
+        return fallback_urls
+
     def discover_gfs_analysis_urls(
         self,
         start_time: pd.Timestamp | str,
@@ -168,16 +209,32 @@ class GFSWindDownloader:
                 except Exception as exc:  # pragma: no cover - remote variability
                     last_error = exc
                     logger.warning(
-                        "Retrying GFS catalog request for %s (attempt %s/3): %s",
+                        "Archived NOAA/NCEI GFS catalog is slow or unavailable for %s (attempt %s/3). "
+                        "Retrying. Details: %s",
                         catalog_url,
                         attempt,
-                        exc,
+                        _describe_remote_error(exc),
                     )
             if response is None:
                 if last_error is not None:
-                    raise RuntimeError(f"GFS catalog discovery failed for {catalog_url}: {last_error}") from last_error
+                    logger.warning(
+                        "Falling back to deterministic GFS archive URLs because the catalog stayed unavailable for %s. "
+                        "Technical detail: %s",
+                        catalog_url,
+                        _describe_remote_error(last_error),
+                    )
+                    return self.fallback_analysis_urls(start_utc, end_utc)
                 continue
-            analysis_urls.update(self.parse_gfs_catalog(response.text))
+            try:
+                analysis_urls.update(self.parse_gfs_catalog(response.text))
+            except ET.ParseError as exc:
+                logger.warning(
+                    "Falling back to deterministic GFS archive URLs because the catalog response for %s was not valid XML. "
+                    "Technical detail: %s",
+                    catalog_url,
+                    exc,
+                )
+                return self.fallback_analysis_urls(start_utc, end_utc)
 
         discovered = sorted(analysis_urls.items(), key=lambda item: item[0])
         lower_bound = start_utc - self.expected_delta
@@ -343,17 +400,20 @@ class GFSWindDownloader:
             except Exception as exc:  # pragma: no cover - remote dataset variability
                 last_error = exc
                 logger.warning(
-                    "Retrying archived GFS HTTP fallback for %s (attempt %s/3): %s",
+                    "Archived NOAA/NCEI GFS file download fallback is slow or unavailable for %s (attempt %s/3). "
+                    "Retrying. Details: %s",
                     file_url,
                     attempt,
-                    exc,
+                    _describe_remote_error(exc),
                 )
             finally:
                 if temp_path is not None:
                     temp_path.unlink(missing_ok=True)
 
         raise RuntimeError(
-            f"Archived GFS HTTP fallback failed after 3 attempts for {file_url}: {last_error}"
+            "Archived NOAA/NCEI GFS file download fallback failed after 3 attempts for "
+            f"{file_url}. This usually means the NCEI file server is slow or temporarily down. "
+            f"Technical detail: {_describe_remote_error(last_error) if last_error is not None else 'unknown remote error'}."
         )
 
     @staticmethod

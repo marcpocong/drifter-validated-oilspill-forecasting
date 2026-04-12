@@ -15,6 +15,8 @@ legacy_prototype_display_domain: [115.0, 122.0, 6.0, 14.5]
 # - mindoro_retro_2023   runs the official Mindoro spill-case scoring workflow
 # - dwh_retro_2010       runs the external Deepwater Horizon setup/scaffold workflow
 # - phase1_regional_2016_2022 runs the dedicated full regional Phase 1 production rerun
+# - phase1_mindoro_focus_pre_spill_2016_2023 runs a separate experimental Mindoro-focused
+#   pre-spill drifter-calibration lane without changing the canonical Phase 1 baseline
 workflow_mode: prototype_2021
 
 # Workflow case file mappings
@@ -23,6 +25,7 @@ workflow_case_files:
   mindoro_retro_2023: config/case_mindoro_retro_2023.yaml
   dwh_retro_2010: config/case_dwh_retro_2010_72h.yaml
   phase1_regional_2016_2022: config/phase1_regional_2016_2022.yaml
+  phase1_mindoro_focus_pre_spill_2016_2023: config/phase1_mindoro_focus_pre_spill_2016_2023.yaml
 
 # Current default frozen Phase 1 baseline selection artifact for official spill-case workflows.
 phase1_baseline_selection_path: config/phase1_baseline_selection.yaml

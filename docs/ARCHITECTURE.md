@@ -13,7 +13,7 @@ That separation is now explicit in both the code and the launcher. The project n
 
 ## Lane Model
 
-- `prototype_2016`: backward-compatible legacy/debug lane only, now with an explicit six-recipe prototype debug family, a padded forcing-prep window that preserves the legacy `+/- 3 h` ensemble jitter, and a consolidated transport-only OpenDrift-vs-PyGNOME similarity summary built from the three deterministic prototype benchmark cases
+- `prototype_2016`: backward-compatible legacy/debug lane only, now with an explicit six-recipe prototype debug family, a padded forcing-prep window that preserves the legacy `+/- 3 h` ensemble jitter, a visible `Phase 1 -> Phase 2 -> Phase 3A -> Phase 4` support story, a consolidated multi-track OpenDrift-vs-PyGNOME Phase 3A comparator package, and a drifter-of-record-seeded legacy Phase 4 weathering path
 - `prototype_2021`: preferred accepted-segment debug/demo lane built from the two fixed 2021 strict-gate drifter segments, restricted to the official Phase 1 recipe family, and intentionally scoped to the transport-core bundle only
 - `mindoro_retro_2023`: main Philippine spill-case lane
 - `dwh_retro_2010`: external rich-data transfer-validation lane
@@ -85,7 +85,7 @@ Phase 4 is now a real workflow, not a placeholder shell:
 
 Phase 4 is reportable now for Mindoro, but it still inherits upstream provisional status from the unfinished Phase 1/2 freeze story.
 The repo's existing PyGNOME branches remain Phase 3-style transport comparators, so a separate read-only `phase4_crossmodel_comparability_audit` is now the guardrail that decides whether any OpenDrift-versus-PyGNOME Phase 4 comparison is scientifically defensible. In the current repo state, that audit is deferred rather than promoted to a result because matched PyGNOME fate-and-shoreline outputs do not yet exist.
-This is also why the prototype/debug drifter lanes should be framed as Phase 1/2/3A support only rather than as proof that `Phase 4 = Oil-Type Fate and Shoreline Impact Analysis` has been validated there.
+This is also why the prototype/debug drifter lanes should be framed as support only rather than as proof that official `Phase 4 = Oil-Type Fate and Shoreline Impact Analysis` has been validated there. For the preserved `prototype_2016` lane specifically, the honest legacy framing is `Phase 1 / Phase 2 / Phase 3A / Phase 4`, with no thesis-facing `Phase 3B` or `Phase 3C`.
 
 ## Phase 5 Boundary
 
@@ -127,7 +127,7 @@ The repo now has two different packaging layers:
 - `output/final_validation_package/`: frozen thesis validation package built from completed scientific outputs
 - `output/final_reproducibility_package/`: Phase 5 synchronization layer that indexes software versions, cases, configs, manifests, outputs, logs, and honest phase status
 - `output/prototype_2021_pygnome_similarity/`: read-only preferred accepted-segment debug support package built from the fixed 2021 deterministic OpenDrift-vs-PyGNOME cases
-- `output/prototype_2016_pygnome_similarity/`: read-only legacy/debug transport benchmark summary package that consolidates the three deterministic prototype OpenDrift-vs-PyGNOME cases
+- `output/prototype_2016_pygnome_similarity/`: read-only legacy/debug Phase 3A comparator package that consolidates the three prototype 2016 OpenDrift deterministic plus `p50`/`p90` support tracks against deterministic PyGNOME
 - `output/trajectory_gallery/`: read-only technical gallery built from existing trajectories, rasters, overlays, and Phase 4 artifacts
 - `output/trajectory_gallery_panel/`: read-only polished panel-ready board pack built from the raw gallery and the same stored source artifacts
 - `output/figure_package_publication/`: read-only canonical publication-grade package built from stored rasters, tracks, manifests, and Phase 4 tables for defense and paper use

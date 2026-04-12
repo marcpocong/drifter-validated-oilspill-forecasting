@@ -292,20 +292,36 @@ class OilWeatheringService:
         # passing mass_oil directly is overwritten.  We therefore
         # supply the volume-rate equivalent of the desired M₀.
         from src.services.ensemble import normalize_model_timestamp
+        from src.core.case_context import get_case_context
         from src.utils.io import resolve_polygon_seeding
 
         release_time = normalize_model_timestamp(start_time)
-        lons, lats, _ = resolve_polygon_seeding(num_particles)
-        
-        logger.info("Seeding elements across Official Layer 3 target.")
-        o.seed_elements(
-            lon=lons,
-            lat=lats,
-            number=num_particles,
-            time=release_time,
-            oil_type=adios_id,
-            m3_per_hour=m3_per_hour,
-        )
+        case = get_case_context()
+        if case.workflow_mode == "prototype_2016":
+            logger.info(
+                "Seeding legacy prototype weathering from the drifter-of-record point at (%.4f, %.4f).",
+                float(start_lat),
+                float(start_lon),
+            )
+            o.seed_elements(
+                lon=float(start_lon),
+                lat=float(start_lat),
+                number=num_particles,
+                time=release_time,
+                oil_type=adios_id,
+                m3_per_hour=m3_per_hour,
+            )
+        else:
+            lons, lats, _ = resolve_polygon_seeding(num_particles)
+            logger.info("Seeding elements across Official Layer 3 target.")
+            o.seed_elements(
+                lon=lons,
+                lat=lats,
+                number=num_particles,
+                time=release_time,
+                oil_type=adios_id,
+                m3_per_hour=m3_per_hour,
+            )
 
         # Verify the actual seeded mass
         try:

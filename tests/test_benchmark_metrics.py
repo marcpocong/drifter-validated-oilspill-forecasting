@@ -1,8 +1,10 @@
 import unittest
+from types import SimpleNamespace
 
 import numpy as np
 
 from src.helpers.metrics import calculate_kl_divergence
+from src.services.benchmark import ensure_point_within_benchmark_grid
 
 
 class BenchmarkMetricTests(unittest.TestCase):
@@ -26,6 +28,21 @@ class BenchmarkMetricTests(unittest.TestCase):
         observed = np.ones((2, 2), dtype=float)
         with self.assertRaises(ValueError):
             calculate_kl_divergence(forecast, observed, valid_mask=np.ones((2, 2), dtype=bool))
+
+    def test_benchmark_preflight_rejects_spill_origin_outside_grid(self):
+        grid = SimpleNamespace(min_lon=115.0, max_lon=122.0, min_lat=6.0, max_lat=14.5)
+
+        with self.assertRaises(RuntimeError) as exc:
+            ensure_point_within_benchmark_grid(
+                lon=112.6630,
+                lat=16.2980,
+                grid=grid,
+            )
+
+        message = str(exc.exception)
+        self.assertIn("112.6630E, 16.2980N", message)
+        self.assertIn("outside the benchmark grid", message)
+        self.assertIn("defensible Phase 3A rasters", message)
 
 
 if __name__ == "__main__":

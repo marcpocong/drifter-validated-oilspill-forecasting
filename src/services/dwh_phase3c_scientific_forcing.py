@@ -20,6 +20,7 @@ import xarray as xr
 import yaml
 
 from src.core.case_context import get_case_context
+from src.core.constants import CMEMS_SURFACE_CURRENT_MAX_DEPTH_M
 from src.helpers.scoring import ScoringGridSpec
 from src.services.dwh_phase3c_smoke import (
     CASE_ID,
@@ -600,8 +601,7 @@ def _acquire_cmems_current_fallback(bbox: list[float], required_start: str, requ
             maximum_longitude=max_lon,
             minimum_latitude=min_lat,
             maximum_latitude=max_lat,
-            minimum_depth=0,
-            maximum_depth=1,
+            maximum_depth=CMEMS_SURFACE_CURRENT_MAX_DEPTH_M,
             start_datetime=_timestamp(required_start).strftime("%Y-%m-%dT%H:%M:%S"),
             end_datetime=_timestamp(request_end).strftime("%Y-%m-%dT%H:%M:%S"),
             output_directory=str(PREPARED_FORCING_DIR),

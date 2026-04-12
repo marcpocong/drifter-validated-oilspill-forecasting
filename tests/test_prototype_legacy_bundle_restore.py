@@ -8,15 +8,19 @@ from unittest import mock
 
 import numpy as np
 import pandas as pd
+import requests
 import yaml
 
 from src.models.results import ValidationResult
 from src.services.ingestion import DataIngestionService, compute_prototype_forcing_window
+from src.utils.gfs_wind import GFSWindDownloader
 from src.services.validation import TransportValidationService
 from src.utils.io import (
     get_prepared_input_specs,
     get_prototype_debug_recipe_family,
     get_transport_recipe_family_for_workflow,
+    resolve_spill_origin,
+    select_drifter_of_record,
 )
 
 
@@ -31,6 +35,62 @@ class PrototypeLegacyBundleRestoreTests(unittest.TestCase):
         self.assertIn("debug/regression", notes)
         self.assertIn("best-effort", notes)
         self.assertIn("GFS", notes)
+        self.assertIn("Phase 3A -> Phase 4", notes)
+        self.assertIn("no thesis-facing prototype_2016 Phase 3B or Phase 3C", notes)
+        phases = [step["phase"] for step in prototype_entry["steps"]]
+        self.assertEqual(
+            phases,
+            ["prep", "1_2", "benchmark", "prototype_pygnome_similarity_summary", "prototype_legacy_phase4_weathering"],
+        )
+
+    def test_select_drifter_of_record_matches_phase1_rule(self):
+        drifter_df = pd.DataFrame(
+            {
+                "time": [
+                    "2016-09-01T03:00:00Z",
+                    "2016-09-01T00:00:00Z",
+                    "2016-09-01T01:00:00Z",
+                    "2016-09-01T02:00:00Z",
+                ],
+                "lat": [10.3, 10.0, 11.1, 10.2],
+                "lon": [117.3, 117.0, 118.1, 117.2],
+                "ID": ["A", "A", "B", "A"],
+            }
+        )
+
+        selection = select_drifter_of_record(drifter_df)
+
+        self.assertEqual(selection["selected_id"], "A")
+        self.assertEqual(selection["point_count"], 3)
+        self.assertEqual(selection["start_time"], "2016-09-01T00:00:00Z")
+        self.assertAlmostEqual(selection["start_lat"], 10.0)
+        self.assertAlmostEqual(selection["start_lon"], 117.0)
+
+    def test_resolve_spill_origin_uses_drifter_of_record_for_prototype_2016_even_when_provenance_exists(self):
+        case_stub = SimpleNamespace(
+            workflow_mode="prototype_2016",
+            is_official=False,
+            release_start_utc="2016-09-01T00:00:00Z",
+        )
+        drifter_df = pd.DataFrame(
+            {
+                "time": ["2016-09-01T03:00:00Z", "2016-09-01T00:00:00Z", "2016-09-01T01:00:00Z"],
+                "lat": [10.3, 10.0, 10.1],
+                "lon": [117.3, 117.0, 117.1],
+                "ID": ["A", "A", "A"],
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            drifter_path = Path(tmpdir) / "drifters_noaa.csv"
+            drifter_path.write_text("time,lat,lon,ID\n", encoding="utf-8")
+
+            with mock.patch("src.utils.io.get_case_context", return_value=case_stub), \
+                mock.patch("src.utils.io.load_drifter_data", return_value=drifter_df), \
+                mock.patch("src.utils.io.resolve_provenance_source_point", return_value=(99.0, 100.0)):
+                lat, lon, time_str = resolve_spill_origin(drifter_path)
+
+        self.assertEqual((lat, lon, time_str), (10.0, 117.0, "2016-09-01T00:00:00Z"))
 
     def test_prototype_debug_recipe_family_is_explicit_and_workflow_aware(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -118,6 +178,28 @@ class PrototypeLegacyBundleRestoreTests(unittest.TestCase):
         )
         self.assertEqual(start.isoformat(), "2016-08-31T21:00:00+00:00")
         self.assertEqual(end.isoformat(), "2016-09-04T03:00:00+00:00")
+
+    def test_gfs_catalog_timeout_error_is_user_friendly(self):
+        downloader = GFSWindDownloader(forcing_box=[115.0, 122.0, 6.0, 14.5])
+        timeout_error = requests.exceptions.ReadTimeout(
+            "HTTPSConnectionPool(host='www.ncei.noaa.gov', port=443): Read timed out. (read timeout=180)"
+        )
+
+        with mock.patch("src.utils.gfs_wind.requests.get", side_effect=timeout_error):
+            with self.assertLogs("src.utils.gfs_wind", level="WARNING") as captured_logs:
+                with self.assertRaises(RuntimeError) as error_context:
+                    downloader.discover_gfs_analysis_urls(
+                        "2016-08-31T21:00:00Z",
+                        "2016-09-04T03:00:00Z",
+                    )
+
+        message = str(error_context.exception)
+        self.assertIn("Archived NOAA/NCEI GFS catalog remained unavailable after 3 attempts", message)
+        self.assertIn("slow or temporarily down", message)
+        self.assertIn("180-second read timeout", message)
+        self.assertTrue(
+            any("Archived NOAA/NCEI GFS catalog is slow or unavailable" in log for log in captured_logs.output)
+        )
 
     def test_prototype_ingestion_records_padded_window_and_best_effort_gfs_failure(self):
         case_stub = SimpleNamespace(

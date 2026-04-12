@@ -15,6 +15,7 @@ import pandas as pd
 import yaml
 
 from src.core.case_context import get_case_context
+from src.exceptions.custom import ForcingOutagePhaseSkipped
 from src.helpers.metrics import calculate_fss
 from src.helpers.raster import GridBuilder, project_points_to_grid, rasterize_particles, save_raster
 from src.helpers.scoring import apply_ocean_mask, load_sea_mask_array, precheck_same_grid
@@ -37,6 +38,11 @@ from src.services.transport_retention_fix import (
     _normalize_utc,
     _time_reaches,
     _write_json,
+)
+from src.utils.forcing_outage_policy import (
+    FORCING_OUTAGE_POLICY_CONTINUE_DEGRADED,
+    resolve_forcing_outage_policy,
+    source_id_for_recipe_component,
 )
 from src.utils.io import get_case_output_dir, resolve_recipe_selection, resolve_spill_origin
 
@@ -260,6 +266,11 @@ class SourceHistoryReconstructionR1Service:
         self.retention_config = load_official_retention_config()
         if self.retention_config["selected_mode"] != "R1":
             raise RuntimeError("source_history_reconstruction_r1 requires official_retention.selected_mode=R1.")
+        self.phase_id = SOURCE_HISTORY_RECONSTRUCTION_DIR_NAME
+        self.forcing_outage_policy = resolve_forcing_outage_policy(
+            workflow_mode=self.case.workflow_mode,
+            phase=self.phase_id,
+        )
         self.retention = TransportRetentionFixService()
         self.retention.output_dir = self.output_dir
         self.retention_scenario = RetentionScenario(
@@ -402,47 +413,116 @@ class SourceHistoryReconstructionR1Service:
         service = DataIngestionService()
         service.forcing_dir = self.forcing_dir
         service.forcing_dir.mkdir(parents=True, exist_ok=True)
-        service.start_date = required_start.date().isoformat()
-        service.end_date = (required_end + pd.Timedelta(days=1)).date().isoformat()
+        service.configure_explicit_download_window(
+            start_date=required_start.date().isoformat(),
+            end_date=(required_end + pd.Timedelta(days=1)).date().isoformat(),
+        )
 
-        downloads: dict[str, str] = {}
-        if current_file.startswith("cmems"):
-            downloads["currents"] = service.download_cmems()
-        elif current_file.startswith("hycom"):
-            downloads["currents"] = service.download_hycom()
-        else:
-            raise RuntimeError(f"Unsupported source-history current forcing file: {current_file}")
+        downloads: dict[str, Any] = {}
+        current_source_id = source_id_for_recipe_component(forcing_kind="current", filename=current_file)
+        downloads["currents"] = service.download_required_forcing_record(current_source_id)
+        if downloads["currents"]["status"] not in {"downloaded", "cached"}:
+            if (
+                downloads["currents"].get("upstream_outage_detected")
+                and self.forcing_outage_policy == FORCING_OUTAGE_POLICY_CONTINUE_DEGRADED
+            ):
+                manifest_path = self._write_download_failure_manifest(
+                    recipe_name,
+                    downloads,
+                    windows,
+                    status="degraded_skipped_forcing_outage",
+                    degraded_continue_used=True,
+                    upstream_outage_detected=True,
+                    missing_forcing_factors=[downloads["currents"]["forcing_factor"]],
+                    stop_reason=str(downloads["currents"].get("error", "")),
+                )
+                raise ForcingOutagePhaseSkipped(
+                    phase=self.phase_id,
+                    workflow_mode=self.case.workflow_mode,
+                    forcing_outage_policy=self.forcing_outage_policy,
+                    reason=str(downloads["currents"].get("error", "")),
+                    missing_forcing_factors=[downloads["currents"]["forcing_factor"]],
+                    skipped_branch_ids=[scenario.scenario_id for scenario in A2_SCENARIOS],
+                    manifest_path=str(manifest_path),
+                )
+            self._write_download_failure_manifest(recipe_name, downloads, windows)
+            raise RuntimeError(f"Source-history forcing download failed: {downloads['currents']}")
 
-        if wind_file.startswith("era5"):
-            downloads["wind"] = service.download_era5()
-        elif wind_file.startswith("gfs"):
+        if wind_file.startswith("gfs"):
             gfs_path = self.forcing_dir / wind_file
             if not gfs_path.exists():
                 raise FileNotFoundError(
                     f"GFS wind forcing was requested for source-history reconstruction but is not available locally: {gfs_path}. "
                     "The official Phase 1 recipe family is still only partially available in the current repo state."
                 )
-            downloads["wind"] = str(gfs_path)
-        elif wind_file.startswith("ncep"):
-            downloads["wind"] = service.download_ncep()
         else:
-            raise RuntimeError(f"Unsupported source-history wind forcing file: {wind_file}")
+            wind_source_id = source_id_for_recipe_component(forcing_kind="wind", filename=wind_file)
+            downloads["wind"] = service.download_required_forcing_record(wind_source_id)
+            if downloads["wind"]["status"] not in {"downloaded", "cached"}:
+                if (
+                    downloads["wind"].get("upstream_outage_detected")
+                    and self.forcing_outage_policy == FORCING_OUTAGE_POLICY_CONTINUE_DEGRADED
+                ):
+                    manifest_path = self._write_download_failure_manifest(
+                        recipe_name,
+                        downloads,
+                        windows,
+                        status="degraded_skipped_forcing_outage",
+                        degraded_continue_used=True,
+                        upstream_outage_detected=True,
+                        missing_forcing_factors=[downloads["wind"]["forcing_factor"]],
+                        stop_reason=str(downloads["wind"].get("error", "")),
+                    )
+                    raise ForcingOutagePhaseSkipped(
+                        phase=self.phase_id,
+                        workflow_mode=self.case.workflow_mode,
+                        forcing_outage_policy=self.forcing_outage_policy,
+                        reason=str(downloads["wind"].get("error", "")),
+                        missing_forcing_factors=[downloads["wind"]["forcing_factor"]],
+                        skipped_branch_ids=[scenario.scenario_id for scenario in A2_SCENARIOS],
+                        manifest_path=str(manifest_path),
+                    )
+                self._write_download_failure_manifest(recipe_name, downloads, windows)
+                raise RuntimeError(f"Source-history forcing download failed: {downloads['wind']}")
+        if wind_file.startswith("gfs"):
+            downloads["wind"] = {
+                "status": "reused_local_file",
+                "path": str(self.forcing_dir / wind_file),
+                "source_id": "gfs",
+                "forcing_factor": wind_file,
+                "upstream_outage_detected": False,
+            }
 
         if wave_file:
-            if wave_file.startswith("cmems"):
-                downloads["wave"] = service.download_cmems_wave()
-            else:
-                raise RuntimeError(f"Unsupported source-history wave forcing file: {wave_file}")
-
-        failed = {
-            key: value
-            for key, value in downloads.items()
-            if str(value).upper() in {"FAILED", "SKIPPED_NO_CREDS", "SKIPPED_NO_LIB"}
-        }
+            wave_source_id = source_id_for_recipe_component(forcing_kind="wave", filename=wave_file)
+            downloads["wave"] = service.download_required_forcing_record(wave_source_id)
+            if downloads["wave"]["status"] not in {"downloaded", "cached"}:
+                if (
+                    downloads["wave"].get("upstream_outage_detected")
+                    and self.forcing_outage_policy == FORCING_OUTAGE_POLICY_CONTINUE_DEGRADED
+                ):
+                    manifest_path = self._write_download_failure_manifest(
+                        recipe_name,
+                        downloads,
+                        windows,
+                        status="degraded_skipped_forcing_outage",
+                        degraded_continue_used=True,
+                        upstream_outage_detected=True,
+                        missing_forcing_factors=[downloads["wave"]["forcing_factor"]],
+                        stop_reason=str(downloads["wave"].get("error", "")),
+                    )
+                    raise ForcingOutagePhaseSkipped(
+                        phase=self.phase_id,
+                        workflow_mode=self.case.workflow_mode,
+                        forcing_outage_policy=self.forcing_outage_policy,
+                        reason=str(downloads["wave"].get("error", "")),
+                        missing_forcing_factors=[downloads["wave"]["forcing_factor"]],
+                        skipped_branch_ids=[scenario.scenario_id for scenario in A2_SCENARIOS],
+                        manifest_path=str(manifest_path),
+                    )
+                self._write_download_failure_manifest(recipe_name, downloads, windows)
+                raise RuntimeError(f"Source-history forcing download failed: {downloads['wave']}")
         candidates["downloads"] = downloads
-        if failed:
-            self._write_download_failure_manifest(recipe_name, downloads, windows)
-            raise RuntimeError(f"Source-history forcing download failed or was skipped: {failed}")
         return candidates
 
     def _forcing_candidates_ready(self, candidates: dict, recipe: dict, windows: dict[str, dict[str, str]]) -> bool:
@@ -508,19 +588,52 @@ class SourceHistoryReconstructionR1Service:
         pd.DataFrame(rows).to_csv(self.output_dir / "source_history_forcing_window_manifest.csv", index=False)
         return payload
 
-    def _write_download_failure_manifest(self, recipe_name: str, downloads: dict, windows: dict[str, dict[str, str]]) -> None:
+    def _write_download_failure_manifest(
+        self,
+        recipe_name: str,
+        downloads: dict,
+        windows: dict[str, dict[str, str]],
+        *,
+        status: str = "failed_download",
+        degraded_continue_used: bool = False,
+        upstream_outage_detected: bool = False,
+        missing_forcing_factors: list[str] | None = None,
+        stop_reason: str = "",
+    ) -> Path:
         payload = {
             "generated_at_utc": datetime.now(timezone.utc).isoformat(),
             "recipe": recipe_name,
             "scenario_windows": windows,
             "downloads": downloads,
-            "status": "failed_download",
+            "status": status,
+            "forcing_outage_policy": self.forcing_outage_policy,
+            "degraded_continue_used": degraded_continue_used,
+            "upstream_outage_detected": upstream_outage_detected,
+            "missing_forcing_factors": list(missing_forcing_factors or []),
+            "rerun_required": bool(degraded_continue_used),
+            "stop_reason": stop_reason,
         }
-        _write_json(self.output_dir / "source_history_forcing_window_manifest.json", payload)
-        pd.DataFrame([{"recipe": recipe_name, "status": "failed_download", "downloads": json.dumps(downloads)}]).to_csv(
+        manifest_json = self.output_dir / "source_history_forcing_window_manifest.json"
+        _write_json(manifest_json, payload)
+        pd.DataFrame(
+            [
+                {
+                    "recipe": recipe_name,
+                    "status": status,
+                    "forcing_outage_policy": self.forcing_outage_policy,
+                    "degraded_continue_used": degraded_continue_used,
+                    "upstream_outage_detected": upstream_outage_detected,
+                    "missing_forcing_factors": ";".join(missing_forcing_factors or []),
+                    "rerun_required": bool(degraded_continue_used),
+                    "stop_reason": stop_reason,
+                    "downloads": json.dumps(downloads),
+                }
+            ]
+        ).to_csv(
             self.output_dir / "source_history_forcing_window_manifest.csv",
             index=False,
         )
+        return manifest_json
 
     def _write_failed_loading_audit(self, failures: list[dict]) -> None:
         payload = {

@@ -20,7 +20,7 @@ from src.core.constants import REGION, RUN_NAME
 from src.helpers.metrics import calculate_ncs
 from src.helpers.plotting import plot_trajectory_map
 from src.models.results import ValidationResult
-from src.utils.io import find_current_vars, find_wind_vars, get_forcing_files
+from src.utils.io import find_current_vars, find_wind_vars, get_forcing_files, select_drifter_of_record
 
 logger = logging.getLogger(__name__)
 
@@ -141,15 +141,23 @@ class TransportValidationService:
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        drifter_df = drifter_df.copy()
-        if "ID" in drifter_df.columns:
-            counts = drifter_df["ID"].value_counts()
-            best_id = counts.idxmax()
-            if verbose or not summary_only:
-                print(f"Selecting Drifter ID {best_id} for validation (Points: {counts[best_id]})")
-            drifter_df = drifter_df[drifter_df["ID"] == best_id].copy()
+        selection = select_drifter_of_record(drifter_df)
+        drifter_df = selection["drifter_df"].copy()
         drifter_df["time"] = self._normalize_drifter_times(drifter_df["time"])
         drifter_df = drifter_df.sort_values("time").reset_index(drop=True)
+        if verbose or not summary_only:
+            selected_id = selection["selected_id"]
+            if selected_id is not None:
+                print(
+                    "Selecting Drifter ID "
+                    f"{selected_id} for validation (Points: {selection['point_count']}; "
+                    f"start={selection['start_time']})"
+                )
+            else:
+                print(
+                    "Selecting the earliest unlabeled drifter segment for validation "
+                    f"(Points: {selection['point_count']}; start={selection['start_time']})"
+                )
 
         results: list[ValidationResult] = []
         audit_rows: list[dict] = []

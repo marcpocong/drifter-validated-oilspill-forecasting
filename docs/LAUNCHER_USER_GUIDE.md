@@ -76,7 +76,7 @@ Legacy/debug:
 
 `prototype_2021_bundle` is now the preferred debug/demo lane. It is frozen from the two accepted 2021 strict-gate drifter segments, uses only the official four-recipe Phase 1 family, and stops at the transport-core bundle: `prep -> 1_2 -> benchmark -> prototype_pygnome_similarity_summary`.
 
-`prototype_legacy_bundle` remains available for backward-compatible regression work. It still attempts the modern GFS-backed prototype recipes as a best-effort legacy extension, and `3` / `3b` remain there only as legacy appendix/smoke follow-ons.
+`prototype_legacy_bundle` remains available for backward-compatible regression work. Its visible thesis-facing support flow is now `prep -> 1_2 -> benchmark -> prototype_pygnome_similarity_summary -> prototype_legacy_phase4_weathering`, which corresponds to legacy `Phase 1 -> Phase 2 -> Phase 3A -> Phase 4`. It still attempts the modern GFS-backed prototype recipes as a best-effort legacy extension, but there is no thesis-facing `Phase 3B` or `Phase 3C` in this 2016 lane.
 
 The preferred similarity package now writes to `output/prototype_2021_pygnome_similarity/`. The older `output/prototype_2016_pygnome_similarity/` package is preserved as a legacy artifact.
 
@@ -96,8 +96,9 @@ docker-compose exec -T -e WORKFLOW_MODE=prototype_2021 -e PIPELINE_PHASE=prototy
 - March 13 -> March 14 must keep the shared-imagery caveat explicit, and PyGNOME remains comparator-only in that promoted lane.
 - `prototype_2021` is the preferred accepted-segment debug lane, but it is still not the final Phase 1 study.
 - `prototype_2016` remains backward-compatible and keeps the preserved `+/- 3 h` ensemble jitter by padding its prep window.
-- `Phase 3A` is the deterministic OpenDrift-vs-PyGNOME transport benchmark, `Phase 3B` is observation-based scoring, and `Phase 4` is Oil-Type Fate and Shoreline Impact Analysis. Do not describe the prototype/debug lanes as if they prove Phase 4.
-- The prototype similarity summary is comparator-only: deterministic OpenDrift control versus deterministic PyGNOME transport footprints and densities, plus support-only forecast figures built from those stored benchmark rasters. It is not a truth lane and not final Chapter 3 evidence.
+- `prototype_2016` is thesis-facing only as legacy `Phase 1 / 2 / 3A / 4`, with `phase5_sync` separate and no thesis-facing `3B` or `3C`.
+- `Phase 3A` is the transport comparator lane, `Phase 3B` is observation-based scoring, and `Phase 4` is Oil-Type Fate and Shoreline Impact Analysis. Do not describe the prototype/debug lanes as if they prove official Phase 3B or official Phase 4 validation.
+- The legacy prototype similarity summary is comparator-only: deterministic plus support-only `p50`/`p90` OpenDrift tracks versus deterministic PyGNOME transport footprints and densities. It is not a truth lane and not final Chapter 3 evidence.
 
 ## Not Implemented Yet
 

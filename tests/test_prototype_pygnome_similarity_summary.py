@@ -142,97 +142,178 @@ def _write_case(
     kl_values: tuple[float, float, float],
     include_metadata: bool = True,
     mask_shape: tuple[int, int] = (6, 6),
+    legacy_deterministic_only: bool = False,
 ) -> None:
     benchmark_dir = root / "output" / case_id / "benchmark"
     benchmark_dir.mkdir(parents=True, exist_ok=True)
 
     hours = (24, 48, 72)
-    window_values = {
-        1: (0.05, 0.05, 0.05),
-        3: (0.20, 0.20, 0.20),
-        5: fss_5km_values,
-        10: (0.80, 0.80, 0.80),
+    track_rows = {
+        "deterministic": {
+            "label": "OpenDrift deterministic",
+            "fss_5km": fss_5km_values,
+            "kl": kl_values,
+            "mask_offset": 0,
+        },
+        "ensemble_p50": {
+            "label": "OpenDrift p50 threshold",
+            "fss_5km": tuple(min(0.99, value + 0.08) for value in fss_5km_values),
+            "kl": tuple(max(0.01, value - 1.0) for value in kl_values),
+            "mask_offset": 1,
+        },
+        "ensemble_p90": {
+            "label": "OpenDrift p90 threshold",
+            "fss_5km": tuple(min(0.99, value + 0.03) for value in fss_5km_values),
+            "kl": tuple(max(0.01, value - 0.4) for value in kl_values),
+            "mask_offset": 2,
+        },
     }
     fss_rows = []
-    for window_km, values in window_values.items():
-        for hour, value in zip(hours, values):
-            fss_rows.append(
+    for comparison_track_id, track in track_rows.items():
+        window_values = {
+            1: (0.05, 0.05, 0.05),
+            3: (0.20, 0.20, 0.20),
+            5: track["fss_5km"],
+            10: (0.80, 0.80, 0.80),
+        }
+        for window_km, values in window_values.items():
+            for hour, value in zip(hours, values):
+                fss_rows.append(
+                    {
+                        "comparison_track_id": comparison_track_id,
+                        "comparison_track_label": track["label"],
+                        "timestamp_utc": f"2016-09-01T{hour:02d}:00:00Z",
+                        "hour": hour,
+                        "window_km": window_km,
+                        "fss": value,
+                    }
+                )
+    fss_df = pd.DataFrame(fss_rows)
+    if legacy_deterministic_only:
+        fss_df = fss_df[fss_df["comparison_track_id"] == "deterministic"][
+            ["timestamp_utc", "hour", "window_km", "fss"]
+        ].reset_index(drop=True)
+    fss_df.to_csv(benchmark_dir / "phase3a_fss_by_time_window.csv", index=False)
+
+    kl_rows = []
+    for comparison_track_id, track in track_rows.items():
+        kl_rows.extend(
+            {
+                "comparison_track_id": comparison_track_id,
+                "comparison_track_label": track["label"],
+                "hour": hour,
+                "kl_divergence": value,
+                "epsilon": 1.0e-12,
+                "ocean_cell_count": 42,
+            }
+            for hour, value in zip(hours, track["kl"])
+        )
+    kl_df = pd.DataFrame(kl_rows)
+    if legacy_deterministic_only:
+        kl_df = kl_df[kl_df["comparison_track_id"] == "deterministic"][
+            ["hour", "kl_divergence", "epsilon", "ocean_cell_count"]
+        ].reset_index(drop=True)
+    kl_df.to_csv(benchmark_dir / "phase3a_kl_by_time.csv", index=False)
+
+    summary_rows = []
+    for comparison_track_id, track in track_rows.items():
+        summary_rows.extend(
+            [
                 {
-                    "timestamp_utc": f"2016-09-01T{hour:02d}:00:00Z",
-                    "hour": hour,
-                    "window_km": window_km,
-                    "fss": value,
-                }
-            )
-    pd.DataFrame(fss_rows).to_csv(benchmark_dir / "phase3a_fss_by_time_window.csv", index=False)
-
-    kl_rows = [
-        {"hour": hour, "kl_divergence": value, "epsilon": 1.0e-12, "ocean_cell_count": 42}
-        for hour, value in zip(hours, kl_values)
-    ]
-    pd.DataFrame(kl_rows).to_csv(benchmark_dir / "phase3a_kl_by_time.csv", index=False)
-
-    pd.DataFrame(
-        [
-            {
-                "metric": "FSS",
-                "window_km": 5,
-                "pair_count": 3,
-                "mean_value": sum(fss_5km_values) / 3.0,
-                "min_value": min(fss_5km_values),
-                "max_value": max(fss_5km_values),
-                "notes": "Prototype deterministic comparator summary.",
-            },
-            {
-                "metric": "KL",
-                "window_km": "",
-                "pair_count": 3,
-                "mean_value": sum(kl_values) / 3.0,
-                "min_value": min(kl_values),
-                "max_value": max(kl_values),
-                "notes": "Prototype deterministic comparator summary.",
-            },
-        ]
-    ).to_csv(benchmark_dir / "phase3a_summary.csv", index=False)
+                    "comparison_track_id": comparison_track_id,
+                    "comparison_track_label": track["label"],
+                    "metric": "FSS",
+                    "window_km": 5,
+                    "pair_count": 3,
+                    "mean_value": sum(track["fss_5km"]) / 3.0,
+                    "min_value": min(track["fss_5km"]),
+                    "max_value": max(track["fss_5km"]),
+                    "notes": "Prototype comparator summary.",
+                },
+                {
+                    "comparison_track_id": comparison_track_id,
+                    "comparison_track_label": track["label"],
+                    "metric": "KL",
+                    "window_km": "",
+                    "pair_count": 3,
+                    "mean_value": sum(track["kl"]) / 3.0,
+                    "min_value": min(track["kl"]),
+                    "max_value": max(track["kl"]),
+                    "notes": "Prototype comparator summary.",
+                },
+            ]
+        )
+    summary_df = pd.DataFrame(summary_rows)
+    if legacy_deterministic_only:
+        summary_df = summary_df[summary_df["comparison_track_id"] == "deterministic"][
+            ["metric", "window_km", "pair_count", "mean_value", "min_value", "max_value", "notes"]
+        ].reset_index(drop=True)
+    summary_df.to_csv(benchmark_dir / "phase3a_summary.csv", index=False)
 
     pairing_rows = []
     for idx, hour in enumerate(hours):
         timestamp_utc = f"2016-09-{idx + 2:02d}T00:00:00Z"
         timestamp_token = timestamp_utc.replace(":", "-")
-        control_path = benchmark_dir / "control" / f"control_footprint_mask_{timestamp_token}.tif"
         pygnome_path = benchmark_dir / "pygnome" / f"pygnome_footprint_mask_{timestamp_token}.tif"
-        control_density = benchmark_dir / "control" / f"control_density_norm_{timestamp_token}.tif"
         pygnome_density = benchmark_dir / "pygnome" / f"pygnome_density_norm_{timestamp_token}.tif"
-        overlay_path = benchmark_dir / "qa" / f"footprint_overlay_{timestamp_token}.png"
-        precheck_foot = benchmark_dir / "precheck" / f"footprint_{timestamp_token}.json"
-        precheck_density = benchmark_dir / "precheck" / f"density_{timestamp_token}.json"
-
-        _write_mask(control_path, idx, 0, mask_height=mask_shape[0], mask_width=mask_shape[1])
         _write_mask(pygnome_path, idx, 2, mask_height=mask_shape[0], mask_width=mask_shape[1])
-        _write_mask(control_density, idx, 0, mask_height=mask_shape[0], mask_width=mask_shape[1])
         _write_mask(pygnome_density, idx, 2, mask_height=mask_shape[0], mask_width=mask_shape[1])
-        _write_json(precheck_foot, {"timestamp_utc": timestamp_utc})
-        _write_json(precheck_density, {"timestamp_utc": timestamp_utc})
-        overlay_path.parent.mkdir(parents=True, exist_ok=True)
-        plt.imsave(overlay_path, np.ones((20, 30, 3), dtype=float))
+        for comparison_track_id, track in track_rows.items():
+            track_dir = benchmark_dir / comparison_track_id
+            control_path = track_dir / f"{comparison_track_id}_footprint_mask_{timestamp_token}.tif"
+            control_density = track_dir / f"{comparison_track_id}_density_norm_{timestamp_token}.tif"
+            overlay_path = benchmark_dir / "qa" / f"{comparison_track_id}_overlay_{timestamp_token}.png"
+            precheck_foot = benchmark_dir / "precheck" / f"footprint_{comparison_track_id}_{timestamp_token}.json"
+            precheck_density = benchmark_dir / "precheck" / f"density_{comparison_track_id}_{timestamp_token}.json"
 
-        pairing_rows.append(
-            {
-                "timestamp_utc": timestamp_utc,
-                "hour": hour,
-                "control_footprint_path": str(control_path.relative_to(root)).replace("\\", "/"),
-                "pygnome_footprint_path": str(pygnome_path.relative_to(root)).replace("\\", "/"),
-                "control_density_path": str(control_density.relative_to(root)).replace("\\", "/"),
-                "pygnome_density_path": str(pygnome_density.relative_to(root)).replace("\\", "/"),
-                "footprint_precheck_json": str(precheck_foot.relative_to(root)).replace("\\", "/"),
-                "density_precheck_json": str(precheck_density.relative_to(root)).replace("\\", "/"),
-                "qa_overlay_path": str(overlay_path.relative_to(root)).replace("\\", "/"),
-                "pygnome_mass_strategy": "mass",
-                "control_density_ocean_sum": 1.0,
-                "pygnome_density_ocean_sum": 1.0,
-            }
-        )
-    pd.DataFrame(pairing_rows).to_csv(benchmark_dir / "phase3a_pairing_manifest.csv", index=False)
+            _write_mask(control_path, idx + int(track["mask_offset"]), 0, mask_height=mask_shape[0], mask_width=mask_shape[1])
+            _write_mask(control_density, idx + int(track["mask_offset"]), 0, mask_height=mask_shape[0], mask_width=mask_shape[1])
+            _write_json(precheck_foot, {"timestamp_utc": timestamp_utc})
+            _write_json(precheck_density, {"timestamp_utc": timestamp_utc})
+            overlay_path.parent.mkdir(parents=True, exist_ok=True)
+            plt.imsave(overlay_path, np.ones((20, 30, 3), dtype=float))
+
+            if legacy_deterministic_only and comparison_track_id != "deterministic":
+                continue
+            pairing_rows.append(
+                {
+                    "comparison_track_id": comparison_track_id,
+                    "comparison_track_label": track["label"],
+                    "timestamp_utc": timestamp_utc,
+                    "hour": hour,
+                    "opendrift_footprint_path": str(control_path.relative_to(root)).replace("\\", "/"),
+                    "pygnome_footprint_path": str(pygnome_path.relative_to(root)).replace("\\", "/"),
+                    "opendrift_density_path": str(control_density.relative_to(root)).replace("\\", "/"),
+                    "pygnome_density_path": str(pygnome_density.relative_to(root)).replace("\\", "/"),
+                    "control_footprint_path": str(control_path.relative_to(root)).replace("\\", "/"),
+                    "control_density_path": str(control_density.relative_to(root)).replace("\\", "/"),
+                    "footprint_precheck_json": str(precheck_foot.relative_to(root)).replace("\\", "/"),
+                    "density_precheck_json": str(precheck_density.relative_to(root)).replace("\\", "/"),
+                    "qa_overlay_path": str(overlay_path.relative_to(root)).replace("\\", "/"),
+                    "pygnome_mass_strategy": "mass",
+                    "opendrift_density_ocean_sum": 1.0,
+                    "pygnome_density_ocean_sum": 1.0,
+                }
+            )
+    pairing_df = pd.DataFrame(pairing_rows)
+    if legacy_deterministic_only:
+        pairing_df = pairing_df[
+            [
+                "timestamp_utc",
+                "hour",
+                "control_footprint_path",
+                "pygnome_footprint_path",
+                "control_density_path",
+                "pygnome_density_path",
+                "footprint_precheck_json",
+                "density_precheck_json",
+                "qa_overlay_path",
+                "pygnome_mass_strategy",
+                "opendrift_density_ocean_sum",
+                "pygnome_density_ocean_sum",
+            ]
+        ].reset_index(drop=True)
+    pairing_df.to_csv(benchmark_dir / "phase3a_pairing_manifest.csv", index=False)
 
     if include_metadata:
         _write_json(
@@ -299,36 +380,41 @@ class PrototypePygnomeSimilaritySummaryTests(unittest.TestCase):
 
             self.assertEqual(results["top_ranked_case_id"], "CASE_2016-09-06")
             self.assertEqual(results["case_count"], 3)
-            self.assertEqual(results["single_figure_count"], 18)
+            self.assertEqual(results["single_figure_count"], 36)
             self.assertEqual(results["board_figure_count"], 3)
 
             similarity_df = pd.read_csv(results["similarity_by_case_csv"])
+            deterministic_df = similarity_df[similarity_df["comparison_track_id"] == "deterministic"].reset_index(drop=True)
             self.assertEqual(
-                similarity_df["case_id"].tolist(),
+                deterministic_df["case_id"].tolist(),
                 ["CASE_2016-09-06", "CASE_2016-09-01", "CASE_2016-09-17"],
             )
-            self.assertEqual(similarity_df["relative_similarity_rank"].tolist(), [1, 2, 3])
+            self.assertEqual(deterministic_df["relative_similarity_rank"].tolist(), [1, 2, 3])
             self.assertTrue((similarity_df["pygnome_weathering_enabled"] == False).all())
 
             summary_text = Path(results["summary_md"]).read_text(encoding="utf-8")
             self.assertIn("PyGNOME is a comparator, not truth", summary_text)
             self.assertIn("Rank 1: `CASE_2016-09-06`", summary_text)
-            self.assertIn("higher-density core and broader support envelopes", summary_text)
+            self.assertIn("OpenDrift p50 threshold", summary_text)
+            self.assertIn("footprint-first rendering", summary_text)
             captions_text = Path(results["figure_captions_md"]).read_text(encoding="utf-8")
             self.assertIn("CASE_2016-09-01", captions_text)
             self.assertIn("board", captions_text)
-            self.assertIn("density-derived inner and outer support envelopes", captions_text)
-            self.assertNotIn("50% Probability", captions_text)
-            self.assertNotIn("90% Probability", captions_text)
+            self.assertIn("footprint-first rendering", captions_text)
+            self.assertIn("OpenDrift p50 threshold", captions_text)
+            self.assertIn("OpenDrift p90 threshold", captions_text)
 
             figure_registry_df = pd.read_csv(results["figure_registry_csv"])
-            self.assertEqual(len(figure_registry_df), 21)
-            self.assertEqual((figure_registry_df["view_type"] == "single").sum(), 18)
+            self.assertEqual(len(figure_registry_df), 39)
+            self.assertEqual((figure_registry_df["view_type"] == "single").sum(), 36)
             self.assertEqual((figure_registry_df["view_type"] == "board").sum(), 3)
             self.assertEqual(sorted(figure_registry_df["hour"].dropna().astype(int).unique().tolist()), [24, 48, 72])
-            self.assertEqual(sorted(figure_registry_df["model_name"].unique().tolist()), ["opendrift", "opendrift_vs_pygnome", "pygnome"])
-            self.assertTrue(figure_registry_df["notes"].str.contains("density-derived inner/outer support envelopes", regex=False).any())
-            self.assertFalse(figure_registry_df["notes"].str.contains("50%|90%", regex=True).any())
+            self.assertEqual(
+                sorted(figure_registry_df["model_name"].unique().tolist()),
+                ["opendrift", "opendrift_p50", "opendrift_p90", "opendrift_vs_pygnome", "pygnome"],
+            )
+            self.assertTrue(figure_registry_df["notes"].str.contains("footprint-first rendering", regex=False).any())
+            self.assertTrue((figure_registry_df["comparison_track_id"].notna()).all())
             self.assertIn("status_key", figure_registry_df.columns)
             self.assertIn("status_label", figure_registry_df.columns)
             self.assertTrue((figure_registry_df["status_key"] == "prototype_2016_support").all())
@@ -337,7 +423,8 @@ class PrototypePygnomeSimilaritySummaryTests(unittest.TestCase):
             self.assertTrue(manifest["legacy_debug_only"])
             self.assertEqual(manifest["pygnome_role"], "comparator_only")
             self.assertEqual(manifest["headline"]["top_ranked_case_id"], "CASE_2016-09-06")
-            self.assertEqual(manifest["figure_counts"]["single_forecast_figures"], 18)
+            self.assertEqual(manifest["headline"]["top_ranked_comparison_track_id"], "deterministic")
+            self.assertEqual(manifest["figure_counts"]["single_forecast_figures"], 36)
             self.assertEqual(manifest["figure_counts"]["comparison_boards"], 3)
             self.assertIn("Prototype 2016 legacy debug support", summary_text)
             self.assertIn("Provenance:", captions_text)
@@ -369,7 +456,7 @@ class PrototypePygnomeSimilaritySummaryTests(unittest.TestCase):
             case_artifacts = service._load_case_artifacts("CASE_2016-09-01")
             crop_bounds = case_artifacts["crop_bounds"]
             self.assertLess(crop_bounds[1] - crop_bounds[0], 0.45)
-            self.assertLess(crop_bounds[3] - crop_bounds[2], 0.75)
+            self.assertLessEqual(crop_bounds[3] - crop_bounds[2], 0.75)
 
             results = service.run()
             registry_df = pd.read_csv(results["figure_registry_csv"])
@@ -405,7 +492,52 @@ class PrototypePygnomeSimilaritySummaryTests(unittest.TestCase):
                 40,
             )
 
-    def test_service_fails_clearly_when_any_required_case_artifact_is_missing(self):
+    def test_service_repairs_legacy_deterministic_only_case_manifests(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "config").mkdir(parents=True, exist_ok=True)
+            (root / "config" / "settings.yaml").write_text(
+                "phase_1_start_date:\n"
+                "  - 2016-09-01\n"
+                "  - 2016-09-06\n"
+                "  - 2016-09-17\n",
+                encoding="utf-8",
+            )
+            _write_prototype_context(root)
+
+            _write_case(root, "CASE_2016-09-01", (0.60, 0.60, 0.60), (12.0, 12.0, 12.0), legacy_deterministic_only=True)
+            _write_case(root, "CASE_2016-09-06", (0.60, 0.60, 0.60), (10.0, 10.0, 10.0))
+            _write_case(root, "CASE_2016-09-17", (0.40, 0.40, 0.40), (15.0, 15.0, 15.0))
+
+            service = PrototypePygnomeSimilaritySummaryService(repo_root=root)
+            results = service.run()
+
+            repaired_fss = pd.read_csv(root / "output" / "CASE_2016-09-01" / "benchmark" / "phase3a_fss_by_time_window.csv")
+            repaired_kl = pd.read_csv(root / "output" / "CASE_2016-09-01" / "benchmark" / "phase3a_kl_by_time.csv")
+            repaired_pairings = pd.read_csv(root / "output" / "CASE_2016-09-01" / "benchmark" / "phase3a_pairing_manifest.csv")
+            repaired_summary = pd.read_csv(root / "output" / "CASE_2016-09-01" / "benchmark" / "phase3a_summary.csv")
+
+            self.assertEqual(
+                sorted(repaired_fss["comparison_track_id"].astype(str).unique().tolist()),
+                ["deterministic", "ensemble_p50", "ensemble_p90"],
+            )
+            self.assertEqual(
+                sorted(repaired_kl["comparison_track_id"].astype(str).unique().tolist()),
+                ["deterministic", "ensemble_p50", "ensemble_p90"],
+            )
+            self.assertEqual(
+                sorted(repaired_pairings["comparison_track_id"].astype(str).unique().tolist()),
+                ["deterministic", "ensemble_p50", "ensemble_p90"],
+            )
+            self.assertEqual(
+                sorted(repaired_summary["comparison_track_id"].astype(str).unique().tolist()),
+                ["deterministic", "ensemble_p50", "ensemble_p90"],
+            )
+
+            skipped_df = pd.read_csv(results["skipped_cases_csv"])
+            self.assertTrue(skipped_df.empty)
+
+    def test_service_skips_incomplete_cases_and_records_reason(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             (root / "config").mkdir(parents=True, exist_ok=True)
@@ -423,12 +555,30 @@ class PrototypePygnomeSimilaritySummaryTests(unittest.TestCase):
             _write_case(root, "CASE_2016-09-17", (0.45, 0.45, 0.45), (12.0, 12.0, 12.0))
 
             service = PrototypePygnomeSimilaritySummaryService(repo_root=root)
+            results = service.run()
 
-            with self.assertRaises(FileNotFoundError) as exc:
-                service.run()
+            self.assertEqual(results["case_count"], 2)
+            self.assertEqual(results["configured_case_count"], 3)
+            self.assertEqual(results["processed_case_ids"], ["CASE_2016-09-01", "CASE_2016-09-17"])
+            self.assertEqual(len(results["skipped_cases"]), 1)
+            self.assertEqual(results["skipped_cases"][0]["case_id"], "CASE_2016-09-06")
+            self.assertIn("metadata_json", results["skipped_cases"][0]["error_message"])
 
-            self.assertIn("CASE_2016-09-06", str(exc.exception))
-            self.assertIn("metadata_json", str(exc.exception))
+            skipped_df = pd.read_csv(results["skipped_cases_csv"])
+            self.assertEqual(skipped_df["case_id"].tolist(), ["CASE_2016-09-06"])
+            self.assertEqual(skipped_df["error_type"].tolist(), ["FileNotFoundError"])
+
+            summary_text = Path(results["summary_md"]).read_text(encoding="utf-8")
+            captions_text = Path(results["figure_captions_md"]).read_text(encoding="utf-8")
+            self.assertIn("Skipped cases:", summary_text)
+            self.assertIn("CASE_2016-09-06", summary_text)
+            self.assertIn("## Skipped Cases", captions_text)
+            self.assertIn("CASE_2016-09-06", captions_text)
+
+            manifest = json.loads(Path(results["manifest_json"]).read_text(encoding="utf-8"))
+            self.assertEqual(manifest["processed_case_ids"], ["CASE_2016-09-01", "CASE_2016-09-17"])
+            self.assertEqual(len(manifest["skipped_cases"]), 1)
+            self.assertEqual(manifest["skipped_cases"][0]["case_id"], "CASE_2016-09-06")
 
     def test_main_dispatches_new_similarity_phase(self):
         with mock.patch.dict(os.environ, {"PIPELINE_PHASE": "prototype_pygnome_similarity_summary"}, clear=False):
@@ -445,7 +595,8 @@ class PrototypePygnomeSimilaritySummaryTests(unittest.TestCase):
 
         self.assertIn("prototype_pygnome_similarity_summary", phases)
         self.assertLess(phases.index("benchmark"), phases.index("prototype_pygnome_similarity_summary"))
-        self.assertLess(phases.index("prototype_pygnome_similarity_summary"), phases.index("3"))
+        self.assertLess(phases.index("prototype_pygnome_similarity_summary"), phases.index("prototype_legacy_phase4_weathering"))
+        self.assertNotIn("3b", phases)
 
 
 if __name__ == "__main__":

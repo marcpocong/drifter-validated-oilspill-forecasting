@@ -33,6 +33,9 @@ copernicusmarine = "2.3.0"
 cdsapi = "^0.7.0"
 cfgrib = "^0.9.15.1"
 eccodes = "^2.46.0"
+# Poetry is not reliably pulling eccodes' Linux binary runtime transitively in
+# this image, so keep the matching ecCodes wheel explicit.
+eccodeslib = ">=2.46.0.12,<2.47"
 
 # Utilities
 pyyaml = "^6.0"

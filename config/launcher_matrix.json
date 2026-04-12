@@ -259,6 +259,53 @@
       ]
     },
     {
+      "entry_id": "phase1_mindoro_focus_pre_spill_experiment",
+      "menu_order": 41,
+      "category_id": "sensitivity_appendix_tracks",
+      "workflow_mode": "phase1_mindoro_focus_pre_spill_2016_2023",
+      "label": "Experimental Phase 1 Mindoro-focus pre-spill rerun",
+      "description": "Separate non-canonical 2016-2023 pre-spill drifter rerun using a Mindoro-focused box and February-April seasonal ranking subset.",
+      "service_profile": "pipeline_only",
+      "rerun_cost": "expensive",
+      "safe_default": false,
+      "notes": "Trial-only. This does not overwrite config/phase1_baseline_selection.yaml and does not modify legacy 2016 prototype outputs.",
+      "steps": [
+        {
+          "phase": "phase1_production_rerun",
+          "service": "pipeline",
+          "description": "Experimental pre-spill 2016-2023 Mindoro-focused Phase 1 production rerun"
+        }
+      ]
+    },
+    {
+      "entry_id": "mindoro_march13_14_phase1_focus_trial",
+      "menu_order": 42,
+      "category_id": "sensitivity_appendix_tracks",
+      "workflow_mode": "mindoro_retro_2023",
+      "label": "Experimental Mindoro March 13-14 Phase 1 focus trial",
+      "description": "Separate non-canonical March 13 -> March 14 replay using the staged experimental Mindoro-focused Phase 1 candidate baseline, with a direct comparison report against the stored canonical B1 row.",
+      "service_profile": "pipeline_only",
+      "rerun_cost": "expensive",
+      "safe_default": false,
+      "notes": "Trial-only. Runs only the OpenDrift March 13 -> March 14 lane in a separate directory; does not rerun PyGNOME or overwrite canonical B1 outputs.",
+      "steps": [
+        {
+          "phase": "phase3b_extended_public",
+          "service": "pipeline",
+          "description": "Ensure the stored extended public-observation registry and processed NOAA artifacts are available"
+        },
+        {
+          "phase": "mindoro_march13_14_phase1_focus_trial",
+          "service": "pipeline",
+          "description": "Experimental March 13 -> March 14 replay using the staged Mindoro-focused Phase 1 candidate baseline",
+          "extra_env": {
+            "MINDORO_PHASE1_FOCUS_TRIAL_BASELINE_SELECTION_PATH": "output/phase1_mindoro_focus_pre_spill_2016_2023/phase1_baseline_selection_candidate.yaml",
+            "MINDORO_PHASE1_FOCUS_TRIAL_OUTPUT_DIR_NAME": "phase3b_extended_public_scored_march13_14_reinit_phase1_mindoro_focus_pre_spill"
+          }
+        }
+      ]
+    },
+    {
       "entry_id": "mindoro_march6_recovery_sensitivity",
       "menu_order": 45,
       "category_id": "sensitivity_appendix_tracks",
@@ -503,11 +550,11 @@
       "category_id": "legacy_prototype_tracks",
       "workflow_mode": "prototype_2016",
       "label": "Prototype 2016 legacy bundle",
-      "description": "Historical legacy-only prep, Phase 1/2, deterministic PyGNOME benchmark, similarity summary, and appendix/smoke follow-on steps.",
+      "description": "Historical legacy-only prep, Phase 1/2, Phase 3A PyGNOME comparator package, and legacy Phase 4 weathering/fate analysis.",
       "service_profile": "mixed_pipeline_and_gnome",
       "rerun_cost": "moderate",
       "safe_default": false,
-      "notes": "Backward-compatible legacy debug/regression path only. Not the preferred debug lane and not the final Chapter 3 Phase 1 study. Prototype prep now attempts GFS too, but missing GFS remains best-effort and does not collapse the legacy bundle. The PyGNOME similarity step is transport-only, comparator-only, and now writes actual 24/48/72 h forecast singles plus one side-by-side board per case. Phases 3 and 3B remain legacy appendix/smoke checks here.",
+      "notes": "Backward-compatible legacy debug/regression path only. Not the preferred debug lane and not the final Chapter 3 Phase 1 study. Prototype prep now attempts GFS too, but missing GFS remains best-effort and does not collapse the legacy bundle. The visible thesis-facing legacy flow is Phase 1 -> Phase 2 -> Phase 3A -> Phase 4, with Phase 5 available separately through phase5_sync. The PyGNOME similarity step is transport-only, comparator-only, and now surfaces deterministic plus p50/p90 legacy support tracks. There is no thesis-facing prototype_2016 Phase 3B or Phase 3C.",
       "steps": [
         {
           "phase": "prep",
@@ -527,17 +574,12 @@
         {
           "phase": "prototype_pygnome_similarity_summary",
           "service": "pipeline",
-          "description": "Prototype cross-case PyGNOME similarity summary and forecast figure package"
+          "description": "Prototype legacy Phase 3A cross-case PyGNOME similarity summary and forecast figure package"
         },
         {
-          "phase": "3",
+          "phase": "prototype_legacy_phase4_weathering",
           "service": "gnome",
-          "description": "Prototype Phase 3 weathering and comparison"
-        },
-        {
-          "phase": "3b",
-          "service": "pipeline",
-          "description": "Prototype Phase 3B scoring"
+          "description": "Prototype legacy Phase 4 oil weathering and fate analysis"
         }
       ]
     }

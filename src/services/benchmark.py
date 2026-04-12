@@ -1,8 +1,8 @@
 """
 Phase 3A benchmark pipeline orchestrator.
 
-Pairs deterministic control products against deterministic PyGNOME products on
-the canonical scoring grid and computes FSS/KL only on defensible raster pairs.
+Pairs OpenDrift reference products against deterministic PyGNOME products on the
+canonical scoring grid and computes FSS/KL only on defensible raster pairs.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ import pandas as pd
 import rasterio
 import yaml
 
+from src.core.case_context import get_case_context
 from src.helpers.metrics import calculate_fss, calculate_kl_divergence
 from src.helpers.raster import GridBuilder, extract_particles_at_time, rasterize_particles, save_raster
 from src.helpers.scoring import precheck_same_grid
@@ -26,6 +27,22 @@ from src.services.gnome_comparison import GNOME_AVAILABLE, GnomeComparisonServic
 from src.utils.io import get_forcing_files
 
 logger = logging.getLogger(__name__)
+
+
+COMPARISON_TRACK_REGISTRY = {
+    "deterministic": {
+        "label": "OpenDrift deterministic",
+        "subdir": "control",
+    },
+    "ensemble_p50": {
+        "label": "OpenDrift p50 threshold",
+        "subdir": "ensemble_p50",
+    },
+    "ensemble_p90": {
+        "label": "OpenDrift p90 threshold",
+        "subdir": "ensemble_p90",
+    },
+}
 
 
 def _normalize_timestamp(value) -> pd.Timestamp:
@@ -48,10 +65,24 @@ def _read_raster_data(path: Path) -> np.ndarray:
         return src.read(1)
 
 
+def ensure_point_within_benchmark_grid(*, lon: float, lat: float, grid: GridBuilder, label: str = "Benchmark spill origin") -> None:
+    if (
+        float(grid.min_lon) <= float(lon) <= float(grid.max_lon)
+        and float(grid.min_lat) <= float(lat) <= float(grid.max_lat)
+    ):
+        return
+    raise RuntimeError(
+        f"{label} {float(lon):.4f}E, {float(lat):.4f}N lies outside the benchmark grid "
+        f"({float(grid.min_lon):.2f}-{float(grid.max_lon):.2f}E, {float(grid.min_lat):.2f}-{float(grid.max_lat):.2f}N). "
+        "This case cannot produce defensible Phase 3A rasters on the current scoring grid."
+    )
+
+
 class BenchmarkPipeline:
     def __init__(self, output_base: str = None):
         from src.core.constants import RUN_NAME
 
+        self.case = get_case_context()
         self.run_id = RUN_NAME
         self.base_dir = Path("output") / self.run_id / "benchmark" if output_base is None else Path(output_base) / self.run_id / "benchmark"
         self.setup_directories()
@@ -72,9 +103,14 @@ class BenchmarkPipeline:
         self.kl_manifest_path = self.base_dir / "phase3a_kl_by_time.csv"
         self.summary_path = self.base_dir / "phase3a_summary.csv"
 
+    def _comparison_track_ids(self) -> list[str]:
+        if self.case.workflow_mode == "prototype_2016":
+            return ["deterministic", "ensemble_p50", "ensemble_p90"]
+        return ["deterministic"]
+
     def setup_directories(self):
         self.base_dir.mkdir(parents=True, exist_ok=True)
-        for sub in ["grid", "control", "pygnome", "precheck", "qa", "logs"]:
+        for sub in ["grid", "control", "ensemble_p50", "ensemble_p90", "pygnome", "precheck", "qa", "logs"]:
             (self.base_dir / sub).mkdir(parents=True, exist_ok=True)
 
     def generate_config_snapshot(
@@ -88,16 +124,18 @@ class BenchmarkPipeline:
     ):
         config_snapshot = {
             "case_id": self.run_id,
+            "workflow_mode": self.case.workflow_mode,
             "start_time": start_time,
             "start_lat": start_lat,
             "start_lon": start_lon,
             "recipe": best_recipe,
+            "comparison_tracks": self._comparison_track_ids(),
             "fss_windows_km": self.fss_windows_km,
             "kl_epsilon": self.kl_epsilon,
             "grid": grid.spec.to_metadata(),
             "pygnome_benchmark": pygnome_metadata,
         }
-        with open(self.base_dir / "config_snapshot.yaml", "w") as f:
+        with open(self.base_dir / "config_snapshot.yaml", "w", encoding="utf-8") as f:
             yaml.dump(config_snapshot, f, indent=2)
 
     def _window_cells(self, window_km: int, grid: GridBuilder) -> int:
@@ -109,14 +147,46 @@ class BenchmarkPipeline:
         start_ts = _normalize_timestamp(start_time)
         return [(hour, start_ts + pd.Timedelta(hours=hour)) for hour in snapshot_hours]
 
+    def _copy_track_product(
+        self,
+        *,
+        source_footprint: Path,
+        source_density: Path,
+        track_id: str,
+        hour: int,
+        target_time: pd.Timestamp,
+    ) -> dict:
+        label = _timestamp_to_label(target_time)
+        target_dir = self.base_dir / COMPARISON_TRACK_REGISTRY[track_id]["subdir"]
+        local_footprint = target_dir / f"{track_id}_footprint_mask_{label}.tif"
+        local_density = target_dir / f"{track_id}_density_norm_{label}.tif"
+        shutil.copyfile(source_footprint, local_footprint)
+        shutil.copyfile(source_density, local_density)
+        return {
+            "comparison_track_id": track_id,
+            "comparison_track_label": COMPARISON_TRACK_REGISTRY[track_id]["label"],
+            "hour": int(hour),
+            "timestamp_utc": _timestamp_to_utc_iso(target_time),
+            "opendrift_source_footprint": str(source_footprint),
+            "opendrift_source_density": str(source_density),
+            "opendrift_footprint_path": str(local_footprint),
+            "opendrift_density_path": str(local_density),
+            "control_source_footprint": str(source_footprint),
+            "control_source_density": str(source_density),
+            "control_footprint_path": str(local_footprint),
+            "control_density_path": str(local_density),
+        }
+
     def _ensure_deterministic_control_products(
         self,
         service: EnsembleForecastService,
         recipe_name: str,
+        start_lat: float,
+        start_lon: float,
         start_time: str,
     ) -> list[dict]:
-        target_records = []
         targets = self._snapshot_targets(start_time, service.snapshot_hours)
+        control_nc_path = service.output_dir / f"deterministic_control_{recipe_name}.nc"
         expected_paths = [
             (
                 service.forecast_dir / f"control_footprint_mask_{_timestamp_to_label(target_time)}.tif",
@@ -125,8 +195,15 @@ class BenchmarkPipeline:
             for _, target_time in targets
         ]
         if not all(foot.exists() and density.exists() for foot, density in expected_paths):
-            service.run_deterministic_control(recipe_name=recipe_name, start_time=start_time)
+            service.run_deterministic_control(
+                recipe_name=recipe_name,
+                start_time=start_time,
+                start_lat=start_lat,
+                start_lon=start_lon,
+                force_point_release=self.case.workflow_mode == "prototype_2016",
+            )
 
+        track_records: list[dict] = []
         for hour, target_time in targets:
             label = _timestamp_to_label(target_time)
             source_footprint = service.forecast_dir / f"control_footprint_mask_{label}.tif"
@@ -135,24 +212,96 @@ class BenchmarkPipeline:
                 raise FileNotFoundError(
                     f"Missing deterministic control products for {label}: {source_footprint} | {source_density}"
                 )
-
-            local_footprint = self.base_dir / "control" / source_footprint.name
-            local_density = self.base_dir / "control" / source_density.name
-            shutil.copyfile(source_footprint, local_footprint)
-            shutil.copyfile(source_density, local_density)
-
-            target_records.append(
+            track_records.append(
                 {
-                    "hour": hour,
-                    "timestamp_utc": _timestamp_to_utc_iso(target_time),
-                    "control_source_footprint": str(source_footprint),
-                    "control_source_density": str(source_density),
-                    "control_footprint_path": str(local_footprint),
-                    "control_density_path": str(local_density),
+                    **self._copy_track_product(
+                    source_footprint=source_footprint,
+                    source_density=source_density,
+                    track_id="deterministic",
+                    hour=hour,
+                    target_time=target_time,
+                    ),
+                    "opendrift_nc_path": str(control_nc_path) if control_nc_path.exists() else "",
                 }
             )
+        return track_records
 
-        return target_records
+    def _ensure_legacy_threshold_products(
+        self,
+        service: EnsembleForecastService,
+        recipe_name: str,
+        start_lat: float,
+        start_lon: float,
+        start_time: str,
+    ) -> list[dict]:
+        if self.case.workflow_mode != "prototype_2016":
+            return []
+
+        targets = self._snapshot_targets(start_time, service.snapshot_hours)
+        expected_sources = [
+            service.output_dir / f"mask_p50_{hour}h.tif"
+            for hour, _ in targets
+        ] + [
+            service.output_dir / f"mask_p90_{hour}h.tif"
+            for hour, _ in targets
+        ]
+        if not all(path.exists() for path in expected_sources):
+            service.run_ensemble(
+                recipe_name=recipe_name,
+                start_lat=start_lat,
+                start_lon=start_lon,
+                start_time=start_time,
+            )
+
+        track_records: list[dict] = []
+        for hour, target_time in targets:
+            for track_id, filename in (
+                ("ensemble_p50", f"mask_p50_{hour}h.tif"),
+                ("ensemble_p90", f"mask_p90_{hour}h.tif"),
+            ):
+                source_path = service.output_dir / filename
+                if not source_path.exists():
+                    raise FileNotFoundError(f"Missing legacy ensemble threshold product for {track_id} {hour} h: {source_path}")
+                track_records.append(
+                    {
+                        **self._copy_track_product(
+                        source_footprint=source_path,
+                        source_density=source_path,
+                        track_id=track_id,
+                        hour=hour,
+                        target_time=target_time,
+                        ),
+                        "opendrift_nc_path": "",
+                    }
+                )
+        return track_records
+
+    def _build_opendrift_reference_products(
+        self,
+        service: EnsembleForecastService,
+        recipe_name: str,
+        start_lat: float,
+        start_lon: float,
+        start_time: str,
+    ) -> list[dict]:
+        deterministic_records = self._ensure_deterministic_control_products(
+            service,
+            recipe_name,
+            start_lat,
+            start_lon,
+            start_time,
+        )
+        extra_records = self._ensure_legacy_threshold_products(
+            service,
+            recipe_name,
+            start_lat,
+            start_lon,
+            start_time,
+        )
+        return sorted(
+            [*deterministic_records, *extra_records],
+            key=lambda item: (self._comparison_track_ids().index(item["comparison_track_id"]), int(item["hour"])),
+        )
 
     def _generate_pygnome_products(
         self,
@@ -174,6 +323,7 @@ class BenchmarkPipeline:
             start_lon=start_lon,
             start_time=start_time,
             output_name="pygnome_deterministic_control.nc",
+            use_start_point_release=self.case.workflow_mode == "prototype_2016",
         )
 
         py_records = []
@@ -190,7 +340,30 @@ class BenchmarkPipeline:
 
             hits, density = rasterize_particles(grid, lon, lat, mass)
             if float(np.sum(density)) <= 0.0:
-                raise RuntimeError(f"PyGNOME density raster is blank for benchmark snapshot {target_time}.")
+                lon_arr = np.asarray(lon, dtype=float)
+                lat_arr = np.asarray(lat, dtype=float)
+                inside_mask = (
+                    (lon_arr >= float(grid.min_lon))
+                    & (lon_arr <= float(grid.max_lon))
+                    & (lat_arr >= float(grid.min_lat))
+                    & (lat_arr <= float(grid.max_lat))
+                )
+                inside_count = int(np.count_nonzero(inside_mask))
+                particle_count = int(len(lon_arr))
+                particle_bounds = (
+                    f"{float(np.min(lon_arr)):.2f}-{float(np.max(lon_arr)):.2f}E, "
+                    f"{float(np.min(lat_arr)):.2f}-{float(np.max(lat_arr)):.2f}N"
+                )
+                grid_bounds = (
+                    f"{float(grid.min_lon):.2f}-{float(grid.max_lon):.2f}E, "
+                    f"{float(grid.min_lat):.2f}-{float(grid.max_lat):.2f}N"
+                )
+                raise RuntimeError(
+                    f"PyGNOME density raster is blank for benchmark snapshot {target_time}. "
+                    f"Only {inside_count}/{particle_count} surface particles fell inside the benchmark grid "
+                    f"({grid_bounds}); particle bounds were {particle_bounds}. "
+                    "This usually means the PyGNOME particle cloud drifted outside the scoring grid."
+                )
 
             label = _timestamp_to_label(target_time)
             footprint_path = self.base_dir / "pygnome" / f"pygnome_footprint_mask_{label}.tif"
@@ -200,7 +373,7 @@ class BenchmarkPipeline:
 
             py_records.append(
                 {
-                    "hour": hour,
+                    "hour": int(hour),
                     "timestamp_utc": _timestamp_to_utc_iso(target_time),
                     "actual_snapshot_time_utc": _timestamp_to_utc_iso(actual_time),
                     "pygnome_nc_path": str(py_nc_path),
@@ -212,7 +385,7 @@ class BenchmarkPipeline:
             )
 
         py_metadata["output_dir"] = str(gnome_service.output_dir)
-        with open(self.base_dir / "pygnome" / "pygnome_benchmark_metadata.json", "w") as f:
+        with open(self.base_dir / "pygnome" / "pygnome_benchmark_metadata.json", "w", encoding="utf-8") as f:
             json.dump(py_metadata, f, indent=2)
 
         return py_records, py_metadata
@@ -225,12 +398,18 @@ class BenchmarkPipeline:
                 return sea_mask
         return np.ones((grid.height, grid.width), dtype=bool)
 
-    def _write_overlay(self, control_hits: np.ndarray, pygnome_hits: np.ndarray, target_time: pd.Timestamp) -> Path:
+    def _write_overlay(
+        self,
+        opendrift_hits: np.ndarray,
+        pygnome_hits: np.ndarray,
+        target_time: pd.Timestamp,
+        comparison_track_id: str,
+    ) -> Path:
         label = _timestamp_to_label(target_time)
-        overlay_path = self.base_dir / "qa" / f"footprint_overlay_{label}.png"
-        control = control_hits > 0
+        overlay_path = self.base_dir / "qa" / f"{comparison_track_id}_overlay_{label}.png"
+        control = opendrift_hits > 0
         pygnome = pygnome_hits > 0
-        overlay = np.zeros((*control_hits.shape, 3), dtype=np.float32)
+        overlay = np.zeros((*opendrift_hits.shape, 3), dtype=np.float32)
         overlay[..., 0] = (control & ~pygnome).astype(np.float32)
         overlay[..., 1] = (control & pygnome).astype(np.float32)
         overlay[..., 2] = (~control & pygnome).astype(np.float32)
@@ -239,43 +418,57 @@ class BenchmarkPipeline:
 
     def _write_summary(self, fss_df: pd.DataFrame, kl_df: pd.DataFrame, pairing_df: pd.DataFrame):
         rows = []
-        for window_km in self.fss_windows_km:
-            subset = fss_df[fss_df["window_km"] == window_km]
+        for comparison_track_id in self._comparison_track_ids():
+            track_label = COMPARISON_TRACK_REGISTRY[comparison_track_id]["label"]
+            track_fss = fss_df[fss_df["comparison_track_id"] == comparison_track_id]
+            track_kl = kl_df[kl_df["comparison_track_id"] == comparison_track_id]
+            track_pairings = pairing_df[pairing_df["comparison_track_id"] == comparison_track_id]
+            for window_km in self.fss_windows_km:
+                subset = track_fss[track_fss["window_km"] == window_km]
+                rows.append(
+                    {
+                        "comparison_track_id": comparison_track_id,
+                        "comparison_track_label": track_label,
+                        "metric": "FSS",
+                        "window_km": window_km,
+                        "pair_count": int(len(subset)),
+                        "mean_value": float(subset["fss"].mean()) if not subset.empty else np.nan,
+                        "min_value": float(subset["fss"].min()) if not subset.empty else np.nan,
+                        "max_value": float(subset["fss"].max()) if not subset.empty else np.nan,
+                        "notes": (
+                            "Footprint-mask Fractions Skill Score on "
+                            f"{track_label} vs deterministic PyGNOME."
+                        ),
+                    }
+                )
+
             rows.append(
                 {
-                    "metric": "FSS",
-                    "window_km": window_km,
-                    "pair_count": int(len(subset)),
-                    "mean_value": float(subset["fss"].mean()) if not subset.empty else np.nan,
-                    "min_value": float(subset["fss"].min()) if not subset.empty else np.nan,
-                    "max_value": float(subset["fss"].max()) if not subset.empty else np.nan,
-                    "notes": "Footprint-mask Fractions Skill Score on deterministic control vs deterministic PyGNOME.",
+                    "comparison_track_id": comparison_track_id,
+                    "comparison_track_label": track_label,
+                    "metric": "KL",
+                    "window_km": "",
+                    "pair_count": int(len(track_kl)),
+                    "mean_value": float(track_kl["kl_divergence"].mean()) if not track_kl.empty else np.nan,
+                    "min_value": float(track_kl["kl_divergence"].min()) if not track_kl.empty else np.nan,
+                    "max_value": float(track_kl["kl_divergence"].max()) if not track_kl.empty else np.nan,
+                    "notes": "KL divergence on ocean-only normalized density rasters after epsilon handling and renormalization.",
                 }
             )
 
-        rows.append(
-            {
-                "metric": "KL",
-                "window_km": "",
-                "pair_count": int(len(kl_df)),
-                "mean_value": float(kl_df["kl_divergence"].mean()) if not kl_df.empty else np.nan,
-                "min_value": float(kl_df["kl_divergence"].min()) if not kl_df.empty else np.nan,
-                "max_value": float(kl_df["kl_divergence"].max()) if not kl_df.empty else np.nan,
-                "notes": "KL divergence on ocean-only normalized density rasters after epsilon handling and renormalization.",
-            }
-        )
-
-        rows.append(
-            {
-                "metric": "PAIRING",
-                "window_km": "",
-                "pair_count": int(len(pairing_df)),
-                "mean_value": np.nan,
-                "min_value": np.nan,
-                "max_value": np.nan,
-                "notes": "Benchmark raster pairing count.",
-            }
-        )
+            rows.append(
+                {
+                    "comparison_track_id": comparison_track_id,
+                    "comparison_track_label": track_label,
+                    "metric": "PAIRING",
+                    "window_km": "",
+                    "pair_count": int(len(track_pairings)),
+                    "mean_value": np.nan,
+                    "min_value": np.nan,
+                    "max_value": np.nan,
+                    "notes": "Benchmark raster pairing count.",
+                }
+            )
 
         pd.DataFrame(rows).to_csv(self.summary_path, index=False)
 
@@ -287,16 +480,24 @@ class BenchmarkPipeline:
         start_time: str,
         base_config_path: str = "config/oil.yaml",
     ):
+        del base_config_path
         self.logger.info("Starting Benchmark RUN_ID: %s", self.run_id)
         print(f"Starting Benchmark Case {self.run_id}")
 
         grid = GridBuilder()
+        ensure_point_within_benchmark_grid(lon=start_lon, lat=start_lat, grid=grid)
         grid.save_metadata(self.base_dir / "grid" / "grid.json")
         sea_mask = self._load_sea_mask(grid)
 
         forcing = get_forcing_files(best_recipe)
         service = EnsembleForecastService(str(forcing["currents"]), str(forcing["wind"]))
-        control_records = self._ensure_deterministic_control_products(service, best_recipe, start_time)
+        opendrift_records = self._build_opendrift_reference_products(
+            service,
+            best_recipe,
+            start_lat,
+            start_lon,
+            start_time,
+        )
 
         print("   Running deterministic PyGNOME benchmark transport case...")
         py_records, py_metadata = self._generate_pygnome_products(
@@ -313,65 +514,76 @@ class BenchmarkPipeline:
         fss_rows = []
         kl_rows = []
 
-        for control in control_records:
-            timestamp_utc = control["timestamp_utc"]
+        for opendrift in opendrift_records:
+            timestamp_utc = opendrift["timestamp_utc"]
             if timestamp_utc not in py_by_timestamp:
                 raise RuntimeError(f"Missing PyGNOME benchmark product for {timestamp_utc}.")
             py_record = py_by_timestamp[timestamp_utc]
 
             target_time = _normalize_timestamp(timestamp_utc)
+            precheck_prefix = f"{opendrift['comparison_track_id']}_{_timestamp_to_label(target_time)}"
             footprint_precheck = precheck_same_grid(
-                control["control_footprint_path"],
+                opendrift["opendrift_footprint_path"],
                 py_record["pygnome_footprint_path"],
-                report_base_path=self.base_dir / "precheck" / f"footprint_{_timestamp_to_label(target_time)}",
+                report_base_path=self.base_dir / "precheck" / f"footprint_{precheck_prefix}",
             )
             density_precheck = precheck_same_grid(
-                control["control_density_path"],
+                opendrift["opendrift_density_path"],
                 py_record["pygnome_density_path"],
-                report_base_path=self.base_dir / "precheck" / f"density_{_timestamp_to_label(target_time)}",
+                report_base_path=self.base_dir / "precheck" / f"density_{precheck_prefix}",
             )
             if not footprint_precheck.passed or not density_precheck.passed:
                 raise RuntimeError(
-                    f"Phase 3A same-grid precheck failed for {timestamp_utc}. "
+                    f"Phase 3A same-grid precheck failed for {timestamp_utc} "
+                    f"({opendrift['comparison_track_id']}). "
                     f"Footprint report: {footprint_precheck.json_report_path} | "
                     f"Density report: {density_precheck.json_report_path}"
                 )
 
-            control_hits = _read_raster_data(Path(control["control_footprint_path"]))
+            opendrift_hits = _read_raster_data(Path(opendrift["opendrift_footprint_path"]))
             py_hits = _read_raster_data(Path(py_record["pygnome_footprint_path"]))
-            control_density = _read_raster_data(Path(control["control_density_path"]))
+            opendrift_density = _read_raster_data(Path(opendrift["opendrift_density_path"]))
             py_density = _read_raster_data(Path(py_record["pygnome_density_path"]))
 
-            control_density_ocean_sum = float(np.clip(control_density[sea_mask], 0.0, None).sum())
+            opendrift_density_ocean_sum = float(np.clip(opendrift_density[sea_mask], 0.0, None).sum())
             py_density_ocean_sum = float(np.clip(py_density[sea_mask], 0.0, None).sum())
-            if control_density_ocean_sum <= 0.0 or py_density_ocean_sum <= 0.0:
+            if opendrift_density_ocean_sum <= 0.0 or py_density_ocean_sum <= 0.0:
                 raise RuntimeError(
-                    f"Invalid density pair for {timestamp_utc}: "
-                    f"control_sum={control_density_ocean_sum}, pygnome_sum={py_density_ocean_sum}"
+                    f"Invalid density pair for {timestamp_utc} ({opendrift['comparison_track_id']}): "
+                    f"opendrift_sum={opendrift_density_ocean_sum}, pygnome_sum={py_density_ocean_sum}"
                 )
 
-            overlay_path = self._write_overlay(control_hits, py_hits, target_time)
+            overlay_path = self._write_overlay(
+                opendrift_hits,
+                py_hits,
+                target_time,
+                opendrift["comparison_track_id"],
+            )
 
             for window_km in self.fss_windows_km:
                 window_cells = self._window_cells(window_km, grid)
                 fss_rows.append(
                     {
+                        "comparison_track_id": opendrift["comparison_track_id"],
+                        "comparison_track_label": opendrift["comparison_track_label"],
                         "timestamp_utc": timestamp_utc,
-                        "hour": control["hour"],
+                        "hour": int(opendrift["hour"]),
                         "window_km": window_km,
                         "window_cells": window_cells,
-                        "fss": calculate_fss(control_hits, py_hits, window=window_cells),
+                        "fss": calculate_fss(opendrift_hits, py_hits, window=window_cells),
                     }
                 )
 
             kl_rows.append(
                 {
+                    "comparison_track_id": opendrift["comparison_track_id"],
+                    "comparison_track_label": opendrift["comparison_track_label"],
                     "timestamp_utc": timestamp_utc,
-                    "hour": control["hour"],
+                    "hour": int(opendrift["hour"]),
                     "epsilon": self.kl_epsilon,
                     "ocean_cell_count": int(np.count_nonzero(sea_mask)),
                     "kl_divergence": calculate_kl_divergence(
-                        control_density,
+                        opendrift_density,
                         py_density,
                         epsilon=self.kl_epsilon,
                         valid_mask=sea_mask,
@@ -381,24 +593,30 @@ class BenchmarkPipeline:
 
             pairing_rows.append(
                 {
+                    "comparison_track_id": opendrift["comparison_track_id"],
+                    "comparison_track_label": opendrift["comparison_track_label"],
                     "timestamp_utc": timestamp_utc,
-                    "hour": control["hour"],
-                    "control_footprint_path": control["control_footprint_path"],
+                    "hour": int(opendrift["hour"]),
+                    "opendrift_footprint_path": opendrift["opendrift_footprint_path"],
                     "pygnome_footprint_path": py_record["pygnome_footprint_path"],
-                    "control_density_path": control["control_density_path"],
+                    "opendrift_density_path": opendrift["opendrift_density_path"],
+                    "opendrift_nc_path": opendrift.get("opendrift_nc_path", ""),
                     "pygnome_density_path": py_record["pygnome_density_path"],
+                    "control_footprint_path": opendrift["control_footprint_path"],
+                    "control_density_path": opendrift["control_density_path"],
                     "footprint_precheck_json": str(footprint_precheck.json_report_path),
                     "density_precheck_json": str(density_precheck.json_report_path),
                     "qa_overlay_path": str(overlay_path),
+                    "pygnome_nc_path": py_record["pygnome_nc_path"],
                     "pygnome_mass_strategy": py_record["pygnome_mass_strategy"],
-                    "control_density_ocean_sum": control_density_ocean_sum,
+                    "opendrift_density_ocean_sum": opendrift_density_ocean_sum,
                     "pygnome_density_ocean_sum": py_density_ocean_sum,
                 }
             )
 
-        pairing_df = pd.DataFrame(pairing_rows).sort_values("hour").reset_index(drop=True)
-        fss_df = pd.DataFrame(fss_rows).sort_values(["hour", "window_km"]).reset_index(drop=True)
-        kl_df = pd.DataFrame(kl_rows).sort_values("hour").reset_index(drop=True)
+        pairing_df = pd.DataFrame(pairing_rows).sort_values(["comparison_track_id", "hour"]).reset_index(drop=True)
+        fss_df = pd.DataFrame(fss_rows).sort_values(["comparison_track_id", "hour", "window_km"]).reset_index(drop=True)
+        kl_df = pd.DataFrame(kl_rows).sort_values(["comparison_track_id", "hour"]).reset_index(drop=True)
 
         pairing_df.to_csv(self.pairing_manifest_path, index=False)
         fss_df.to_csv(self.fss_manifest_path, index=False)

@@ -30,6 +30,10 @@ $OutputEncoding = [Console]::OutputEncoding = [Console]::InputEncoding = [System
 $Script:RepoRoot = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
 $Script:LauncherMatrixPath = Join-Path $Script:RepoRoot "config\launcher_matrix.json"
 $Script:LauncherMatrix = $null
+$Script:PrepOutageExitCode = 86
+$Script:PrepOutagePayloadPrefix = "PREP_OUTAGE_PAYLOAD="
+$Script:ForcingOutageSkipExitCode = 87
+$Script:ForcingOutageSkipPayloadPrefix = "FORCING_OUTAGE_SKIP_PAYLOAD="
 
 Set-Location $Script:RepoRoot
 
@@ -74,6 +78,92 @@ function Write-ProcessLine {
     }
 }
 
+function Invoke-DockerPhaseCommand {
+    param(
+        [Parameter(Mandatory = $true)][string]$Phase,
+        [Parameter(Mandatory = $true)][string]$Description,
+        [Parameter(Mandatory = $true)][string]$WorkflowMode,
+        [Parameter(Mandatory = $true)][string]$Service,
+        [hashtable]$ExtraEnv = @{}
+    )
+
+    Write-Host ""
+    Write-Host ">>> $Description" -ForegroundColor Yellow
+    Write-Host "    WORKFLOW_MODE=$WorkflowMode PIPELINE_PHASE=$Phase SERVICE=$Service" -ForegroundColor DarkGray
+
+    $dockerArgs = @("exec", "-T")
+    foreach ($key in ($ExtraEnv.Keys | Sort-Object)) {
+        $dockerArgs += @("-e", "$key=$($ExtraEnv[$key])")
+    }
+    $dockerArgs += @(
+        "-e", "WORKFLOW_MODE=$WorkflowMode",
+        "-e", "PIPELINE_PHASE=$Phase",
+        $Service,
+        "python",
+        "-m",
+        "src"
+    )
+
+    $prepPayloadLine = $null
+    $forcingSkipPayloadLine = $null
+    & docker-compose @dockerArgs 2>&1 | ForEach-Object {
+        $message = if ($_ -is [System.Management.Automation.ErrorRecord]) {
+            $_.Exception.Message
+        } else {
+            [string]$_
+        }
+        if ($message.StartsWith($Script:PrepOutagePayloadPrefix)) {
+            $prepPayloadLine = $message
+        }
+        if ($message.StartsWith($Script:ForcingOutageSkipPayloadPrefix)) {
+            $forcingSkipPayloadLine = $message
+        }
+        Write-ProcessLine $message
+    }
+
+    return @{
+        ExitCode = $LASTEXITCODE
+        PayloadLine = $prepPayloadLine
+        ForcingSkipPayloadLine = $forcingSkipPayloadLine
+    }
+}
+
+function Update-PrepManifestCancelledByUser {
+    param(
+        [Parameter(Mandatory = $true)][string]$RunName,
+        [Parameter(Mandatory = $true)][string]$SourceId,
+        [string]$CachePath,
+        [string]$RemoteError,
+        $Validation
+    )
+
+    $manifestPath = Join-Path $Script:RepoRoot "data\download_manifest.json"
+    if (-not (Test-Path $manifestPath)) {
+        return
+    }
+
+    try {
+        $payload = Get-Content $manifestPath -Raw | ConvertFrom-Json -AsHashtable
+        if (-not $payload.ContainsKey($RunName)) {
+            return
+        }
+        if (-not $payload[$RunName].ContainsKey("downloads")) {
+            $payload[$RunName]["downloads"] = @{}
+        }
+        $payload[$RunName]["downloads"][$SourceId] = @{
+            status = "cancelled_by_user"
+            source_id = $SourceId
+            path = $CachePath
+            remote_error = $RemoteError
+            validation = $Validation
+        }
+        $payload | ConvertTo-Json -Depth 20 | Set-Content -Path $manifestPath -Encoding UTF8
+    }
+    catch {
+        Write-Host "WARNING - Failed to update download manifest after user cancellation: $($_.Exception.Message)" -ForegroundColor DarkYellow
+    }
+}
+
 function Get-LauncherMatrix {
     if ($null -ne $Script:LauncherMatrix) {
         return $Script:LauncherMatrix
@@ -113,27 +203,148 @@ function Get-LauncherEntryById {
     return $match
 }
 
+function ConvertTo-Hashtable {
+    param([object]$InputObject)
+
+    $result = @{}
+    if ($null -eq $InputObject) {
+        return $result
+    }
+
+    if ($InputObject -is [System.Collections.IDictionary]) {
+        foreach ($key in $InputObject.Keys) {
+            $result[[string]$key] = [string]$InputObject[$key]
+        }
+        return $result
+    }
+
+    foreach ($property in $InputObject.PSObject.Properties) {
+        $result[[string]$property.Name] = [string]$property.Value
+    }
+    return $result
+}
+
 function Invoke-DockerPhase {
     param(
         [Parameter(Mandatory = $true)][string]$Phase,
         [Parameter(Mandatory = $true)][string]$Description,
         [Parameter(Mandatory = $true)][string]$WorkflowMode,
-        [Parameter(Mandatory = $true)][string]$Service
+        [Parameter(Mandatory = $true)][string]$Service,
+        [hashtable]$ExtraEnv = @{},
+        [switch]$ReuseDecisionConsumed
     )
 
-    Write-Host ""
-    Write-Host ">>> $Description" -ForegroundColor Yellow
-    Write-Host "    WORKFLOW_MODE=$WorkflowMode PIPELINE_PHASE=$Phase SERVICE=$Service" -ForegroundColor DarkGray
-
-    docker-compose exec -T `
-        -e WORKFLOW_MODE="$WorkflowMode" `
-        -e PIPELINE_PHASE="$Phase" `
-        $Service python -m src 2>&1 | ForEach-Object { Write-ProcessLine $_ }
-
-    $phaseExitCode = $LASTEXITCODE
-    if ($phaseExitCode -ne 0) {
-        throw "Phase '$Phase' failed in service '$Service' with exit code $phaseExitCode."
+    $phaseEnv = @{}
+    foreach ($key in $ExtraEnv.Keys) {
+        $phaseEnv[$key] = $ExtraEnv[$key]
     }
+    if ($Phase -eq "prep" -and $Service -eq "pipeline" -and -not $phaseEnv.ContainsKey("PREP_OUTAGE_PROMPT_SUPPORTED")) {
+        $phaseEnv["PREP_OUTAGE_PROMPT_SUPPORTED"] = "1"
+    }
+
+    $phaseResult = Invoke-DockerPhaseCommand `
+        -Phase $Phase `
+        -Description $Description `
+        -WorkflowMode $WorkflowMode `
+        -Service $Service `
+        -ExtraEnv $phaseEnv
+
+    if ($phaseResult.ExitCode -eq 0) {
+        return
+    }
+
+    if ($phaseResult.ExitCode -eq $Script:ForcingOutageSkipExitCode) {
+        if (-not $phaseResult.ForcingSkipPayloadLine) {
+            throw "Phase '$Phase' reported a degraded forcing skip, but no machine-readable payload was returned."
+        }
+
+        $payloadJson = $phaseResult.ForcingSkipPayloadLine.Substring($Script:ForcingOutageSkipPayloadPrefix.Length)
+        try {
+            $payload = $payloadJson | ConvertFrom-Json -AsHashtable
+        }
+        catch {
+            throw "Phase '$Phase' returned an unreadable degraded-skip payload: $($_.Exception.Message)"
+        }
+
+        Write-Host ""
+        Write-Host "Phase '$Phase' was skipped after a temporary forcing-provider outage." -ForegroundColor Yellow
+        if ($payload.reason) {
+            Write-Host "Reason: $($payload.reason)" -ForegroundColor DarkGray
+        }
+        if ($payload.missing_forcing_factors) {
+            Write-Host "Missing forcing factors: $($payload.missing_forcing_factors -join ', ')" -ForegroundColor DarkGray
+        }
+        if ($payload.skipped_recipe_ids) {
+            Write-Host "Skipped recipes: $($payload.skipped_recipe_ids -join ', ')" -ForegroundColor DarkGray
+        }
+        if ($payload.skipped_branch_ids) {
+            Write-Host "Skipped branches: $($payload.skipped_branch_ids -join ', ')" -ForegroundColor DarkGray
+        }
+        if ($payload.manifest_path) {
+            Write-Host "Manifest: $($payload.manifest_path)" -ForegroundColor DarkGray
+        }
+        return
+    }
+
+    if ($Phase -eq "prep" -and $Service -eq "pipeline" -and $phaseResult.ExitCode -eq $Script:PrepOutageExitCode) {
+        if ($ReuseDecisionConsumed) {
+            throw "Prep hit another outage after the single allowed cache-reuse decision for this phase. Rerun the launcher after the upstream service recovers."
+        }
+        if (-not $phaseResult.PayloadLine) {
+            throw "Prep signaled a cache-reuse decision, but no machine-readable outage payload was returned."
+        }
+
+        $payloadJson = $phaseResult.PayloadLine.Substring($Script:PrepOutagePayloadPrefix.Length)
+        try {
+            $payload = $payloadJson | ConvertFrom-Json -AsHashtable
+        }
+        catch {
+            throw "Prep returned an unreadable outage payload: $($_.Exception.Message)"
+        }
+
+        Write-Host ""
+        Write-Host "Prep paused because required source '$($payload.source_id)' is temporarily unavailable." -ForegroundColor Yellow
+        Write-Host "Validated same-case cache: $($payload.cache_path)" -ForegroundColor DarkGray
+        $validationSummary = if ($payload.validation.summary) { $payload.validation.summary } else { $payload.validation.reason }
+        if ($validationSummary) {
+            Write-Host "Cache validation: $validationSummary" -ForegroundColor DarkGray
+        }
+        if ($payload.error) {
+            Write-Host "Remote error: $($payload.error)" -ForegroundColor DarkGray
+        }
+
+        while ($true) {
+            $decision = (Read-Host "Type R to reuse validated cache, or C to cancel").Trim().ToUpperInvariant()
+            if ($decision -eq "R") {
+                $retryEnv = @{}
+                foreach ($key in $phaseEnv.Keys) {
+                    $retryEnv[$key] = $phaseEnv[$key]
+                }
+                $retryEnv["PREP_REUSE_APPROVED_SOURCE"] = [string]$payload.source_id
+                $retryEnv["PREP_REUSE_APPROVED_ONCE"] = "1"
+                Invoke-DockerPhase `
+                    -Phase $Phase `
+                    -Description "$Description (reuse approved for $($payload.source_id))" `
+                    -WorkflowMode $WorkflowMode `
+                    -Service $Service `
+                    -ExtraEnv $retryEnv `
+                    -ReuseDecisionConsumed
+                return
+            }
+            if ($decision -eq "C") {
+                Update-PrepManifestCancelledByUser `
+                    -RunName ([string]$payload.run_name) `
+                    -SourceId ([string]$payload.source_id) `
+                    -CachePath ([string]$payload.cache_path) `
+                    -RemoteError ([string]$payload.error) `
+                    -Validation $payload.validation
+                throw "Prep cancelled by user after remote-service outage for source '$($payload.source_id)'."
+            }
+            Write-Host "Enter R to reuse the validated same-case cache, or C to cancel." -ForegroundColor DarkYellow
+        }
+    }
+
+    throw "Phase '$Phase' failed in service '$Service' with exit code $($phaseResult.ExitCode)."
 }
 
 function Invoke-LauncherEntry {
@@ -158,13 +369,15 @@ function Invoke-LauncherEntry {
         $index = 0
         foreach ($step in $steps) {
             $index += 1
+            $stepExtraEnv = ConvertTo-Hashtable -InputObject $step.extra_env
             Write-Host ""
             Write-Host "[$index/$($steps.Count)]" -ForegroundColor Cyan -NoNewline
             Invoke-DockerPhase `
                 -Phase ([string]$step.phase) `
                 -Description ([string]$step.description) `
                 -WorkflowMode $workflowMode `
-                -Service ([string]$step.service)
+                -Service ([string]$step.service) `
+                -ExtraEnv $stepExtraEnv
         }
 
         $duration = (Get-Date) - $startTime

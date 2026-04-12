@@ -47,3 +47,9 @@ NOAA_DEFAULTS = _settings["noaa_defaults"]
 WIND_SPEED_REALISTIC_MAX_MS = _settings["wind_speed_realistic_max_ms"]
 WAVE_HEIGHT_REALISTIC_MAX_M = _settings["wave_height_realistic_max_m"]
 WIND_SPEED_MODERATE_MS = _settings["wind_speed_moderate_ms"]
+
+# CMEMS global physics products often expose their first current level slightly
+# below the surface (for example ~0.494 m) rather than at an exact 0 m depth.
+# Request only an upper bound so near-surface downloads stay compact without
+# triggering subset warnings about a literal zero-depth lower bound.
+CMEMS_SURFACE_CURRENT_MAX_DEPTH_M = 1.0

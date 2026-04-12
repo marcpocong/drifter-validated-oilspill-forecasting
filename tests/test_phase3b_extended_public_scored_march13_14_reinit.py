@@ -27,12 +27,22 @@ from src.services.scoring import Phase3BScoringService
 
 def _service_stub(tmpdir: str) -> Phase3BExtendedPublicScoredMarch1314ReinitService:
     service = Phase3BExtendedPublicScoredMarch1314ReinitService.__new__(Phase3BExtendedPublicScoredMarch1314ReinitService)
+    service.output_dir_name = "phase3b_extended_public_scored_march13_14_reinit"
     service.output_dir = Path(tmpdir) / "march13_14_reinit"
     service.output_dir.mkdir(parents=True, exist_ok=True)
     service.precheck_dir = service.output_dir / "precheck"
     service.precheck_dir.mkdir(parents=True, exist_ok=True)
     service.source_extended_dir = Path(tmpdir) / EXTENDED_DIR_NAME
     service.source_extended_dir.mkdir(parents=True, exist_ok=True)
+    service.track = "mindoro_phase3b_primary_public_validation_reinit"
+    service.track_id = "B1"
+    service.track_label = "Mindoro March 13 -> March 14 NOAA reinit primary validation"
+    service.reporting_role = "canonical_phase3b_public_validation_source"
+    service.appendix_only = False
+    service.primary_public_validation = True
+    service.launcher_entry_id_override = ""
+    service.is_canonical_bundle = True
+    service.window = resolve_march13_14_reinit_window()
     service.locked_hashes_before = {}
     return service
 

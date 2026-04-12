@@ -16,6 +16,7 @@ import pandas as pd
 import yaml
 
 from src.core.case_context import get_case_context
+from src.exceptions.custom import ForcingOutagePhaseSkipped
 from src.helpers.metrics import calculate_fss
 from src.helpers.raster import GridBuilder, rasterize_particles, save_raster
 from src.helpers.scoring import apply_ocean_mask, load_sea_mask_array, precheck_same_grid
@@ -34,6 +35,11 @@ from src.services.mindoro_primary_validation_metadata import (
 from src.services.phase3b_extended_public import EXTENDED_DIR_NAME
 from src.services.phase3b_multidate_public import _as_bool, _hash_file
 from src.services.scoring import OFFICIAL_PHASE3B_WINDOWS_KM, Phase3BScoringService
+from src.utils.forcing_outage_policy import (
+    FORCING_OUTAGE_POLICY_CONTINUE_DEGRADED,
+    resolve_forcing_outage_policy,
+    source_id_for_recipe_component,
+)
 from src.utils.io import _resolve_polygon_reference_point, find_current_vars, get_case_output_dir, resolve_recipe_selection
 
 try:
@@ -61,6 +67,14 @@ PHASE_OR_TRACK = MINDORO_PRIMARY_VALIDATION_PHASE_OR_TRACK
 REPORTING_ROLE = "canonical_phase3b_public_validation_source"
 START_SOURCE_GEOMETRY_LABEL = "accepted_march13_noaa_processed_polygon"
 NOAA_SOURCE_LIMITATION_NOTE = MINDORO_SHARED_IMAGERY_CAVEAT
+PHASE3B_REINIT_OUTPUT_DIR_NAME_ENV = "PHASE3B_REINIT_OUTPUT_DIR_NAME"
+PHASE3B_REINIT_TRACK_OVERRIDE_ENV = "PHASE3B_REINIT_TRACK_OVERRIDE"
+PHASE3B_REINIT_TRACK_ID_OVERRIDE_ENV = "PHASE3B_REINIT_TRACK_ID_OVERRIDE"
+PHASE3B_REINIT_TRACK_LABEL_OVERRIDE_ENV = "PHASE3B_REINIT_TRACK_LABEL_OVERRIDE"
+PHASE3B_REINIT_REPORTING_ROLE_OVERRIDE_ENV = "PHASE3B_REINIT_REPORTING_ROLE_OVERRIDE"
+PHASE3B_REINIT_APPENDIX_ONLY_ENV = "PHASE3B_REINIT_APPENDIX_ONLY"
+PHASE3B_REINIT_PRIMARY_PUBLIC_VALIDATION_ENV = "PHASE3B_REINIT_PRIMARY_PUBLIC_VALIDATION"
+PHASE3B_REINIT_LAUNCHER_ENTRY_ID_OVERRIDE_ENV = "PHASE3B_REINIT_LAUNCHER_ENTRY_ID_OVERRIDE"
 LOCKED_OUTPUT_FILES = [
     Path("output/CASE_MINDORO_RETRO_2023/phase3b/phase3b_pairing_manifest.csv"),
     Path("output/CASE_MINDORO_RETRO_2023/phase3b/phase3b_fss_by_date_window.csv"),
@@ -263,9 +277,45 @@ class Phase3BExtendedPublicScoredMarch1314ReinitService:
             raise RuntimeError(
                 "phase3b_extended_public_scored_march13_14_reinit is only supported for official Mindoro workflows."
             )
+        self.phase_id = "phase3b_extended_public_scored_march13_14_reinit"
+        self.forcing_outage_policy = resolve_forcing_outage_policy(
+            workflow_mode=self.case.workflow_mode,
+            phase=self.phase_id,
+        )
+        self.output_dir_name = str(
+            os.environ.get(PHASE3B_REINIT_OUTPUT_DIR_NAME_ENV, MARCH13_14_REINIT_DIR_NAME)
+        ).strip() or MARCH13_14_REINIT_DIR_NAME
+        self.track = str(os.environ.get(PHASE3B_REINIT_TRACK_OVERRIDE_ENV, TRACK_LABEL)).strip() or TRACK_LABEL
+        self.track_id = str(
+            os.environ.get(PHASE3B_REINIT_TRACK_ID_OVERRIDE_ENV, MINDORO_PRIMARY_VALIDATION_TRACK_ID)
+        ).strip() or MINDORO_PRIMARY_VALIDATION_TRACK_ID
+        self.track_label = str(
+            os.environ.get(PHASE3B_REINIT_TRACK_LABEL_OVERRIDE_ENV, MINDORO_PRIMARY_VALIDATION_TRACK_LABEL)
+        ).strip() or MINDORO_PRIMARY_VALIDATION_TRACK_LABEL
+        self.reporting_role = str(
+            os.environ.get(PHASE3B_REINIT_REPORTING_ROLE_OVERRIDE_ENV, REPORTING_ROLE)
+        ).strip() or REPORTING_ROLE
+        self.appendix_only = _as_bool(os.environ.get(PHASE3B_REINIT_APPENDIX_ONLY_ENV, "false"))
+        self.primary_public_validation = _as_bool(
+            os.environ.get(
+                PHASE3B_REINIT_PRIMARY_PUBLIC_VALIDATION_ENV,
+                "true" if self.reporting_role == REPORTING_ROLE else "false",
+            )
+        )
+        self.launcher_entry_id_override = str(
+            os.environ.get(PHASE3B_REINIT_LAUNCHER_ENTRY_ID_OVERRIDE_ENV, "")
+        ).strip()
+        self.is_canonical_bundle = (
+            self.output_dir_name == MARCH13_14_REINIT_DIR_NAME
+            and self.track == TRACK_LABEL
+            and self.track_id == MINDORO_PRIMARY_VALIDATION_TRACK_ID
+            and self.track_label == MINDORO_PRIMARY_VALIDATION_TRACK_LABEL
+            and self.reporting_role == REPORTING_ROLE
+            and not self.appendix_only
+        )
         self.case_output_dir = get_case_output_dir(self.case.run_name)
         self.source_extended_dir = self.case_output_dir / EXTENDED_DIR_NAME
-        self.output_dir = self.case_output_dir / MARCH13_14_REINIT_DIR_NAME
+        self.output_dir = self.case_output_dir / self.output_dir_name
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.precheck_dir = self.output_dir / "precheck"
         self.forcing_dir = self.output_dir / "forcing"
@@ -278,6 +328,36 @@ class Phase3BExtendedPublicScoredMarch1314ReinitService:
         self.window = resolve_march13_14_reinit_window()
         self.force_rerun = os.environ.get("EXTENDED_PUBLIC_FORCE_RERUN", "").strip().lower() in {"1", "true", "yes"}
         self.locked_hashes_before = self._snapshot_locked_outputs()
+
+    def _launcher_entry_ids(self) -> dict[str, str]:
+        if self.launcher_entry_id_override:
+            return {"experiment": self.launcher_entry_id_override}
+        return {
+            "canonical": MINDORO_PRIMARY_VALIDATION_LAUNCHER_ENTRY_ID,
+            "compatibility_alias": MINDORO_PRIMARY_VALIDATION_LAUNCHER_ALIAS_ENTRY_ID,
+        }
+
+    def _sensitivity_context(self, branch: ReinitBranchConfig, recipe_source: str) -> dict[str, Any]:
+        return {
+            "track": self.track,
+            "track_id": self.track_id,
+            "track_label": self.track_label,
+            "phase_or_track": PHASE_OR_TRACK,
+            "branch_id": branch.branch_id,
+            "branch_description": branch.description,
+            "recipe_source": recipe_source,
+            "seed_obs_date": MARCH13_NOAA_SOURCE_DATE,
+            "single_date_validation": MARCH14_NOAA_SOURCE_DATE,
+            "date_composite_rule": self.window.date_composite_rule,
+            "appendix_only": self.appendix_only,
+            "reporting_role": self.reporting_role,
+            "primary_public_validation": self.primary_public_validation,
+            "promotion_mode": "reinit_nextday_public_validation",
+            "case_freeze_amendment_path": str(MINDORO_PRIMARY_VALIDATION_AMENDMENT_PATH),
+            "noaa_source_limitation_note": NOAA_SOURCE_LIMITATION_NOTE,
+            "legacy_march6_outputs_preserved": True,
+            "canonical_bundle": self.is_canonical_bundle,
+        }
 
     def _existing_path_from_row(self, row: pd.Series, *fields: str) -> Path:
         for field in fields:
@@ -456,49 +536,115 @@ class Phase3BExtendedPublicScoredMarch1314ReinitService:
         service = DataIngestionService()
         service.forcing_dir = self.forcing_dir
         service.forcing_dir.mkdir(parents=True, exist_ok=True)
-        service.start_date = self.window.download_start_date
-        service.end_date = self.window.download_end_date
+        service.configure_explicit_download_window(
+            start_date=self.window.download_start_date,
+            end_date=self.window.download_end_date,
+        )
 
-        downloads: dict[str, str] = {}
+        downloads: dict[str, Any] = {}
         current_file = str(recipe["currents_file"])
         wind_file = str(recipe["wind_file"])
         wave_file = str(recipe.get("wave_file") or "")
-        if current_file.startswith("cmems"):
-            downloads["currents"] = service.download_cmems()
-        elif current_file.startswith("hycom"):
-            downloads["currents"] = service.download_hycom()
-        else:
-            raise RuntimeError(f"Unsupported current forcing file for March 13 -> March 14 reinit run: {current_file}")
+        current_source_id = source_id_for_recipe_component(forcing_kind="current", filename=current_file)
+        downloads["currents"] = service.download_required_forcing_record(current_source_id)
+        if downloads["currents"]["status"] not in {"downloaded", "cached"}:
+            if (
+                downloads["currents"].get("upstream_outage_detected")
+                and self.forcing_outage_policy == FORCING_OUTAGE_POLICY_CONTINUE_DEGRADED
+            ):
+                manifest_path = self._write_download_failure_manifest(
+                    recipe_name,
+                    downloads,
+                    status="degraded_skipped_forcing_outage",
+                    degraded_continue_used=True,
+                    upstream_outage_detected=True,
+                    missing_forcing_factors=[downloads["currents"]["forcing_factor"]],
+                    stop_reason=str(downloads["currents"].get("error", "")),
+                )
+                raise ForcingOutagePhaseSkipped(
+                    phase=self.phase_id,
+                    workflow_mode=self.case.workflow_mode,
+                    forcing_outage_policy=self.forcing_outage_policy,
+                    reason=str(downloads["currents"].get("error", "")),
+                    missing_forcing_factors=[downloads["currents"]["forcing_factor"]],
+                    skipped_branch_ids=[branch.branch_id for branch in BRANCHES],
+                    manifest_path=str(manifest_path),
+                )
+            self._write_download_failure_manifest(recipe_name, downloads)
+            raise RuntimeError(f"March 13 -> March 14 reinit forcing download failed: {downloads['currents']}")
 
-        if wind_file.startswith("era5"):
-            downloads["wind"] = service.download_era5()
-        elif wind_file.startswith("gfs"):
+        if wind_file.startswith("gfs"):
             gfs_path = self.forcing_dir / wind_file
             if not gfs_path.exists():
                 raise FileNotFoundError(
-                    "GFS wind forcing was requested for the March 13 -> March 14 primary public-validation rerun "
+                    "GFS wind forcing was requested for the March 13 -> March 14 reinit rerun "
                     f"but is not available locally: {gfs_path}."
                 )
-            downloads["wind"] = str(gfs_path)
-        elif wind_file.startswith("ncep"):
-            downloads["wind"] = service.download_ncep()
         else:
-            raise RuntimeError(f"Unsupported wind forcing file for March 13 -> March 14 reinit run: {wind_file}")
+            wind_source_id = source_id_for_recipe_component(forcing_kind="wind", filename=wind_file)
+            downloads["wind"] = service.download_required_forcing_record(wind_source_id)
+            if downloads["wind"]["status"] not in {"downloaded", "cached"}:
+                if (
+                    downloads["wind"].get("upstream_outage_detected")
+                    and self.forcing_outage_policy == FORCING_OUTAGE_POLICY_CONTINUE_DEGRADED
+                ):
+                    manifest_path = self._write_download_failure_manifest(
+                        recipe_name,
+                        downloads,
+                        status="degraded_skipped_forcing_outage",
+                        degraded_continue_used=True,
+                        upstream_outage_detected=True,
+                        missing_forcing_factors=[downloads["wind"]["forcing_factor"]],
+                        stop_reason=str(downloads["wind"].get("error", "")),
+                    )
+                    raise ForcingOutagePhaseSkipped(
+                        phase=self.phase_id,
+                        workflow_mode=self.case.workflow_mode,
+                        forcing_outage_policy=self.forcing_outage_policy,
+                        reason=str(downloads["wind"].get("error", "")),
+                        missing_forcing_factors=[downloads["wind"]["forcing_factor"]],
+                        skipped_branch_ids=[branch.branch_id for branch in BRANCHES],
+                        manifest_path=str(manifest_path),
+                    )
+                self._write_download_failure_manifest(recipe_name, downloads)
+                raise RuntimeError(f"March 13 -> March 14 reinit forcing download failed: {downloads['wind']}")
+        if wind_file.startswith("gfs"):
+            downloads["wind"] = {
+                "status": "reused_local_file",
+                "path": str(self.forcing_dir / wind_file),
+                "source_id": "gfs",
+                "forcing_factor": wind_file,
+                "upstream_outage_detected": False,
+            }
 
         if wave_file:
-            if wave_file.startswith("cmems"):
-                downloads["wave"] = service.download_cmems_wave()
-            else:
-                raise RuntimeError(f"Unsupported wave forcing file for March 13 -> March 14 reinit run: {wave_file}")
-
-        failed = {
-            key: value
-            for key, value in downloads.items()
-            if str(value).upper() in {"FAILED", "SKIPPED_NO_CREDS", "SKIPPED_NO_LIB"}
-        }
-        if failed:
-            self._write_download_failure_manifest(recipe_name, downloads)
-            raise RuntimeError(f"March 13 -> March 14 reinit forcing download failed or was skipped: {failed}")
+            wave_source_id = source_id_for_recipe_component(forcing_kind="wave", filename=wave_file)
+            downloads["wave"] = service.download_required_forcing_record(wave_source_id)
+            if downloads["wave"]["status"] not in {"downloaded", "cached"}:
+                if (
+                    downloads["wave"].get("upstream_outage_detected")
+                    and self.forcing_outage_policy == FORCING_OUTAGE_POLICY_CONTINUE_DEGRADED
+                ):
+                    manifest_path = self._write_download_failure_manifest(
+                        recipe_name,
+                        downloads,
+                        status="degraded_skipped_forcing_outage",
+                        degraded_continue_used=True,
+                        upstream_outage_detected=True,
+                        missing_forcing_factors=[downloads["wave"]["forcing_factor"]],
+                        stop_reason=str(downloads["wave"].get("error", "")),
+                    )
+                    raise ForcingOutagePhaseSkipped(
+                        phase=self.phase_id,
+                        workflow_mode=self.case.workflow_mode,
+                        forcing_outage_policy=self.forcing_outage_policy,
+                        reason=str(downloads["wave"].get("error", "")),
+                        missing_forcing_factors=[downloads["wave"]["forcing_factor"]],
+                        skipped_branch_ids=[branch.branch_id for branch in BRANCHES],
+                        manifest_path=str(manifest_path),
+                    )
+                self._write_download_failure_manifest(recipe_name, downloads)
+                raise RuntimeError(f"March 13 -> March 14 reinit forcing download failed: {downloads['wave']}")
 
         return {
             "recipe": recipe_name,
@@ -508,19 +654,51 @@ class Phase3BExtendedPublicScoredMarch1314ReinitService:
             "downloads": downloads,
         }
 
-    def _write_download_failure_manifest(self, recipe_name: str, downloads: dict) -> None:
+    def _write_download_failure_manifest(
+        self,
+        recipe_name: str,
+        downloads: dict,
+        *,
+        status: str = "failed_download",
+        degraded_continue_used: bool = False,
+        upstream_outage_detected: bool = False,
+        missing_forcing_factors: list[str] | None = None,
+        stop_reason: str = "",
+    ) -> Path:
         payload = {
             "generated_at_utc": datetime.now(timezone.utc).isoformat(),
             "recipe": recipe_name,
             "window": asdict(self.window),
             "downloads": downloads,
-            "status": "failed_download",
+            "status": status,
+            "forcing_outage_policy": self.forcing_outage_policy,
+            "degraded_continue_used": degraded_continue_used,
+            "upstream_outage_detected": upstream_outage_detected,
+            "missing_forcing_factors": list(missing_forcing_factors or []),
+            "rerun_required": bool(degraded_continue_used),
+            "stop_reason": stop_reason,
         }
-        _write_json(self.output_dir / "march13_14_reinit_forcing_window_manifest.json", payload)
+        manifest_json = self.output_dir / "march13_14_reinit_forcing_window_manifest.json"
+        _write_json(manifest_json, payload)
         _write_csv(
             self.output_dir / "march13_14_reinit_forcing_window_manifest.csv",
-            pd.DataFrame([{"recipe": recipe_name, "status": "failed_download", "downloads": json.dumps(downloads)}]),
+            pd.DataFrame(
+                [
+                    {
+                        "recipe": recipe_name,
+                        "status": status,
+                        "forcing_outage_policy": self.forcing_outage_policy,
+                        "degraded_continue_used": degraded_continue_used,
+                        "upstream_outage_detected": upstream_outage_detected,
+                        "missing_forcing_factors": ";".join(missing_forcing_factors or []),
+                        "rerun_required": bool(degraded_continue_used),
+                        "stop_reason": stop_reason,
+                        "downloads": json.dumps(downloads),
+                    }
+                ]
+            ),
         )
+        return manifest_json
 
     def _write_forcing_window_manifest(self, recipe_name: str, forcing_paths: dict) -> dict:
         required_start = _normalize_utc(self.window.required_forcing_start_utc)
@@ -544,9 +722,9 @@ class Phase3BExtendedPublicScoredMarch1314ReinitService:
             )
         payload = {
             "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-            "track": TRACK_LABEL,
-            "track_id": MINDORO_PRIMARY_VALIDATION_TRACK_ID,
-            "track_label": MINDORO_PRIMARY_VALIDATION_TRACK_LABEL,
+            "track": self.track,
+            "track_id": self.track_id,
+            "track_label": self.track_label,
             "phase_or_track": PHASE_OR_TRACK,
             "recipe": recipe_name,
             "window": asdict(self.window),
@@ -565,7 +743,7 @@ class Phase3BExtendedPublicScoredMarch1314ReinitService:
         forcing_paths: dict,
         seed_release: dict,
     ) -> dict:
-        model_run_name = f"{self.case.run_name}/{MARCH13_14_REINIT_DIR_NAME}/{branch.output_slug}/model_run"
+        model_run_name = f"{self.case.run_name}/{self.output_dir_name}/{branch.output_slug}/model_run"
         model_dir = get_case_output_dir(model_run_name)
         member_paths = sorted((model_dir / "ensemble").glob("member_*.nc"))
         forecast_manifest = model_dir / "forecast" / "forecast_manifest.json"
@@ -598,25 +776,7 @@ class Phase3BExtendedPublicScoredMarch1314ReinitService:
                 start_lon=float(seed_release["reference_lon"]),
                 output_run_name=model_run_name,
                 forcing_override=forcing_paths,
-                sensitivity_context={
-                    "track": TRACK_LABEL,
-                    "track_id": MINDORO_PRIMARY_VALIDATION_TRACK_ID,
-                    "track_label": MINDORO_PRIMARY_VALIDATION_TRACK_LABEL,
-                    "phase_or_track": PHASE_OR_TRACK,
-                    "branch_id": branch.branch_id,
-                    "branch_description": branch.description,
-                    "recipe_source": recipe_source,
-                    "seed_obs_date": MARCH13_NOAA_SOURCE_DATE,
-                    "single_date_validation": MARCH14_NOAA_SOURCE_DATE,
-                    "date_composite_rule": self.window.date_composite_rule,
-                    "appendix_only": False,
-                    "reporting_role": REPORTING_ROLE,
-                    "primary_public_validation": True,
-                    "promotion_mode": "reinit_nextday_public_validation",
-                    "case_freeze_amendment_path": str(MINDORO_PRIMARY_VALIDATION_AMENDMENT_PATH),
-                    "noaa_source_limitation_note": NOAA_SOURCE_LIMITATION_NOTE,
-                    "legacy_march6_outputs_preserved": True,
-                },
+                sensitivity_context=self._sensitivity_context(branch, recipe_source),
                 historical_baseline_provenance={
                     "recipe": selection.recipe,
                     "source_kind": selection.source_kind,
@@ -680,25 +840,7 @@ class Phase3BExtendedPublicScoredMarch1314ReinitService:
 
     def _sync_branch_model_run_manifests(self, branch: ReinitBranchConfig, run_info: dict, recipe_source: str) -> None:
         model_dir = Path(str(run_info["model_dir"]))
-        sensitivity_context = {
-            "track": TRACK_LABEL,
-            "track_id": MINDORO_PRIMARY_VALIDATION_TRACK_ID,
-            "track_label": MINDORO_PRIMARY_VALIDATION_TRACK_LABEL,
-            "phase_or_track": PHASE_OR_TRACK,
-            "branch_id": branch.branch_id,
-            "branch_description": branch.description,
-            "recipe_source": recipe_source,
-            "seed_obs_date": MARCH13_NOAA_SOURCE_DATE,
-            "single_date_validation": MARCH14_NOAA_SOURCE_DATE,
-            "date_composite_rule": self.window.date_composite_rule,
-            "appendix_only": False,
-            "reporting_role": REPORTING_ROLE,
-            "primary_public_validation": True,
-            "promotion_mode": "reinit_nextday_public_validation",
-            "case_freeze_amendment_path": str(MINDORO_PRIMARY_VALIDATION_AMENDMENT_PATH),
-            "noaa_source_limitation_note": NOAA_SOURCE_LIMITATION_NOTE,
-            "legacy_march6_outputs_preserved": True,
-        }
+        sensitivity_context = self._sensitivity_context(branch, recipe_source)
         for manifest_path in (
             model_dir / "forecast" / "forecast_manifest.json",
             model_dir / "ensemble" / "ensemble_manifest.json",
@@ -852,11 +994,11 @@ class Phase3BExtendedPublicScoredMarch1314ReinitService:
                     "observation_path": str(obs_path),
                     "metric": "FSS",
                     "windows_km": ",".join(str(value) for value in OFFICIAL_PHASE3B_WINDOWS_KM),
-                    "track_label": TRACK_LABEL,
-                    "track_id": MINDORO_PRIMARY_VALIDATION_TRACK_ID,
-                    "track_title": MINDORO_PRIMARY_VALIDATION_TRACK_LABEL,
+                    "track_label": self.track,
+                    "track_id": self.track_id,
+                    "track_title": self.track_label,
                     "phase_or_track": PHASE_OR_TRACK,
-                    "reporting_role": REPORTING_ROLE,
+                    "reporting_role": self.reporting_role,
                     "case_freeze_amendment_path": str(MINDORO_PRIMARY_VALIDATION_AMENDMENT_PATH),
                     "source_semantics": "march13_polygon_reinit_vs_march14_local_date_branch_p50",
                     "empty_forecast_reason": str(product["empty_forecast_reason"]),
@@ -988,8 +1130,9 @@ class Phase3BExtendedPublicScoredMarch1314ReinitService:
         lines = [
             "# March 13 -> March 14 NOAA Reinit Primary Validation Decision Note",
             "",
-            "- Canonical Phase 3B primary validation source: true",
-            "- Appendix-only track: false",
+            f"- Canonical Phase 3B primary validation source: {'true' if self.is_canonical_bundle else 'false'}",
+            f"- Appendix-only track: {'true' if self.appendix_only else 'false'}",
+            f"- Reporting role: {self.reporting_role}",
             f"- Seed source key: {start_row['source_key']}",
             f"- Seed source name: {start_row['source_name']}",
             f"- Target source key: {target_row['source_key']}",
@@ -1011,15 +1154,24 @@ class Phase3BExtendedPublicScoredMarch1314ReinitService:
             lines.append("- Decision: March 14 comparison is blocked by model survival, not by missing public data.")
         elif both_empty:
             lines.append("- Decision: Both branches produced empty March 14 p50 masks; inspect empty_forecast_reason before interpreting skill.")
-        else:
+        elif self.is_canonical_bundle:
             lines.append(
                 "- Decision: At least one branch produced a scoreable March 14 p50 mask, so this bundle is usable as the canonical "
                 "Phase 3B public-validation source row when the shared-imagery caveat is kept explicit."
             )
+        else:
+            lines.append(
+                "- Decision: At least one branch produced a scoreable March 14 p50 mask, so this experimental bundle is usable as a "
+                "trial rerun of the March 13 -> March 14 row without replacing the canonical stored B1 outputs."
+            )
         lines.extend(
             [
                 "",
-                "This bundle is the canonical Phase 3B public-validation source for packaging and figure builders.",
+                (
+                    "This bundle is the canonical Phase 3B public-validation source for packaging and figure builders."
+                    if self.is_canonical_bundle
+                    else "This bundle is experimental and non-canonical. It does not overwrite the stored March 13 -> March 14 primary-validation bundle."
+                ),
                 "It does not rewrite the frozen March 3 -> March 6 official case definition, and it does not delete the March 6 legacy honesty outputs.",
                 "The comparison is intentionally limited to R0 and R1_previous, with March 13 polygon reinitialization and March 14 scoring.",
             ]
@@ -1041,7 +1193,11 @@ class Phase3BExtendedPublicScoredMarch1314ReinitService:
                 "- Status: blocked before any forecast rerun",
                 "",
                 "The accepted public polygon rasterized to zero ocean cells on the canonical scoring grid.",
-                "This primary public-validation source bundle stops here instead of fabricating a forecast comparison against a non-scoreable target.",
+                (
+                    "This primary public-validation source bundle stops here instead of fabricating a forecast comparison against a non-scoreable target."
+                    if self.is_canonical_bundle
+                    else "This experimental reinit bundle stops here instead of fabricating a forecast comparison against a non-scoreable target."
+                ),
             ]
         )
         _write_text(path, text + "\n")
@@ -1052,7 +1208,11 @@ class Phase3BExtendedPublicScoredMarch1314ReinitService:
         lines = [
             "# March 13 -> March 14 Reinit Forcing Coverage Blocked",
             "",
-            "The canonical Phase 3B public-validation rerun did not rerun the forecast branches because the prepared forcing window was incomplete.",
+            (
+                "The canonical Phase 3B public-validation rerun did not rerun the forecast branches because the prepared forcing window was incomplete."
+                if self.is_canonical_bundle
+                else "The experimental March 13 -> March 14 reinit rerun did not rerun the forecast branches because the prepared forcing window was incomplete."
+            ),
             "",
             "## Blocking Rows",
             "",
@@ -1130,18 +1290,15 @@ class Phase3BExtendedPublicScoredMarch1314ReinitService:
         path = self.output_dir / "march13_14_reinit_run_manifest.json"
         payload = {
             "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-            "track": TRACK_LABEL,
-            "track_id": MINDORO_PRIMARY_VALIDATION_TRACK_ID,
-            "track_label": MINDORO_PRIMARY_VALIDATION_TRACK_LABEL,
+            "track": self.track,
+            "track_id": self.track_id,
+            "track_label": self.track_label,
             "phase_or_track": PHASE_OR_TRACK,
-            "appendix_only": False,
-            "reporting_role": REPORTING_ROLE,
+            "appendix_only": self.appendix_only,
+            "reporting_role": self.reporting_role,
             "workflow_mode": self.case.workflow_mode,
             "run_name": self.case.run_name,
-            "launcher_entry_ids": {
-                "canonical": MINDORO_PRIMARY_VALIDATION_LAUNCHER_ENTRY_ID,
-                "compatibility_alias": MINDORO_PRIMARY_VALIDATION_LAUNCHER_ALIAS_ENTRY_ID,
-            },
+            "launcher_entry_ids": self._launcher_entry_ids(),
             "case_definition": {
                 "base_case_definition_path": str(MINDORO_BASE_CASE_CONFIG_PATH),
                 "case_freeze_amendment_path": str(MINDORO_PRIMARY_VALIDATION_AMENDMENT_PATH),
@@ -1168,7 +1325,7 @@ class Phase3BExtendedPublicScoredMarch1314ReinitService:
             },
             "seed_release": seed_release,
             "limitations": {
-                "appendix_only": False,
+                "appendix_only": self.appendix_only,
                 "noaa_source_limitation_note": NOAA_SOURCE_LIMITATION_NOTE,
                 "shared_imagery_caveat_prevents_independent_day_to_day_validation": True,
                 "legacy_march6_outputs_preserved": True,
@@ -1185,6 +1342,7 @@ class Phase3BExtendedPublicScoredMarch1314ReinitService:
             "branch_runs": branch_runs,
             "forcing_manifest": forcing_manifest,
             "strict_public_main_outputs_unchanged": True,
+            "canonical_bundle": self.is_canonical_bundle,
             "locked_output_hashes_before": self.locked_hashes_before,
             "locked_output_hashes_after": self._snapshot_locked_outputs(),
             "artifacts": {
@@ -1204,7 +1362,7 @@ class Phase3BExtendedPublicScoredMarch1314ReinitService:
     def _verify_locked_outputs_unchanged(self) -> None:
         current = self._snapshot_locked_outputs()
         if current != self.locked_hashes_before:
-            raise RuntimeError("March 13 -> March 14 primary public-validation bundle modified locked strict/public-main outputs.")
+            raise RuntimeError("March 13 -> March 14 reinit bundle modified locked strict/public-main outputs.")
 
 
 def run_phase3b_extended_public_scored_march13_14_reinit() -> dict:

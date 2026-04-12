@@ -4,10 +4,12 @@ LABEL maintainer="kkreiju"
 LABEL description="Phase 1: Ingestion & Validation"
 
 # System Dependencies
+# Keep ecCodes on the Python side via eccodes/eccodeslib so cfgrib uses the same
+# wheel-managed runtime across developers and CI rather than Debian's older
+# libeccodes packages.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     git \
-    libeccodes-dev \
     libnetcdf-dev \
     libhdf5-dev \
     libproj-dev \
@@ -26,7 +28,8 @@ COPY docker/pipeline/pyproject.toml pyproject.toml
 
 # Install Dependencies
 RUN poetry config virtualenvs.in-project true && \
-    poetry install --no-interaction --no-ansi
+    poetry install --no-interaction --no-ansi --no-root && \
+    ./.venv/bin/python -m eccodes selfcheck
 
 ENV PATH="/app/.venv/bin:$PATH"
 

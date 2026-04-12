@@ -20,20 +20,28 @@ def _write_yaml(path: Path, payload: dict) -> None:
     path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
 
 
-def _case_context_stub() -> SimpleNamespace:
+def _case_context_stub(
+    *,
+    workflow_mode: str = "phase1_regional_2016_2022",
+    run_name: str = "phase1_production_rerun",
+    validation_box: list[float] | None = None,
+    description: str = "historical regional validation rerun",
+) -> SimpleNamespace:
+    box = validation_box or [119.5, 124.5, 11.5, 16.5]
     return SimpleNamespace(
-        workflow_mode="phase1_regional_2016_2022",
+        workflow_mode=workflow_mode,
         workflow_flavor="historical/regional validation mode",
         transport_track="historical/regional transport validation using strict drogued-only non-overlapping 72 h drifter segments",
         is_historical_regional=True,
         is_official=False,
         is_prototype=False,
         active_domain_name="phase1_validation_box",
-        region=[119.5, 124.5, 11.5, 16.5],
-        phase1_validation_box=[119.5, 124.5, 11.5, 16.5],
+        region=box,
+        phase1_validation_box=box,
         mindoro_case_domain=[115.0, 122.0, 6.0, 14.5],
         legacy_prototype_display_domain=[115.0, 122.0, 6.0, 14.5],
-        run_name="phase1_production_rerun",
+        run_name=run_name,
+        description=description,
     )
 
 
@@ -121,6 +129,105 @@ def _build_test_repo(root: Path) -> None:
             "rerun_required": False,
         },
     )
+    _write_yaml(
+        root / "config" / "phase1_mindoro_focus_pre_spill_2016_2023.yaml",
+        {
+            "workflow_mode": "phase1_mindoro_focus_pre_spill_2016_2023",
+            "workflow_track": "historical_regional_validation",
+            "case_id": "phase1_mindoro_focus_pre_spill_2016_2023",
+            "description": "Experimental pre-spill 2016-2023 Mindoro-focused drifter-calibration rerun for trial recipe selection only",
+            "phase1_validation_box": [118.751, 124.305, 10.620, 16.026],
+            "drifter_acquisition_halo_degrees": 3.0,
+            "forcing_bbox_halo_degrees": 0.5,
+            "output_root": "output/phase1_mindoro_focus_pre_spill_2016_2023",
+            "historical_window": {
+                "start_utc": "2016-01-01T00:00:00Z",
+                "end_utc": "2023-03-02T23:59:59Z",
+            },
+            "segment_policy": {
+                "horizon_hours": 72,
+                "timestep_hours": 6,
+            },
+            "transport_settings": {
+                "direct_wind_drift_factor": 0.02,
+                "enable_stokes_drift": True,
+                "horizontal_diffusivity_m2s": 0.0,
+                "weathering_enabled": False,
+                "current_uncertainty": 0.0,
+                "require_wave_stokes_reader": True,
+            },
+            "drifter": {
+                "server": "https://osmc.noaa.gov/erddap",
+                "dataset_id": "drifter_6hour_qc",
+                "required_fields": [
+                    "time",
+                    "latitude",
+                    "longitude",
+                    "ID",
+                    "ve",
+                    "vn",
+                    "err_lat",
+                    "err_lon",
+                    "drogue_lost_date",
+                    "deploy_date",
+                    "DrogueType",
+                    "DrogueLength",
+                    "DrogueDetectSensor",
+                ],
+            },
+            "phase1_recipe_family": [
+                "cmems_era5",
+                "cmems_gfs",
+                "hycom_era5",
+                "hycom_gfs",
+            ],
+            "ranking_subset": {
+                "mode": "seasonal_start_months",
+                "months": [2, 3, 4],
+                "label": "mindoro_pre_spill_seasonal_subset_feb_apr",
+                "empty_subset_behavior": "hard_fail",
+            },
+            "distance_audit_source_point": {
+                "path": "data/arcgis/CASE_MINDORO_RETRO_2023/source_point_metadata.geojson",
+                "label": "mindoro_source_point",
+                "diagnostic_only": True,
+            },
+            "candidate_baseline": {
+                "baseline_id": "phase1_mindoro_focus_pre_spill_candidate_2016_2023_v1",
+                "description": "Staged experimental Mindoro-focused pre-spill candidate baseline from the 2016-2023 drifter rerun",
+                "source_kind": "staged_production_candidate",
+                "status_flag": "provisional",
+                "valid": False,
+                "provisional": True,
+                "rerun_required": False,
+                "promotion_required": True,
+                "selection_basis": "Experimental Mindoro-focused pre-spill rerun ranked on February-April starts",
+                "workflow_scope": ["mindoro_retro_2023"],
+                "current_local_evidence_scope": "experimental_mindoro_focus_pre_spill",
+                "notes": [
+                    "This artifact is staged only and does not overwrite config/phase1_baseline_selection.yaml.",
+                    "This experimental lane does not modify legacy 2016 prototype outputs or canonical B1 outputs.",
+                ],
+            },
+        },
+    )
+    point_dir = root / "data" / "arcgis" / "CASE_MINDORO_RETRO_2023"
+    point_dir.mkdir(parents=True, exist_ok=True)
+    (point_dir / "source_point_metadata.geojson").write_text(
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "geometry": {"type": "Point", "coordinates": [121.528, 13.323]},
+                        "properties": {},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 class Phase1ProductionRerunTests(unittest.TestCase):
@@ -136,6 +243,20 @@ class Phase1ProductionRerunTests(unittest.TestCase):
         self.assertFalse(case.is_official)
         self.assertEqual(case.workflow_flavor, "historical/regional validation mode")
         self.assertIn("strict drogued-only", case.transport_track)
+
+    def test_case_context_recognizes_experimental_historical_regional_lane(self):
+        with mock.patch.dict(
+            os.environ,
+            {"WORKFLOW_MODE": "phase1_mindoro_focus_pre_spill_2016_2023"},
+            clear=False,
+        ):
+            get_case_context.cache_clear()
+            case = get_case_context()
+
+        self.assertTrue(case.is_historical_regional)
+        self.assertEqual(case.workflow_mode, "phase1_mindoro_focus_pre_spill_2016_2023")
+        self.assertEqual(case.active_domain_name, "phase1_validation_box")
+        self.assertEqual(case.phase1_validation_box, [118.751, 124.305, 10.62, 16.026])
 
     def test_segment_registry_enforces_strict_gate_and_non_overlap(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -347,6 +468,111 @@ class Phase1ProductionRerunTests(unittest.TestCase):
                 baseline_before,
             )
 
+    def test_experimental_rerun_applies_distance_audit_and_seasonal_ranking_subset(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _build_test_repo(root)
+
+            registry_df = pd.DataFrame(
+                [
+                    {
+                        "segment_id": "JAN_SEGMENT",
+                        "segment_status": "accepted",
+                        "rejection_reason": "",
+                        "drifter_id": "A",
+                        "start_time_utc": "2017-01-10T00:00:00+00:00",
+                        "end_time_utc": "2017-01-13T00:00:00+00:00",
+                        "month_key": "201701",
+                        "start_lat": 13.0,
+                        "start_lon": 121.0,
+                        "end_lat": 13.1,
+                        "end_lon": 121.1,
+                    },
+                    {
+                        "segment_id": "MAR_SEGMENT",
+                        "segment_status": "accepted",
+                        "rejection_reason": "",
+                        "drifter_id": "B",
+                        "start_time_utc": "2017-03-10T00:00:00+00:00",
+                        "end_time_utc": "2017-03-13T00:00:00+00:00",
+                        "month_key": "201703",
+                        "start_lat": 13.2,
+                        "start_lon": 121.2,
+                        "end_lat": 13.3,
+                        "end_lon": 121.3,
+                    },
+                ]
+            )
+            drifter_df = pd.DataFrame(
+                [{"time": pd.Timestamp("2017-03-10T00:00:00Z"), "lat": 13.2, "lon": 121.2, "ID": "B"}]
+            )
+            loading_audit_df = pd.DataFrame(
+                [
+                    {
+                        "segment_id": "MAR_SEGMENT",
+                        "drifter_id": "B",
+                        "start_time_utc": "2017-03-10T00:00:00+00:00",
+                        "end_time_utc": "2017-03-13T00:00:00+00:00",
+                        "month_key": "201703",
+                        "recipe": "cmems_gfs",
+                        "validity_flag": "valid",
+                        "status_flag": "valid",
+                        "hard_fail": False,
+                        "hard_fail_reason": "",
+                        "invalidity_reason": "",
+                        "ncs_score": 0.1,
+                        "actual_current_reader": "",
+                        "actual_wind_reader": "",
+                        "actual_wave_reader": "",
+                        "wave_loading_status": "loaded",
+                        "current_fallback_used": False,
+                        "wind_fallback_used": False,
+                        "wave_fallback_used": False,
+                    }
+                ]
+            )
+            segment_metrics_df = loading_audit_df.copy()
+            segment_metrics_df["recipe_family"] = "mindoro_pre_spill_seasonal_subset_feb_apr"
+            segment_metrics_df["is_gfs_recipe"] = True
+
+            experimental_case = _case_context_stub(
+                workflow_mode="phase1_mindoro_focus_pre_spill_2016_2023",
+                run_name="phase1_mindoro_focus_pre_spill_2016_2023",
+                validation_box=[118.751, 124.305, 10.620, 16.026],
+                description="experimental pre-spill 2016-2023 Mindoro-focused drifter-calibration rerun for trial recipe selection only",
+            )
+            with mock.patch(
+                "src.services.phase1_production_rerun.get_case_context",
+                return_value=experimental_case,
+            ):
+                service = Phase1ProductionRerunService(
+                    repo_root=root,
+                    config_path="config/phase1_mindoro_focus_pre_spill_2016_2023.yaml",
+                )
+            service._fetch_full_drifter_pool = mock.Mock(
+                return_value=(drifter_df, [{"month_key": "201703", "status": "cached", "row_count": 1}])
+            )
+            service._build_segment_registry = mock.Mock(return_value=registry_df)
+            service._evaluate_accepted_segments = mock.Mock(
+                return_value=(loading_audit_df, segment_metrics_df, [{"month_key": "201703"}])
+            )
+
+            results = service.run()
+
+            accepted_registry = pd.read_csv(results["drifter_registry_csv"])
+            subset_registry = pd.read_csv(results["ranking_subset_registry_csv"])
+            candidate_payload = yaml.safe_load(Path(results["candidate_baseline_path"]).read_text(encoding="utf-8"))
+
+            self.assertIn("distance_to_source_start_km", accepted_registry.columns)
+            self.assertIn("nearest_endpoint_distance_to_source_km", accepted_registry.columns)
+            self.assertEqual(results["ranking_subset_segment_count"], 1)
+            self.assertEqual(subset_registry["segment_id"].tolist(), ["MAR_SEGMENT"])
+            self.assertEqual(candidate_payload["selected_recipe"], "cmems_gfs")
+            self.assertTrue(candidate_payload["provisional"])
+            self.assertFalse(candidate_payload["valid"])
+            evaluated_subset = service._evaluate_accepted_segments.call_args.args[0]
+            self.assertEqual(evaluated_subset["segment_id"].tolist(), ["MAR_SEGMENT"])
+
     def test_launcher_matrix_includes_phase1_production_entry(self):
         matrix = json.loads(Path("config/launcher_matrix.json").read_text(encoding="utf-8"))
         entry = next(item for item in matrix["entries"] if item["entry_id"] == "phase1_production_rerun")
@@ -354,6 +580,17 @@ class Phase1ProductionRerunTests(unittest.TestCase):
         self.assertEqual(entry["rerun_cost"], "expensive")
         self.assertFalse(entry["safe_default"])
         self.assertEqual(entry["steps"][0]["phase"], "phase1_production_rerun")
+
+    def test_launcher_matrix_includes_mindoro_focus_experiment_entries(self):
+        matrix = json.loads(Path("config/launcher_matrix.json").read_text(encoding="utf-8"))
+        phase1_entry = next(item for item in matrix["entries"] if item["entry_id"] == "phase1_mindoro_focus_pre_spill_experiment")
+        trial_entry = next(item for item in matrix["entries"] if item["entry_id"] == "mindoro_march13_14_phase1_focus_trial")
+
+        self.assertEqual(phase1_entry["workflow_mode"], "phase1_mindoro_focus_pre_spill_2016_2023")
+        self.assertEqual(phase1_entry["steps"][0]["phase"], "phase1_production_rerun")
+        self.assertEqual(trial_entry["workflow_mode"], "mindoro_retro_2023")
+        self.assertEqual(trial_entry["steps"][1]["phase"], "mindoro_march13_14_phase1_focus_trial")
+        self.assertIn("MINDORO_PHASE1_FOCUS_TRIAL_BASELINE_SELECTION_PATH", trial_entry["steps"][1]["extra_env"])
 
     def test_gfs_catalog_parser_supports_legacy_and_modern_archive_names(self):
         with tempfile.TemporaryDirectory() as tmpdir:

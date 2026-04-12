@@ -6,6 +6,7 @@ Automates downloading of forcing data (Currents, Winds) and Drifter observations
 import os
 import json
 import logging
+import tempfile
 import warnings
 from pathlib import Path
 from datetime import datetime
@@ -39,20 +40,36 @@ except ImportError:
     gpd = None
 
 from src.core.case_context import get_case_context
-from src.core.constants import RUN_NAME
+from src.core.constants import CMEMS_SURFACE_CURRENT_MAX_DEPTH_M, RUN_NAME
 from src.core.base import BaseService
-from src.exceptions.custom import DataLoadingError
+from src.exceptions.custom import (
+    DataLoadingError,
+    PREP_FORCE_REFRESH_ENV,
+    PrepOutageDecisionRequired,
+    PREP_REUSE_APPROVED_ONCE_ENV,
+    PREP_REUSE_APPROVED_SOURCE_ENV,
+)
 from src.models.ingestion import IngestionManifest
 from src.helpers.raster import GridBuilder
 from src.utils.gfs_wind import GFSWindDownloader
-from src.utils.io import get_prepared_input_manifest_path, get_prepared_input_specs
+from src.utils.forcing_outage_policy import (
+    forcing_factor_id_for_source,
+    is_remote_outage_error,
+    resolve_forcing_outage_policy,
+)
+from src.utils.io import (
+    find_current_vars,
+    find_wave_vars,
+    find_wind_vars,
+    get_prepared_input_manifest_path,
+    get_prepared_input_specs,
+)
 
 # Setup logging
 logger = logging.getLogger(__name__)
 OFFICIAL_FORCING_HALO_DEGREES_DEFAULT = 0.5
 PROTOTYPE_FORCING_HALO_HOURS_DEFAULT = 3.0
 PROTOTYPE_GFS_ANALYSIS_DELTA_HOURS = 6
-
 
 def derive_bbox_from_display_bounds(
     display_bounds_wgs84: list[float],
@@ -102,6 +119,11 @@ class DataIngestionService(BaseService):
         self.case_context = get_case_context()
         self._assert_pipeline_role()
         self.case_config = self._load_case_config()
+        self.current_phase = os.environ.get("PIPELINE_PHASE", "1_2").strip() or "1_2"
+        self.forcing_outage_policy = resolve_forcing_outage_policy(
+            workflow_mode=self.case_context.workflow_mode,
+            phase=self.current_phase,
+        )
         self.output_dir = Path(output_dir)
         self.forcing_dir = self.output_dir / 'forcing' / RUN_NAME
         self.drifter_dir = self.output_dir / 'drifters' / RUN_NAME
@@ -263,70 +285,549 @@ class DataIngestionService(BaseService):
             "effective_forcing_start_utc": self.effective_forcing_start_utc,
             "effective_forcing_end_utc": self.effective_forcing_end_utc,
             "prototype_forcing_halo_hours": str(self.prototype_forcing_halo_hours),
+            "prep_cache_policy": "force_refresh" if self._force_refresh_enabled() else "cache_first",
+            "forcing_outage_policy": self.forcing_outage_policy,
+            "pipeline_phase": self.current_phase,
         }
+
+    def configure_explicit_download_window(self, *, start_date: str, end_date: str) -> None:
+        """Override the active acquisition window for direct forcing-download callers."""
+        self.start_date = str(start_date)
+        self.end_date = str(end_date)
+        self.nominal_forcing_start_utc = f"{self.start_date}T00:00:00Z"
+        self.nominal_forcing_end_utc = f"{self.end_date}T23:59:59Z"
+        self.effective_forcing_start_utc = self.nominal_forcing_start_utc
+        self.effective_forcing_end_utc = self.nominal_forcing_end_utc
+
+    @staticmethod
+    def _env_flag_enabled(name: str) -> bool:
+        return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "y", "on"}
+
+    def _force_refresh_enabled(self) -> bool:
+        return self._env_flag_enabled(PREP_FORCE_REFRESH_ENV)
+
+    def _validated_cache_hit(
+        self,
+        source_id: str,
+        *,
+        reuse_mode: str = "cache_first",
+    ) -> dict[str, Any] | None:
+        if self._force_refresh_enabled():
+            return None
+
+        validation = self._validate_cached_source(source_id)
+        if not validation.get("valid"):
+            return None
+
+        path = str(validation.get("path") or self._canonical_cache_path(source_id))
+        logger.info("Reusing validated local %s cache: %s", source_id, path)
+        return {
+            "status": "reused_validated_cache",
+            "path": path,
+            "validation": validation,
+            "reuse_mode": reuse_mode,
+            "source_id": source_id,
+        }
+
+    def _download_manifest_path(self) -> Path:
+        return self.output_dir / "download_manifest.json"
+
+    def _persist_download_manifest(self, manifest: IngestionManifest) -> Path:
+        manifest_path = self._download_manifest_path()
+        all_manifests = {}
+        if manifest_path.exists():
+            try:
+                with open(manifest_path, "r", encoding="utf-8") as handle:
+                    all_manifests = json.load(handle)
+            except Exception:
+                all_manifests = {}
+
+        all_manifests[RUN_NAME] = {
+            "timestamp": manifest.timestamp,
+            "config": dict(manifest.config),
+            "downloads": dict(manifest.downloads),
+        }
+        with open(manifest_path, "w", encoding="utf-8") as handle:
+            json.dump(all_manifests, handle, indent=2, default=str)
+        return manifest_path
+
+    def _normalize_download_record(self, source_id: str, result: Any) -> dict[str, Any]:
+        if isinstance(result, dict):
+            normalized = dict(result)
+            normalized.setdefault("status", "downloaded")
+            if normalized.get("path") is not None:
+                normalized["path"] = str(normalized["path"])
+            normalized.setdefault("source_id", source_id)
+            return normalized
+
+        if isinstance(result, Path):
+            return {
+                "status": "downloaded",
+                "path": str(result),
+                "source_id": source_id,
+            }
+
+        text = str(result)
+        uppercase = text.upper()
+        if uppercase.startswith("SKIPPED_"):
+            return {"status": uppercase.lower(), "source_id": source_id}
+        if uppercase == "FAILED":
+            return {"status": "failed", "source_id": source_id}
+
+        candidate_path = Path(text)
+        if candidate_path.exists() or candidate_path.suffix:
+            return {
+                "status": "downloaded",
+                "path": str(candidate_path),
+                "source_id": source_id,
+            }
+
+        return {"status": text.lower(), "source_id": source_id}
+
+    def _record_download(self, manifest: IngestionManifest, source_id: str, result: Any) -> dict[str, Any]:
+        record = self._normalize_download_record(source_id, result)
+        manifest.downloads[source_id] = record
+        self._persist_download_manifest(manifest)
+        return record
+
+    def _canonical_cache_path(self, source_id: str) -> Path:
+        mapping = {
+            "drifters": self.drifter_dir / "drifters_noaa.csv",
+            "hycom": self.forcing_dir / "hycom_curr.nc",
+            "cmems": self.forcing_dir / "cmems_curr.nc",
+            "cmems_wave": self.forcing_dir / "cmems_wave.nc",
+            "era5": self.forcing_dir / "era5_wind.nc",
+            "gfs": self.forcing_dir / "gfs_wind.nc",
+            "ncep": self.forcing_dir / "ncep_wind.nc",
+            "arcgis": self.arcgis_dir / "arcgis_registry.csv",
+        }
+        if source_id not in mapping:
+            raise KeyError(f"Unsupported cache source id: {source_id}")
+        return mapping[source_id]
+
+    def _dataset_time_bounds(self, ds: xr.Dataset) -> tuple[pd.Timestamp, pd.Timestamp]:
+        time_name = next((name for name in ("time", "valid_time") if name in ds.coords or name in ds.variables), None)
+        if not time_name:
+            raise RuntimeError("Dataset is missing a time coordinate.")
+
+        times = pd.to_datetime(ds[time_name].values, utc=True, errors="coerce")
+        if len(times) == 0 or pd.isna(times).all():
+            raise RuntimeError("Dataset time coordinate is empty.")
+
+        valid_times = pd.DatetimeIndex(times).dropna()
+        if valid_times.empty:
+            raise RuntimeError("Dataset time coordinate could not be parsed.")
+        return valid_times.min(), valid_times.max()
+
+    def _validate_dataset_cache(
+        self,
+        path: Path,
+        *,
+        source_id: str,
+        finder,
+    ) -> dict[str, Any]:
+        if not path.exists():
+            return {
+                "valid": False,
+                "path": str(path),
+                "reason": "canonical same-case cache file does not exist",
+            }
+        if path.stat().st_size <= 0:
+            return {
+                "valid": False,
+                "path": str(path),
+                "reason": "canonical same-case cache file is empty",
+            }
+
+        with xr.open_dataset(path) as ds:
+            loaded = ds.load()
+        variables = list(finder(loaded))
+        coverage_start, coverage_end = self._dataset_time_bounds(loaded)
+        required_start = _normalize_utc_timestamp(self.effective_forcing_start_utc)
+        required_end = _normalize_utc_timestamp(self.effective_forcing_end_utc)
+        if coverage_start > required_start or coverage_end < required_end:
+            return {
+                "valid": False,
+                "path": str(path),
+                "reason": (
+                    f"cache time coverage {coverage_start.strftime('%Y-%m-%dT%H:%M:%SZ')} -> "
+                    f"{coverage_end.strftime('%Y-%m-%dT%H:%M:%SZ')} does not span the effective forcing window "
+                    f"{required_start.strftime('%Y-%m-%dT%H:%M:%SZ')} -> {required_end.strftime('%Y-%m-%dT%H:%M:%SZ')}"
+                ),
+                "coverage_start_utc": coverage_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "coverage_end_utc": coverage_end.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "variables": variables,
+            }
+
+        return {
+            "valid": True,
+            "path": str(path),
+            "summary": "validated canonical same-case cache",
+            "coverage_start_utc": coverage_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "coverage_end_utc": coverage_end.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "variables": variables,
+            "source_id": source_id,
+        }
+
+    def _validate_drifter_cache(self, path: Path) -> dict[str, Any]:
+        if not path.exists():
+            return {"valid": False, "path": str(path), "reason": "canonical same-case drifter cache does not exist"}
+        if path.stat().st_size <= 0:
+            return {"valid": False, "path": str(path), "reason": "canonical same-case drifter cache is empty"}
+
+        df = pd.read_csv(path)
+        required_columns = {"time", "lat", "lon", "ID", "ve", "vn"}
+        missing = sorted(required_columns.difference(df.columns))
+        if missing:
+            return {
+                "valid": False,
+                "path": str(path),
+                "reason": f"drifter cache is missing required columns: {', '.join(missing)}",
+            }
+        if df.empty:
+            return {"valid": False, "path": str(path), "reason": "drifter cache contains no rows"}
+
+        times = pd.to_datetime(df["time"], utc=True, errors="coerce")
+        if pd.isna(times).any():
+            return {"valid": False, "path": str(path), "reason": "drifter cache contains unparsable timestamps"}
+
+        coverage_start = pd.DatetimeIndex(times).min()
+        coverage_end = pd.DatetimeIndex(times).max()
+        summary = {
+            "valid": True,
+            "path": str(path),
+            "summary": "validated canonical same-case drifter cache",
+            "coverage_start_utc": coverage_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "coverage_end_utc": coverage_end.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "row_count": int(len(df)),
+            "drifter_ids": sorted({str(value).strip() for value in df["ID"].astype(str)}),
+        }
+
+        if self.case_context.drifter_mode == "fixed_drifter_segment_window":
+            expected_id = str(self.case_context.configured_drifter_id or "").strip()
+            actual_ids = sorted({str(value).strip() for value in df["ID"].astype(str)})
+            if actual_ids != [expected_id]:
+                return {
+                    "valid": False,
+                    "path": str(path),
+                    "reason": (
+                        f"drifter cache IDs {actual_ids} do not match the configured exact segment ID {expected_id}"
+                    ),
+                }
+            expected_times = pd.date_range(
+                _normalize_utc_timestamp(self.case_context.release_start_utc),
+                _normalize_utc_timestamp(self.case_context.simulation_end_utc),
+                freq="6H",
+                tz="UTC",
+            )
+            actual_times = pd.DatetimeIndex(times)
+            if len(actual_times) != len(expected_times) or not actual_times.equals(expected_times):
+                return {
+                    "valid": False,
+                    "path": str(path),
+                    "reason": "drifter cache does not match the configured exact 6-hour segment coverage",
+                }
+            summary["summary"] = "validated canonical same-case exact NOAA drifter segment cache"
+
+        return summary
+
+    def _arcgis_required_cache_paths(self) -> list[Path]:
+        specs = get_prepared_input_specs(
+            require_drifter=False,
+            include_all_transport_forcing=False,
+            run_name=RUN_NAME,
+        )
+        required_paths: list[Path] = []
+        arcgis_prefix = str(self.arcgis_dir.resolve())
+        for spec in specs:
+            path = Path(spec["path"])
+            try:
+                resolved = str(path.resolve())
+            except Exception:
+                resolved = str(path)
+            if resolved.startswith(arcgis_prefix):
+                required_paths.append(path)
+                continue
+            if self.case_context.is_official and spec["label"] in {
+                "scoring_grid_metadata",
+                "scoring_grid_template",
+                "scoring_grid_extent",
+                "land_mask",
+                "sea_mask",
+                "shoreline_segments",
+                "shoreline_mask_manifest_json",
+                "shoreline_mask_manifest_csv",
+            }:
+                required_paths.append(path)
+        return required_paths
+
+    def _validate_arcgis_cache(self, path: Path) -> dict[str, Any]:
+        if not path.exists():
+            return {"valid": False, "path": str(path), "reason": "canonical same-case ArcGIS registry does not exist"}
+        if path.stat().st_size <= 0:
+            return {"valid": False, "path": str(path), "reason": "canonical same-case ArcGIS registry is empty"}
+
+        registry_df = pd.read_csv(path)
+        if registry_df.empty:
+            return {"valid": False, "path": str(path), "reason": "ArcGIS registry exists but contains no layers"}
+
+        missing_paths = [str(candidate) for candidate in self._arcgis_required_cache_paths() if not Path(candidate).exists()]
+        if missing_paths:
+            return {
+                "valid": False,
+                "path": str(path),
+                "reason": "ArcGIS cache is missing required same-case artifacts",
+                "missing_paths": missing_paths,
+            }
+
+        return {
+            "valid": True,
+            "path": str(path),
+            "summary": "validated canonical same-case ArcGIS cache bundle",
+            "row_count": int(len(registry_df)),
+            "layer_names": sorted(str(value) for value in registry_df.get("name", pd.Series(dtype=str)).astype(str).tolist()),
+        }
+
+    def _validate_cached_source(self, source_id: str) -> dict[str, Any]:
+        cache_path = self._canonical_cache_path(source_id)
+        try:
+            if source_id == "drifters":
+                return self._validate_drifter_cache(cache_path)
+            if source_id == "arcgis":
+                return self._validate_arcgis_cache(cache_path)
+            if source_id == "hycom":
+                return self._validate_dataset_cache(cache_path, source_id=source_id, finder=find_current_vars)
+            if source_id == "cmems":
+                return self._validate_dataset_cache(cache_path, source_id=source_id, finder=find_current_vars)
+            if source_id == "cmems_wave":
+                return self._validate_dataset_cache(cache_path, source_id=source_id, finder=find_wave_vars)
+            if source_id == "era5":
+                return self._validate_dataset_cache(cache_path, source_id=source_id, finder=find_wind_vars)
+            if source_id == "ncep":
+                return self._validate_dataset_cache(cache_path, source_id=source_id, finder=find_wind_vars)
+            if source_id == "gfs":
+                return self._validate_dataset_cache(cache_path, source_id=source_id, finder=find_wind_vars)
+        except Exception as exc:
+            return {
+                "valid": False,
+                "path": str(cache_path),
+                "reason": str(exc),
+            }
+        raise KeyError(f"Unsupported cache source id: {source_id}")
+
+    def _is_remote_outage_error(self, exc: Exception) -> bool:
+        return is_remote_outage_error(exc)
+
+    def download_required_forcing_record(self, source_id: str) -> dict[str, Any]:
+        source_id = str(source_id).strip()
+        try:
+            if source_id == "hycom":
+                result = self.download_hycom(raise_on_failure=True)
+            elif source_id == "cmems":
+                result = self.download_cmems(raise_on_failure=True)
+            elif source_id == "cmems_wave":
+                result = self.download_cmems_wave(raise_on_failure=True)
+            elif source_id == "era5":
+                result = self.download_era5(raise_on_failure=True)
+            elif source_id == "ncep":
+                result = self.download_ncep(raise_on_failure=True)
+            elif source_id == "gfs":
+                result = self.download_gfs(strict=True)
+            else:
+                raise KeyError(f"Unsupported forcing source id: {source_id}")
+        except Exception as exc:
+            return {
+                "status": "failed_remote_outage" if self._is_remote_outage_error(exc) else "failed",
+                "source_id": source_id,
+                "path": str(self._canonical_cache_path(source_id)),
+                "forcing_factor": forcing_factor_id_for_source(source_id),
+                "upstream_outage_detected": self._is_remote_outage_error(exc),
+                "error": str(exc),
+            }
+
+        record = self._normalize_download_record(source_id, result)
+        record["forcing_factor"] = forcing_factor_id_for_source(source_id)
+        record["upstream_outage_detected"] = False
+        return record
+
+    def _reuse_approved_for_source(self, source_id: str) -> bool:
+        return os.environ.get(PREP_REUSE_APPROVED_SOURCE_ENV, "").strip() == str(source_id)
+
+    def _reuse_prompt_already_consumed(self) -> bool:
+        return os.environ.get(PREP_REUSE_APPROVED_ONCE_ENV, "").strip() == "1"
+
+    def _handle_required_download_step(
+        self,
+        manifest: IngestionManifest,
+        *,
+        source_id: str,
+        download_callable,
+    ) -> dict[str, Any]:
+        cached_record = self._validated_cache_hit(source_id)
+        if cached_record is not None:
+            return self._record_download(manifest, source_id, cached_record)
+
+        try:
+            result = download_callable()
+        except Exception as exc:
+            cache_validation = self._validate_cached_source(source_id)
+            if self._is_remote_outage_error(exc):
+                if cache_validation.get("valid") and self._reuse_approved_for_source(source_id):
+                    return self._record_download(
+                        manifest,
+                        source_id,
+                        {
+                            "status": "reused_validated_cache",
+                            "path": cache_validation.get("path"),
+                            "validation": cache_validation,
+                            "remote_error": str(exc),
+                            "reuse_mode": "outage_prompt_approved",
+                        },
+                    )
+                if cache_validation.get("valid") and not self._reuse_prompt_already_consumed():
+                    self._record_download(
+                        manifest,
+                        source_id,
+                        {
+                            "status": "awaiting_cache_reuse_decision",
+                            "path": cache_validation.get("path"),
+                            "validation": cache_validation,
+                            "remote_error": str(exc),
+                        },
+                    )
+                    raise PrepOutageDecisionRequired(
+                        run_name=RUN_NAME,
+                        source_id=source_id,
+                        cache_path=str(cache_validation.get("path") or self._canonical_cache_path(source_id)),
+                        validation=cache_validation,
+                        error=str(exc),
+                    ) from exc
+
+                record = {
+                    "status": "cancelled_no_cache",
+                    "path": cache_validation.get("path"),
+                    "validation": cache_validation,
+                    "remote_error": str(exc),
+                }
+                if cache_validation.get("valid") and self._reuse_prompt_already_consumed():
+                    record["status"] = "failed_after_reuse_prompt"
+                    record["error"] = (
+                        "Another required source outage occurred after the single allowed reuse decision for this prep run."
+                    )
+                self._record_download(manifest, source_id, record)
+                raise DataLoadingError(
+                    f"Required prep input '{source_id}' hit a remote-service outage and no reusable validated "
+                    f"same-case cache is available for this run."
+                ) from exc
+
+            self._record_download(
+                manifest,
+                source_id,
+                {
+                    "status": "failed",
+                    "path": str(self._canonical_cache_path(source_id)),
+                    "error": str(exc),
+                    "validation": cache_validation if cache_validation.get("path") else None,
+                },
+            )
+            raise
+
+        record = self._normalize_download_record(source_id, result)
+        failure_statuses = {
+            "failed",
+            "skipped_no_creds",
+            "skipped_no_lib",
+            "skipped_no_data_found",
+        }
+        if record.get("status") in failure_statuses:
+            self._record_download(manifest, source_id, record)
+            raise DataLoadingError(
+                f"Required prep input '{source_id}' did not complete successfully: {record.get('status')}"
+            )
+        return self._record_download(manifest, source_id, record)
         
     def run(self):
         """Execute the ingestion logic."""
         manifest = IngestionManifest(
             config=self._manifest_config()
         )
+        self._persist_download_manifest(manifest)
 
         try:
             # 1. Download Drifters
             if self.case_context.drifter_required:
-                manifest.downloads["drifters"] = self.download_drifters()
+                self._handle_required_download_step(
+                    manifest,
+                    source_id="drifters",
+                    download_callable=self.download_drifters,
+                )
             else:
                 logger.info(
                     "Skipping drifter download for %s because this workflow uses a frozen Phase 1 baseline.",
                     self.case_context.workflow_mode,
                 )
-                manifest.downloads["drifters"] = "SKIPPED_FROZEN_PHASE1_BASELINE"
+                self._record_download(manifest, "drifters", "SKIPPED_FROZEN_PHASE1_BASELINE")
             manifest.config.update(self._manifest_config())
+            self._persist_download_manifest(manifest)
 
             if self.case_context.is_official:
-                manifest.downloads["arcgis"] = self.download_arcgis_layers()
+                self._handle_required_download_step(
+                    manifest,
+                    source_id="arcgis",
+                    download_callable=self.download_arcgis_layers,
+                )
                 self._refresh_official_forcing_bbox_from_scoring_grid()
                 self.gfs_downloader = GFSWindDownloader(
                     forcing_box=self.bbox,
                     expected_delta=pd.Timedelta(hours=PROTOTYPE_GFS_ANALYSIS_DELTA_HOURS),
                 )
                 manifest.config.update(self._manifest_config())
+                self._persist_download_manifest(manifest)
             
             # 2. Download HYCOM
-            manifest.downloads["hycom"] = self.download_hycom()
+            self._handle_required_download_step(
+                manifest,
+                source_id="hycom",
+                download_callable=lambda: self.download_hycom(raise_on_failure=True),
+            )
             
             # 3. Download CMEMS
-            manifest.downloads["cmems"] = self.download_cmems()
-            manifest.downloads["cmems_wave"] = self.download_cmems_wave()
+            self._handle_required_download_step(
+                manifest,
+                source_id="cmems",
+                download_callable=lambda: self.download_cmems(raise_on_failure=True),
+            )
+            self._handle_required_download_step(
+                manifest,
+                source_id="cmems_wave",
+                download_callable=lambda: self.download_cmems_wave(raise_on_failure=True),
+            )
             
             # 4. Download ERA5
-            manifest.downloads["era5"] = self.download_era5()
+            self._handle_required_download_step(
+                manifest,
+                source_id="era5",
+                download_callable=lambda: self.download_era5(raise_on_failure=True),
+            )
 
             if self.case_context.is_prototype:
-                manifest.downloads["gfs"] = self.download_gfs(strict=False)
+                self._record_download(manifest, "gfs", self.download_gfs(strict=False))
 
             # 5. Download NCEP
-            manifest.downloads["ncep"] = self.download_ncep()
+            self._handle_required_download_step(
+                manifest,
+                source_id="ncep",
+                download_callable=lambda: self.download_ncep(raise_on_failure=True),
+            )
 
             if not self.case_context.is_official:
-                manifest.downloads["arcgis"] = self.download_arcgis_layers()
+                self._handle_required_download_step(
+                    manifest,
+                    source_id="arcgis",
+                    download_callable=self.download_arcgis_layers,
+                )
 
-            # Save Manifest
-            manifest_path = self.output_dir / "download_manifest.json"
-            
-            all_manifests = {}
-            if manifest_path.exists():
-                try:
-                    with open(manifest_path, 'r') as f:
-                        all_manifests = json.load(f)
-                except Exception:
-                    pass
-                    
-            all_manifests[RUN_NAME] = manifest.__dict__
-            
-            # Helper to serialize dataclass
-            with open(manifest_path, 'w') as f:
-                json.dump(all_manifests, f, indent=2, default=str)
+            manifest_path = self._persist_download_manifest(manifest)
 
             prepared_manifest_path = self.write_prepared_input_manifest()
             logger.info("Prepared-input manifest saved to %s", prepared_manifest_path)
@@ -388,6 +889,10 @@ class DataIngestionService(BaseService):
                 self.case_context.workflow_mode,
             )
             return "SKIPPED_FROZEN_PHASE1_BASELINE"
+
+        cached = self._validated_cache_hit("drifters")
+        if cached is not None:
+            return str(cached["path"])
 
         if self.case_context.drifter_mode == "fixed_drifter_segment_window":
             return self._download_fixed_segment_drifter()
@@ -547,6 +1052,10 @@ class DataIngestionService(BaseService):
 
     def download_gfs(self, *, strict: bool = False) -> dict[str, Any] | str:
         output_path = self.forcing_dir / "gfs_wind.nc"
+        cached = self._validated_cache_hit("gfs")
+        if cached is not None:
+            return cached
+        output_path.unlink(missing_ok=True)
         try:
             return self.gfs_downloader.download(
                 start_time=self.effective_forcing_start_utc,
@@ -558,7 +1067,8 @@ class DataIngestionService(BaseService):
             if strict:
                 raise
             logger.warning(
-                "Best-effort GFS wind prep failed for prototype workflow %s: %s",
+                "Best-effort GFS wind prep failed for prototype workflow %s. "
+                "The run will continue without gfs_wind.nc because GFS is optional in this lane. Reason: %s",
                 self.case_context.workflow_mode,
                 exc,
             )
@@ -568,8 +1078,11 @@ class DataIngestionService(BaseService):
                 "path": str(output_path),
             }
 
-    def download_hycom(self) -> str:
+    def download_hycom(self, *, raise_on_failure: bool = False) -> str:
         """Download HYCOM currents via OPeNDAP."""
+        cached = self._validated_cache_hit("hycom")
+        if cached is not None:
+            return str(cached["path"])
         logger.info("Fetching HYCOM currents...")
         
         # Determine appropriate experiment based on year
@@ -601,7 +1114,9 @@ class DataIngestionService(BaseService):
         candidates.append("https://tds.hycom.org/thredds/dodsC/GLBy0.08/expt_93.0")
         
         output_path = self.forcing_dir / "hycom_curr.nc"
+        temp_path = self.forcing_dir / "hycom_curr_download.nc"
         
+        last_error: Exception | None = None
         for base_url in candidates:
             logger.info(f"Trying HYCOM source: {base_url}")
             try:
@@ -630,19 +1145,32 @@ class DataIngestionService(BaseService):
                      logger.warning(f"Slice resulted in empty Time dimension for {base_url}")
                      continue
 
-                subset.to_netcdf(output_path)
+                if temp_path.exists():
+                    temp_path.unlink()
+                subset.to_netcdf(temp_path)
+                temp_path.replace(output_path)
                 logger.info(f"Saved HYCOM data to {output_path}")
                 return str(output_path)
                 
             except Exception as e:
+                last_error = e
                 logger.warning(f"Failed download from {base_url}: {e}")
                 continue
+            finally:
+                temp_path.unlink(missing_ok=True)
 
         logger.error("All HYCOM sources failed.")
+        if raise_on_failure:
+            if last_error is not None:
+                raise last_error
+            raise DataLoadingError("All HYCOM sources failed for the requested forcing window.")
         return "FAILED"
 
-    def download_cmems(self) -> str:
+    def download_cmems(self, *, raise_on_failure: bool = False) -> str:
         """Download CMEMS currents using copernicusmarine client."""
+        cached = self._validated_cache_hit("cmems")
+        if cached is not None:
+            return str(cached["path"])
         logger.info("Fetching CMEMS currents...")
         
         username = os.getenv("CMEMS_USERNAME")
@@ -657,11 +1185,8 @@ class DataIngestionService(BaseService):
             return "SKIPPED_NO_LIB"
 
         output_path = self.forcing_dir / "cmems_curr.nc"
-        
-        # Explicitly delete existing file to prevent (1) suffix or read errors
-        if output_path.exists():
-            output_path.unlink()
-            logger.info(f"Deleted existing CMEMS file: {output_path}")
+        temp_filename = "cmems_curr_download.nc"
+        temp_path = self.forcing_dir / temp_filename
 
         # Determine if we need Multi-Year (Historical) or Analysis/Forecast (Recent)
         request_year = datetime.strptime(self.start_date, "%Y-%m-%d").year
@@ -676,33 +1201,45 @@ class DataIngestionService(BaseService):
             logger.info(f"Using NRT dataset for year {request_year}")
 
         try:
-            # Let's try the common ID for Global Ocean Physics Analysis and Forecast.
-            copernicusmarine.subset(
-                dataset_id=dataset_id,
-                minimum_longitude=self.bbox[0],
-                maximum_longitude=self.bbox[1],
-                minimum_latitude=self.bbox[2],
-                maximum_latitude=self.bbox[3],
-                start_datetime=f"{self.start_date}T00:00:00",
-                end_datetime=f"{self.end_date}T23:59:59",
-                minimum_depth=0,
-                maximum_depth=1,
-                variables=["uo", "vo"], 
-                output_filename="cmems_curr.nc",
-                output_directory=str(self.forcing_dir),
-                force_download=True,
-                username=username,
-                password=password
-            )
+            subset_kwargs = {
+                "dataset_id": dataset_id,
+                "minimum_longitude": self.bbox[0],
+                "maximum_longitude": self.bbox[1],
+                "minimum_latitude": self.bbox[2],
+                "maximum_latitude": self.bbox[3],
+                "start_datetime": f"{self.start_date}T00:00:00",
+                "end_datetime": f"{self.end_date}T23:59:59",
+                "maximum_depth": CMEMS_SURFACE_CURRENT_MAX_DEPTH_M,
+                "variables": ["uo", "vo"],
+                "output_filename": temp_filename,
+                "output_directory": str(self.forcing_dir),
+                "username": username,
+                "password": password,
+            }
+            temp_path.unlink(missing_ok=True)
+            # Prefer the current overwrite flag and fall back only for older client versions.
+            try:
+                copernicusmarine.subset(**subset_kwargs, overwrite=True)
+            except TypeError:
+                copernicusmarine.subset(**subset_kwargs, force_download=True)
+            if not temp_path.exists():
+                raise RuntimeError(f"CMEMS subset completed without producing {temp_path}.")
+            temp_path.replace(output_path)
             logger.info(f"Saved CMEMS data to {output_path}")
             return str(output_path)
             
         except Exception as e:
             logger.error(f"CMEMS Download failed: {e}")
+            temp_path.unlink(missing_ok=True)
+            if raise_on_failure:
+                raise
             return "FAILED"
 
-    def download_cmems_wave(self) -> str:
+    def download_cmems_wave(self, *, raise_on_failure: bool = False) -> str:
         """Download CMEMS wave/Stokes forcing for official and prototype transport runs."""
+        cached = self._validated_cache_hit("cmems_wave")
+        if cached is not None:
+            return str(cached["path"])
         logger.info("Fetching CMEMS wave/Stokes forcing...")
 
         username = os.getenv("CMEMS_USERNAME")
@@ -717,9 +1254,8 @@ class DataIngestionService(BaseService):
             return "SKIPPED_NO_LIB"
 
         output_path = self.forcing_dir / "cmems_wave.nc"
-        if output_path.exists():
-            output_path.unlink()
-            logger.info("Deleted existing CMEMS wave file: %s", output_path)
+        temp_filename = "cmems_wave_download.nc"
+        temp_path = self.forcing_dir / temp_filename
 
         request_year = datetime.strptime(self.start_date, "%Y-%m-%d").year
         if request_year < 2022:
@@ -730,6 +1266,7 @@ class DataIngestionService(BaseService):
             logger.info("Using analysis/forecast CMEMS wave dataset for year %s", request_year)
 
         try:
+            temp_path.unlink(missing_ok=True)
             copernicusmarine.subset(
                 dataset_id=dataset_id,
                 minimum_longitude=self.bbox[0],
@@ -739,20 +1276,29 @@ class DataIngestionService(BaseService):
                 start_datetime=f"{self.start_date}T00:00:00",
                 end_datetime=f"{self.end_date}T23:59:59",
                 variables=["VHM0", "VSDX", "VSDY"],
-                output_filename="cmems_wave.nc",
+                output_filename=temp_filename,
                 output_directory=str(self.forcing_dir),
                 overwrite=True,
                 username=username,
                 password=password,
             )
+            if not temp_path.exists():
+                raise RuntimeError(f"CMEMS wave subset completed without producing {temp_path}.")
+            temp_path.replace(output_path)
             logger.info("Saved CMEMS wave/Stokes data to %s", output_path)
             return str(output_path)
         except Exception as e:
             logger.error("CMEMS wave download failed: %s", e)
+            temp_path.unlink(missing_ok=True)
+            if raise_on_failure:
+                raise
             return "FAILED"
 
-    def download_era5(self) -> str:
+    def download_era5(self, *, raise_on_failure: bool = False) -> str:
         """Download ERA5 winds and fix 'valid_time' dimension issue."""
+        cached = self._validated_cache_hit("era5")
+        if cached is not None:
+            return str(cached["path"])
         logger.info("Fetching ERA5 winds...")
         
         url = os.getenv("CDS_URL")
@@ -769,6 +1315,7 @@ class DataIngestionService(BaseService):
         # USE A TEMP PATH TO AVOID PERMISSION ERRORS
         final_path = self.forcing_dir / "era5_wind.nc"
         temp_path = self.forcing_dir / "era5_temp.nc"
+        final_temp_path = self.forcing_dir / "era5_wind_download.nc"
         
         try:
             c = cdsapi.Client(url=url, key=key)
@@ -806,8 +1353,9 @@ class DataIngestionService(BaseService):
                     ds = ds.rename(rename_map)
                     logger.info(f"✅ Renamed: {rename_map}")
                 
-                # Save to FINAL path (No locking issue!)
-                ds.to_netcdf(final_path)
+                # Save to a temporary final path so a stale-good cache survives a remote outage.
+                final_temp_path.unlink(missing_ok=True)
+                ds.to_netcdf(final_temp_path)
 
             # 3. Cleanup Temp
             if temp_path.exists():
@@ -815,7 +1363,8 @@ class DataIngestionService(BaseService):
 
             # 4. FIX METADATA (Standard Names & Encoding)
             # This ensures OpenDrift detects 'eastward_wind' automatically
-            fix_metadata(str(final_path))
+            fix_metadata(str(final_temp_path))
+            final_temp_path.replace(final_path)
 
             logger.info(f"Saved fixed ERA5 data to {final_path}")
             return str(final_path)
@@ -824,13 +1373,19 @@ class DataIngestionService(BaseService):
             logger.error(f"ERA5 Download failed: {e}")
             if temp_path.exists():
                 temp_path.unlink()
+            final_temp_path.unlink(missing_ok=True)
+            if raise_on_failure:
+                raise
             return "FAILED"
 
-    def download_ncep(self) -> str:
+    def download_ncep(self, *, raise_on_failure: bool = False) -> str:
         """
         Download NCEP/NCAR Reanalysis 1 Winds (Historical Baseline).
         Ref: https://psl.noaa.gov/data/gridded/data.ncep.reanalysis.surface.html
         """
+        cached = self._validated_cache_hit("ncep")
+        if cached is not None:
+            return str(cached["path"])
         logger.info("Fetching NCEP/NCAR Reanalysis 1 Winds (NOAA PSL)...")
         
         # Get year from start_date
@@ -844,6 +1399,7 @@ class DataIngestionService(BaseService):
         }
 
         output_path = self.forcing_dir / "ncep_wind.nc"
+        temp_path = self.forcing_dir / "ncep_wind_download.nc"
 
         try:
             ds_list = []
@@ -869,21 +1425,29 @@ class DataIngestionService(BaseService):
             # Rename for OpenDrift (uwnd -> x_wind)
             merged = merged.rename({'uwnd': 'x_wind', 'vwnd': 'y_wind'})
             
-            merged.to_netcdf(output_path)
-            
+            temp_path.unlink(missing_ok=True)
+            merged.to_netcdf(temp_path)
+             
             # FIX METADATA (Standard Names & Encoding)
             # This ensures OpenDrift detects 'eastward_wind' automatically
-            fix_metadata(str(output_path))
+            fix_metadata(str(temp_path))
+            temp_path.replace(output_path)
             
             logger.info(f"Saved NCEP data to {output_path}")
             return str(output_path)
 
         except Exception as e:
             logger.error(f"NCEP Download failed: {e}")
+            temp_path.unlink(missing_ok=True)
+            if raise_on_failure:
+                raise
             return "FAILED"
 
     def download_arcgis_layers(self) -> str:
         """ArcGIS ingestion resolved directly from the configured workflow case."""
+        cached = self._validated_cache_hit("arcgis")
+        if cached is not None:
+            return str(cached["path"])
         from src.helpers.scoring import OFFICIAL_GRID_CRS, build_official_scoring_grid
         from src.services.arcgis import (
             ArcGISFeatureServerClient,

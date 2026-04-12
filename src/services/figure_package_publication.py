@@ -46,11 +46,23 @@ MINDORO_PHASE3B_SUMMARY = Path("output") / "CASE_MINDORO_RETRO_2023" / "phase3b"
 MINDORO_REINIT_SUMMARY = (
     Path("output") / "CASE_MINDORO_RETRO_2023" / "phase3b_extended_public_scored_march13_14_reinit" / "march13_14_reinit_summary.csv"
 )
+MINDORO_REINIT_RUN_MANIFEST = (
+    Path("output")
+    / "CASE_MINDORO_RETRO_2023"
+    / "phase3b_extended_public_scored_march13_14_reinit"
+    / "march13_14_reinit_run_manifest.json"
+)
 MINDORO_REINIT_CROSSMODEL_SUMMARY = (
     Path("output")
     / "CASE_MINDORO_RETRO_2023"
     / "phase3b_extended_public_scored_march13_14_reinit_pygnome_comparison"
     / "march13_14_reinit_crossmodel_summary.csv"
+)
+MINDORO_REINIT_CROSSMODEL_RUN_MANIFEST = (
+    Path("output")
+    / "CASE_MINDORO_RETRO_2023"
+    / "phase3b_extended_public_scored_march13_14_reinit_pygnome_comparison"
+    / "march13_14_reinit_crossmodel_run_manifest.json"
 )
 MINDORO_PHASE4_DIR = Path("output") / "phase4" / "CASE_MINDORO_RETRO_2023"
 MINDORO_PHASE4_MANIFEST = MINDORO_PHASE4_DIR / "phase4_run_manifest.json"
@@ -281,7 +293,9 @@ class FigurePackagePublicationService:
         self.mindoro_forecast_manifest = _read_json(self.repo_root / MINDORO_FORECAST_MANIFEST)
         self.mindoro_phase3b_summary = _read_csv(self.repo_root / MINDORO_PHASE3B_SUMMARY)
         self.mindoro_reinit_summary = _read_csv(self.repo_root / MINDORO_REINIT_SUMMARY)
+        self.mindoro_reinit_manifest = _read_json(self.repo_root / MINDORO_REINIT_RUN_MANIFEST)
         self.mindoro_reinit_crossmodel_summary = _read_csv(self.repo_root / MINDORO_REINIT_CROSSMODEL_SUMMARY)
+        self.mindoro_reinit_crossmodel_manifest = _read_json(self.repo_root / MINDORO_REINIT_CROSSMODEL_RUN_MANIFEST)
         self.mindoro_phase4_manifest = _read_json(self.repo_root / MINDORO_PHASE4_MANIFEST)
         self.dwh_run_manifest = _read_json(self.repo_root / DWH_RUN_MANIFEST)
         self.dwh_summary = _read_csv(self.repo_root / DWH_SUMMARY)
@@ -1397,7 +1411,10 @@ class FigurePackagePublicationService:
             locator_ax = fig.add_subplot(grid[0, 1])
             legend_ax = fig.add_subplot(grid[1, 1])
             note_ax = fig.add_subplot(grid[2, 1])
-            render_info = self._render_panel(main_ax, dict(spec, panel_title=spec.get("figure_title")))
+            panel_title = spec.get("figure_title")
+            if "map_panel_title" in spec:
+                panel_title = spec.get("map_panel_title") or ""
+            render_info = self._render_panel(main_ax, dict(spec, panel_title=panel_title))
             self._add_locator(locator_ax, str(spec["case_id"]), render_info.get("crop_bounds"), str(render_info.get("target_crs") or self._case_context(str(spec["case_id"]))["projected_crs"]))
             self._add_legend(legend_ax, [str(item) for item in spec.get("legend_keys", [])])
             self._add_note_box(note_ax, str(spec.get("note_box_title") or "How to read this figure"), [str(item) for item in spec.get("note_lines", [])])
@@ -1406,7 +1423,10 @@ class FigurePackagePublicationService:
             main_ax = fig.add_subplot(grid[:, 0])
             info_ax = fig.add_subplot(grid[0, 1])
             note_ax = fig.add_subplot(grid[1, 1])
-            render_info = self._render_panel(main_ax, dict(spec, panel_title=spec.get("figure_title")))
+            panel_title = spec.get("figure_title")
+            if "map_panel_title" in spec:
+                panel_title = spec.get("map_panel_title") or ""
+            render_info = self._render_panel(main_ax, dict(spec, panel_title=panel_title))
             self._add_note_box(
                 info_ax,
                 str(spec.get("subtitle_box_title") or "Context"),
@@ -1510,6 +1530,7 @@ class FigurePackagePublicationService:
         recommended_for_main_defense: bool = False,
         recommended_for_paper: bool = True,
         scenario_id: str = "",
+        map_panel_title: str | None = None,
         show_source: bool = True,
         show_init: bool = False,
         show_validation: bool = False,
@@ -1540,6 +1561,7 @@ class FigurePackagePublicationService:
             "recommended_for_paper": recommended_for_paper,
             "notes": notes,
             "raster_layers": raster_layers,
+            "map_panel_title": map_panel_title,
             "show_source": show_source,
             "show_init": show_init,
             "show_validation": show_validation,
@@ -1827,17 +1849,17 @@ class FigurePackagePublicationService:
         return float(np.mean(finite))
 
     def _format_fss_line(self, row: pd.Series | dict[str, Any] | None, label: str = "") -> str:
+        prefix = f"{label} " if label else ""
         if row is None:
-            return ""
+            return f"{prefix}metric unavailable in stored summary."
         if isinstance(row, dict):
             getter = row.get
         else:
             getter = row.get
         values = [_optional_float(getter(f"fss_{window}km")) for window in (1, 3, 5, 10)]
         if not any(value is not None for value in values):
-            return ""
+            return f"{prefix}metric unavailable in stored summary."
         mean_value = self._row_mean_fss(row)
-        prefix = f"{label} " if label else ""
         formatted_values = "/".join(self._format_score_value(value) for value in values)
         return f"{prefix}FSS(1/3/5/10 km): {formatted_values}; mean: {self._format_score_value(mean_value)}."
 
@@ -1850,6 +1872,16 @@ class FigurePackagePublicationService:
             if not row.empty:
                 return row.iloc[0]
         return summary.iloc[0]
+
+    def _mindoro_primary_branch_row(self, branch_id: str) -> pd.Series | None:
+        summary = self.mindoro_reinit_summary
+        if summary.empty:
+            return None
+        if "branch_id" in summary.columns:
+            row = summary.loc[summary["branch_id"].astype(str) == str(branch_id)]
+            if not row.empty:
+                return row.iloc[0]
+        return self._mindoro_primary_row()
 
     def _mindoro_strict_row(self) -> pd.Series | None:
         summary = self.mindoro_phase3b_summary
@@ -2007,6 +2039,9 @@ class FigurePackagePublicationService:
     def _mindoro_crossmodel_score_line(self, model_key: str, label: str = "") -> str:
         return self._format_fss_line(self._mindoro_crossmodel_row(model_key), label)
 
+    def _mindoro_primary_branch_score_line(self, branch_id: str, label: str = "") -> str:
+        return self._format_fss_line(self._mindoro_primary_branch_row(branch_id), label)
+
     def _dwh_deterministic_score_line(self, date_token: str, label: str = "") -> str:
         return self._format_fss_line(self._dwh_deterministic_row(date_token), label)
 
@@ -2025,10 +2060,58 @@ class FigurePackagePublicationService:
     def _mindoro_comparison_note_lines(self, *score_lines: str) -> list[str]:
         return self._compose_note_lines(self._mindoro_comparison_context_lines(), list(score_lines))
 
+    def _stored_empty_forecast_line(self, row: pd.Series | dict[str, Any] | None, label: str = "") -> str:
+        if row is None:
+            return ""
+        if isinstance(row, dict):
+            getter = row.get
+        else:
+            getter = row.get
+        reason = (
+            str(getter("empty_forecast_reason_survival") or "").strip()
+            or str(getter("empty_forecast_reason") or "").strip()
+        )
+        if not reason:
+            return ""
+        prefix = f"{label} " if label else ""
+        plain_reason = reason.replace("_", " ")
+        return f"{prefix}Stored summary note: {plain_reason}."
+
+    def _mindoro_reinit_seed_mask_path(self) -> str:
+        seed_release = self.mindoro_reinit_manifest.get("seed_release") or {}
+        return str(
+            seed_release.get("seed_mask_path")
+            or (
+                Path("output")
+                / "CASE_MINDORO_RETRO_2023"
+                / "phase3b_extended_public_scored_march13_14_reinit"
+                / "march13_seed_mask_on_grid.tif"
+            )
+        )
+
+    def _mindoro_reinit_target_mask_path(self) -> str:
+        target_source = self.mindoro_reinit_manifest.get("selected_target_source") or {}
+        return str(
+            target_source.get("extended_obs_mask")
+            or (
+                Path("output")
+                / "CASE_MINDORO_RETRO_2023"
+                / "phase3b_extended_public"
+                / "accepted_obs_masks"
+                / "10b37c42a9754363a5f7b14199b077e6.tif"
+            )
+        )
+
     def _mindoro_primary_publication_specs(self) -> list[dict[str, Any]]:
-        subtitle = "Mindoro | 13-14 March 2023 | promoted NOAA reinit validation | shared-imagery caveat explicit"
+        subtitle = "Mindoro | 13-14 March 2023 | promoted NOAA reinit validation | shared March 12 imagery caveat"
+        seed_mask = self._mindoro_reinit_seed_mask_path()
+        target_mask = self._mindoro_reinit_target_mask_path()
+        r1_row = self._mindoro_primary_branch_row("R1_previous")
+        r0_row = self._mindoro_primary_branch_row("R0")
+        r1_mask = str(r1_row.get("forecast_path") or r1_row.get("march14_forecast_path") or "") if r1_row is not None else ""
+        r0_mask = str(r0_row.get("forecast_path") or r0_row.get("march14_forecast_path") or "") if r0_row is not None else ""
         return [
-            self._image_spec(
+            self._spatial_spec(
                 spec_id="mindoro_primary_seed_mask",
                 figure_family_code="A",
                 case_id="CASE_MINDORO_RETRO_2023",
@@ -2039,16 +2122,29 @@ class FigurePackagePublicationService:
                 view_type="single",
                 variant="paper",
                 figure_slug="march13_seed_mask_on_grid",
-                figure_title="Mindoro March 13 NOAA seed mask on the canonical grid",
+                figure_title="Mindoro March 13 seed mask on grid",
+                map_panel_title="",
                 subtitle=subtitle,
-                interpretation="This figure shows the promoted March 13 NOAA release geometry that seeds the next-day reinit validation.",
-                notes="Copied from the completed March 13 -> March 14 reinit QA bundle with the shared-imagery caveat preserved.",
-                source_image_path=(
-                    "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit/"
-                    "qa_march13_seed_mask_on_grid.png"
+                interpretation="This figure redraws the stored March 13 seed geometry on the scoring grid so the promoted next-day validation row starts from a publication-grade observation panel rather than a QA screenshot.",
+                notes="Built from the stored March 13 seed mask raster, shoreline context, and source-point geometry only; no scientific rerun was triggered.",
+                note_lines=self._mindoro_primary_note_lines(
+                    "Seed geometry is shown on the same canonical grid used downstream for the March 14 comparison."
                 ),
+                legend_keys=["initialization_polygon", "source_point"],
+                raster_layers=[
+                    {
+                        "path": seed_mask,
+                        "legend_key": "initialization_polygon",
+                        "alpha": 0.24,
+                        "linewidth": 1.5,
+                        "linestyle": "--",
+                        "zorder": 5,
+                    }
+                ],
+                show_source=True,
+                include_source_in_crop=False,
             ),
-            self._image_spec(
+            self._spatial_spec(
                 spec_id="mindoro_primary_seed_vs_target",
                 figure_family_code="A",
                 case_id="CASE_MINDORO_RETRO_2023",
@@ -2059,16 +2155,36 @@ class FigurePackagePublicationService:
                 view_type="single",
                 variant="paper",
                 figure_slug="march13_seed_vs_march14_target",
-                figure_title="Mindoro March 13 seed polygon versus March 14 NOAA target",
+                figure_title="Mindoro March 13 seed vs March 14 target",
+                map_panel_title="",
                 subtitle=subtitle,
-                interpretation="This figure makes the promoted next-day validation geometry explicit before model overlays are introduced.",
-                notes="Copied from the completed March 13 -> March 14 reinit QA bundle with the shared-imagery caveat preserved.",
-                source_image_path=(
-                    "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit/"
-                    "qa_march13_seed_vs_march14_target.png"
+                interpretation="This figure makes the promoted March 13 seed and March 14 observation geometry explicit before any model overlay is shown, using the stored on-grid rasters rather than the earlier QA composite.",
+                notes="Built from the stored March 13 seed mask and March 14 observation mask only, with the shared-imagery caveat carried into the note box.",
+                note_lines=self._mindoro_primary_note_lines(
+                    "Orange shows the March 13 seed geometry and dark slate shows the March 14 observation target."
                 ),
+                legend_keys=["initialization_polygon", "observed_mask", "source_point"],
+                raster_layers=[
+                    {
+                        "path": seed_mask,
+                        "legend_key": "initialization_polygon",
+                        "alpha": 0.18,
+                        "linewidth": 1.5,
+                        "linestyle": "--",
+                        "zorder": 5,
+                    },
+                    {
+                        "path": target_mask,
+                        "legend_key": "observed_mask",
+                        "alpha": 0.28,
+                        "linewidth": 1.3,
+                        "zorder": 6,
+                    },
+                ],
+                show_source=True,
+                include_source_in_crop=False,
             ),
-            self._image_spec(
+            self._spatial_spec(
                 spec_id="mindoro_primary_r1_overlay",
                 figure_family_code="A",
                 case_id="CASE_MINDORO_RETRO_2023",
@@ -2079,18 +2195,46 @@ class FigurePackagePublicationService:
                 view_type="single",
                 variant="paper",
                 figure_slug="march14_r1_previous_overlay",
-                figure_title="Mindoro March 14 promoted OpenDrift R1 previous reinit overlay",
+                figure_title="Mindoro March 14 promoted OpenDrift R1_previous",
+                map_panel_title="",
                 subtitle=subtitle,
-                interpretation="This is the promoted primary Mindoro validation overlay and should be used as the main March 14 result figure with the shared-imagery caveat stated explicitly.",
-                notes="Copied from the completed March 13 -> March 14 reinit QA bundle with the shared-imagery caveat preserved.",
-                source_image_path=(
-                    "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit/"
-                    "qa_march14_reinit_R1_previous_overlay.png"
+                interpretation="This is the promoted March 14 Mindoro validation overlay, rebuilt from stored rasters with the same publication grammar used by the DWH boards.",
+                notes="Built from the stored March 14 observation mask, the stored March 13 seed mask outline, and the stored OpenDrift R1 previous p50 raster only.",
+                note_lines=self._mindoro_primary_note_lines(
+                    self._mindoro_primary_branch_score_line("R1_previous", "OpenDrift R1 previous reinit p50")
                 ),
+                legend_keys=["observed_mask", "ensemble_p50", "initialization_polygon", "source_point"],
+                raster_layers=[
+                    {
+                        "path": target_mask,
+                        "legend_key": "observed_mask",
+                        "alpha": 0.34,
+                        "linewidth": 1.1,
+                        "zorder": 5,
+                    },
+                    {
+                        "path": seed_mask,
+                        "legend_key": "initialization_polygon",
+                        "fill": False,
+                        "outline": True,
+                        "linewidth": 1.2,
+                        "linestyle": "--",
+                        "zorder": 6,
+                    },
+                    {
+                        "path": r1_mask,
+                        "legend_key": "ensemble_p50",
+                        "alpha": 0.26,
+                        "linewidth": 1.4,
+                        "zorder": 7,
+                    },
+                ],
+                show_source=True,
+                include_source_in_crop=False,
                 recommended_for_main_defense=True,
                 recommended_for_paper=True,
             ),
-            self._image_spec(
+            self._spatial_spec(
                 spec_id="mindoro_primary_r0_overlay",
                 figure_family_code="A",
                 case_id="CASE_MINDORO_RETRO_2023",
@@ -2101,21 +2245,58 @@ class FigurePackagePublicationService:
                 view_type="single",
                 variant="paper",
                 figure_slug="march14_r0_overlay",
-                figure_title="Mindoro March 14 R0 reinit overlay",
+                figure_title="Mindoro March 14 OpenDrift R0 branch",
+                map_panel_title="",
                 subtitle=subtitle,
-                interpretation="This companion figure shows the baseline stranding branch so the promoted R1 result can be compared against it honestly.",
-                notes="Copied from the completed March 13 -> March 14 reinit QA bundle with the shared-imagery caveat preserved.",
-                source_image_path=(
-                    "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit/"
-                    "qa_march14_reinit_R0_overlay.png"
+                interpretation="This companion figure keeps the stored R0 branch visible in the same publication grammar so the promoted R1 result can be compared against it honestly.",
+                notes="Built from the stored March 14 observation mask, the stored March 13 seed mask outline, and the stored OpenDrift R0 p50 raster only.",
+                note_lines=self._mindoro_primary_note_lines(
+                    self._mindoro_primary_branch_score_line("R0", "OpenDrift R0 reinit p50"),
+                    self._stored_empty_forecast_line(r0_row, "OpenDrift R0 reinit p50"),
                 ),
+                legend_keys=["observed_mask", "ensemble_p50", "initialization_polygon", "source_point"],
+                raster_layers=[
+                    {
+                        "path": target_mask,
+                        "legend_key": "observed_mask",
+                        "alpha": 0.34,
+                        "linewidth": 1.1,
+                        "zorder": 5,
+                    },
+                    {
+                        "path": seed_mask,
+                        "legend_key": "initialization_polygon",
+                        "fill": False,
+                        "outline": True,
+                        "linewidth": 1.2,
+                        "linestyle": "--",
+                        "zorder": 6,
+                    },
+                    {
+                        "path": r0_mask,
+                        "legend_key": "ensemble_p50",
+                        "alpha": 0.26,
+                        "linewidth": 1.4,
+                        "zorder": 7,
+                    },
+                ],
+                show_source=True,
+                include_source_in_crop=False,
             ),
         ]
 
     def _mindoro_crossmodel_publication_specs(self) -> list[dict[str, Any]]:
-        subtitle = "Mindoro | 13-14 March 2023 | promoted cross-model comparator on the March 14 NOAA target | shared-imagery caveat explicit"
+        subtitle = "Mindoro | 13-14 March 2023 | cross-model comparator on the March 14 NOAA target | shared March 12 imagery caveat"
+        seed_mask = self._mindoro_reinit_seed_mask_path()
+        target_mask = self._mindoro_reinit_target_mask_path()
+        r1_row = self._mindoro_crossmodel_row("r1")
+        r0_row = self._mindoro_crossmodel_row("r0")
+        pygnome_row = self._mindoro_crossmodel_row("pygnome")
+        r1_mask = str(r1_row.get("forecast_path") or "") if r1_row is not None else ""
+        r0_mask = str(r0_row.get("forecast_path") or "") if r0_row is not None else ""
+        pygnome_mask = str(pygnome_row.get("forecast_path") or "") if pygnome_row is not None else ""
         return [
-            self._image_spec(
+            self._spatial_spec(
                 spec_id="mindoro_crossmodel_r1_overlay",
                 figure_family_code="B",
                 case_id="CASE_MINDORO_RETRO_2023",
@@ -2126,18 +2307,46 @@ class FigurePackagePublicationService:
                 view_type="single",
                 variant="paper",
                 figure_slug="march14_crossmodel_r1_overlay",
-                figure_title="Mindoro March 14 OpenDrift R1 previous reinit p50 versus target",
+                figure_title="Mindoro March 14 OpenDrift R1_previous",
+                map_panel_title="",
                 subtitle=subtitle,
-                interpretation="This figure shows the top-ranked OpenDrift model in the promoted March 14 cross-model bundle.",
-                notes="Copied from the completed March 13 -> March 14 cross-model comparison bundle; PyGNOME remains comparator-only and the shared-imagery caveat remains explicit.",
-                source_image_path=(
-                    "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit_pygnome_comparison/qa/"
-                    "qa_march14_crossmodel_R1_previous_reinit_p50_overlay.png"
+                interpretation="This figure shows the top-ranked OpenDrift model in the stored March 14 cross-model bundle, redrawn from the saved rasters instead of copied from QA.",
+                notes="Built from the stored March 14 observation mask, March 13 seed mask outline, and the stored OpenDrift R1 previous p50 raster only.",
+                note_lines=self._mindoro_crossmodel_note_lines(
+                    self._mindoro_crossmodel_score_line("r1", "OpenDrift R1 previous reinit p50")
                 ),
+                legend_keys=["observed_mask", "ensemble_p50", "initialization_polygon", "source_point"],
+                raster_layers=[
+                    {
+                        "path": target_mask,
+                        "legend_key": "observed_mask",
+                        "alpha": 0.34,
+                        "linewidth": 1.1,
+                        "zorder": 5,
+                    },
+                    {
+                        "path": seed_mask,
+                        "legend_key": "initialization_polygon",
+                        "fill": False,
+                        "outline": True,
+                        "linewidth": 1.2,
+                        "linestyle": "--",
+                        "zorder": 6,
+                    },
+                    {
+                        "path": r1_mask,
+                        "legend_key": "ensemble_p50",
+                        "alpha": 0.26,
+                        "linewidth": 1.4,
+                        "zorder": 7,
+                    },
+                ],
+                show_source=True,
+                include_source_in_crop=False,
                 recommended_for_main_defense=True,
                 recommended_for_paper=True,
             ),
-            self._image_spec(
+            self._spatial_spec(
                 spec_id="mindoro_crossmodel_r0_overlay",
                 figure_family_code="B",
                 case_id="CASE_MINDORO_RETRO_2023",
@@ -2148,16 +2357,45 @@ class FigurePackagePublicationService:
                 view_type="single",
                 variant="paper",
                 figure_slug="march14_crossmodel_r0_overlay",
-                figure_title="Mindoro March 14 OpenDrift R0 reinit p50 versus target",
+                figure_title="Mindoro March 14 OpenDrift R0",
+                map_panel_title="",
                 subtitle=subtitle,
-                interpretation="This figure keeps the baseline OpenDrift branch visible in the promoted March 14 cross-model discussion.",
-                notes="Copied from the completed March 13 -> March 14 cross-model comparison bundle; PyGNOME remains comparator-only and the shared-imagery caveat remains explicit.",
-                source_image_path=(
-                    "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit_pygnome_comparison/qa/"
-                    "qa_march14_crossmodel_R0_reinit_p50_overlay.png"
+                interpretation="This figure keeps the baseline OpenDrift branch visible in the promoted March 14 cross-model discussion using the same publication-grade map grammar as the DWH family.",
+                notes="Built from the stored March 14 observation mask, March 13 seed mask outline, and the stored OpenDrift R0 p50 raster only.",
+                note_lines=self._mindoro_crossmodel_note_lines(
+                    self._mindoro_crossmodel_score_line("r0", "OpenDrift R0 reinit p50"),
+                    self._stored_empty_forecast_line(r0_row, "OpenDrift R0 reinit p50"),
                 ),
+                legend_keys=["observed_mask", "ensemble_p50", "initialization_polygon", "source_point"],
+                raster_layers=[
+                    {
+                        "path": target_mask,
+                        "legend_key": "observed_mask",
+                        "alpha": 0.34,
+                        "linewidth": 1.1,
+                        "zorder": 5,
+                    },
+                    {
+                        "path": seed_mask,
+                        "legend_key": "initialization_polygon",
+                        "fill": False,
+                        "outline": True,
+                        "linewidth": 1.2,
+                        "linestyle": "--",
+                        "zorder": 6,
+                    },
+                    {
+                        "path": r0_mask,
+                        "legend_key": "ensemble_p50",
+                        "alpha": 0.26,
+                        "linewidth": 1.4,
+                        "zorder": 7,
+                    },
+                ],
+                show_source=True,
+                include_source_in_crop=False,
             ),
-            self._image_spec(
+            self._spatial_spec(
                 spec_id="mindoro_crossmodel_pygnome_overlay",
                 figure_family_code="B",
                 case_id="CASE_MINDORO_RETRO_2023",
@@ -2168,14 +2406,42 @@ class FigurePackagePublicationService:
                 view_type="single",
                 variant="paper",
                 figure_slug="march14_crossmodel_pygnome_overlay",
-                figure_title="Mindoro March 14 PyGNOME comparator versus target",
+                figure_title="Mindoro March 14 PyGNOME comparator",
+                map_panel_title="",
                 subtitle=subtitle,
-                interpretation="This figure preserves the PyGNOME comparator in the promoted March 14 lane without treating it as truth or as a replacement for the primary OpenDrift row.",
-                notes="Copied from the completed March 13 -> March 14 cross-model comparison bundle; PyGNOME remains comparator-only and the shared-imagery caveat remains explicit.",
-                source_image_path=(
-                    "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit_pygnome_comparison/qa/"
-                    "qa_march14_crossmodel_pygnome_reinit_deterministic_overlay.png"
+                interpretation="This figure preserves the PyGNOME comparator in the promoted March 14 lane without treating it as truth, rebuilt from the stored comparator mask rather than pasted from QA.",
+                notes="Built from the stored March 14 observation mask, March 13 seed mask outline, and the stored PyGNOME comparator raster only.",
+                note_lines=self._mindoro_crossmodel_note_lines(
+                    self._mindoro_crossmodel_score_line("pygnome", "PyGNOME comparator")
                 ),
+                legend_keys=["observed_mask", "pygnome", "initialization_polygon", "source_point"],
+                raster_layers=[
+                    {
+                        "path": target_mask,
+                        "legend_key": "observed_mask",
+                        "alpha": 0.34,
+                        "linewidth": 1.1,
+                        "zorder": 5,
+                    },
+                    {
+                        "path": seed_mask,
+                        "legend_key": "initialization_polygon",
+                        "fill": False,
+                        "outline": True,
+                        "linewidth": 1.2,
+                        "linestyle": "--",
+                        "zorder": 6,
+                    },
+                    {
+                        "path": pygnome_mask,
+                        "legend_key": "pygnome",
+                        "alpha": 0.24,
+                        "linewidth": 1.4,
+                        "zorder": 7,
+                    },
+                ],
+                show_source=True,
+                include_source_in_crop=False,
             ),
         ]
 
@@ -2239,16 +2505,17 @@ class FigurePackagePublicationService:
                 figure_title="Mindoro March 13 -> March 14 primary validation board",
                 subtitle=primary_subtitle,
                 interpretation="This is now the main Mindoro presentation board because it centers the promoted March 13 -> March 14 validation pair and the best OpenDrift result while keeping the shared-imagery caveat explicit.",
-                notes="Board assembled from the completed March 13 -> March 14 reinit QA figures only, with the shared-imagery caveat preserved in the packaging text.",
+                notes="Board assembled from publication-grade March 13 -> March 14 singles rebuilt from stored rasters and vectors only.",
                 note_lines=self._mindoro_primary_note_lines(
-                    self._mindoro_primary_score_line("OpenDrift R1 previous reinit p50"),
-                    self._mindoro_crossmodel_score_line("r0", "OpenDrift R0 reinit p50"),
+                    self._mindoro_primary_branch_score_line("R1_previous", "OpenDrift R1 previous reinit p50"),
+                    self._mindoro_primary_branch_score_line("R0", "OpenDrift R0 reinit p50"),
+                    self._stored_empty_forecast_line(self._mindoro_primary_branch_row("R0"), "OpenDrift R0 reinit p50"),
                 ),
                 panels=[
-                    {"panel_title": "March 13 seed mask on grid", "source_spec_id": "mindoro_primary_seed_mask"},
                     {"panel_title": "March 13 seed vs March 14 target", "source_spec_id": "mindoro_primary_seed_vs_target"},
                     {"panel_title": "Promoted R1 previous reinit overlay", "source_spec_id": "mindoro_primary_r1_overlay"},
                     {"panel_title": "R0 baseline branch overlay", "source_spec_id": "mindoro_primary_r0_overlay"},
+                    {"panel_title": "March 13 seed mask on grid", "source_spec_id": "mindoro_primary_seed_mask"},
                 ],
                 recommended_for_main_defense=True,
             ),
@@ -2264,13 +2531,15 @@ class FigurePackagePublicationService:
                 figure_title="Mindoro March 13 -> March 14 cross-model comparator board",
                 subtitle=crossmodel_subtitle,
                 interpretation="This board answers the cross-model question on the promoted March 14 target without treating PyGNOME as truth and without upgrading the shared-imagery pair into an independent day-to-day validation claim.",
-                notes="Board assembled from the completed March 13 -> March 14 cross-model QA figures only; PyGNOME remains comparator-only and the shared-imagery caveat stays explicit.",
+                notes="Board assembled from publication-grade March 13 -> March 14 singles rebuilt from stored rasters only; PyGNOME remains comparator-only.",
                 note_lines=self._mindoro_comparison_note_lines(
                     self._mindoro_crossmodel_score_line("r1", "OpenDrift R1 previous reinit p50"),
                     self._mindoro_crossmodel_score_line("r0", "OpenDrift R0 reinit p50"),
                     self._mindoro_crossmodel_score_line("pygnome", "PyGNOME comparator"),
+                    self._stored_empty_forecast_line(self._mindoro_crossmodel_row("r0"), "OpenDrift R0 reinit p50"),
                 ),
                 panels=[
+                    {"panel_title": "March 14 observation reference context", "source_spec_id": "mindoro_primary_seed_vs_target"},
                     {"panel_title": "OpenDrift R1 previous reinit p50", "source_spec_id": "mindoro_crossmodel_r1_overlay"},
                     {"panel_title": "OpenDrift R0 reinit p50", "source_spec_id": "mindoro_crossmodel_r0_overlay"},
                     {"panel_title": "PyGNOME deterministic comparator", "source_spec_id": "mindoro_crossmodel_pygnome_overlay"},

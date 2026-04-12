@@ -1,0 +1,91 @@
+workflow_mode: phase1_mindoro_focus_pre_spill_2016_2023
+workflow_track: historical_regional_validation
+case_id: phase1_mindoro_focus_pre_spill_2016_2023
+mode_label: Experimental Mindoro-focused historical/regional validation workflow
+description: Experimental pre-spill 2016-2023 Mindoro-focused drifter-calibration rerun for trial recipe selection only
+
+# Experimental Mindoro-focused Chapter 3 support box.
+# This is a separate non-canonical validation box used only for the trial lane below.
+phase1_validation_box: [118.751, 124.305, 10.620, 16.026]
+forcing_bbox_halo_degrees: 0.5
+drifter_acquisition_halo_degrees: 3.0
+output_root: output/phase1_mindoro_focus_pre_spill_2016_2023
+
+historical_window:
+  start_utc: "2016-01-01T00:00:00Z"
+  end_utc: "2023-03-02T23:59:59Z"
+  monthly_chunking: true
+
+segment_policy:
+  horizon_hours: 72
+  timestep_hours: 6
+  require_drogued_only: true
+  require_non_overlapping_windows: true
+  require_full_duration: true
+  require_continuous_coverage: true
+  require_all_points_inside_validation_box: true
+
+transport_settings:
+  direct_wind_drift_factor: 0.02
+  enable_stokes_drift: true
+  horizontal_diffusivity_m2s: 0.0
+  weathering_enabled: false
+  current_uncertainty: 0.0
+  require_wave_stokes_reader: true
+
+drifter:
+  required: true
+  mode: phase1_regional_monthly_chunks
+  server: https://osmc.noaa.gov/erddap
+  dataset_id: drifter_6hour_qc
+  required_fields:
+    - time
+    - latitude
+    - longitude
+    - ID
+    - ve
+    - vn
+    - err_lat
+    - err_lon
+    - drogue_lost_date
+    - deploy_date
+    - DrogueType
+    - DrogueLength
+    - DrogueDetectSensor
+
+phase1_recipe_family:
+  - cmems_era5
+  - cmems_gfs
+  - hycom_era5
+  - hycom_gfs
+
+ranking_subset:
+  mode: seasonal_start_months
+  months: [2, 3, 4]
+  label: mindoro_pre_spill_seasonal_subset_feb_apr
+  empty_subset_behavior: hard_fail
+  description: Rank recipes only on accepted segments whose start dates fall in February-April.
+
+distance_audit_source_point:
+  path: data/arcgis/CASE_MINDORO_RETRO_2023/source_point_metadata.geojson
+  label: mindoro_source_point
+  apply_to_registries: true
+  diagnostic_only: true
+
+candidate_baseline:
+  baseline_id: phase1_mindoro_focus_pre_spill_candidate_2016_2023_v1
+  description: Staged experimental Mindoro-focused pre-spill candidate baseline from the 2016-2023 drifter rerun
+  source_kind: staged_production_candidate
+  status_flag: provisional
+  valid: false
+  provisional: true
+  rerun_required: false
+  promotion_required: true
+  selection_basis: Experimental Mindoro-focused pre-spill 2016-2023 drogued-only non-overlapping 72 h transport-validation rerun ranked on the February-April seasonal subset
+  workflow_scope:
+    - mindoro_retro_2023
+  current_local_evidence_scope: experimental_mindoro_focused_pre_spill_2016_2023_regional_transport_validation_rerun
+  notes:
+    - This artifact is staged only and does not overwrite config/phase1_baseline_selection.yaml.
+    - This experimental lane does not modify legacy 2016 prototype outputs or the canonical March 13 -> March 14 B1 outputs.
+    - Downstream trial runs may set BASELINE_SELECTION_PATH to this candidate artifact explicitly.

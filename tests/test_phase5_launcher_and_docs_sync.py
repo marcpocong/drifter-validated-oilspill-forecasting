@@ -263,6 +263,7 @@ class Phase5LauncherAndDocsSyncTests(unittest.TestCase):
             (root / "output" / "trajectory_gallery_panel").mkdir(parents=True, exist_ok=True)
             (root / "output" / "figure_package_publication").mkdir(parents=True, exist_ok=True)
             (root / "output" / "prototype_2016_pygnome_similarity").mkdir(parents=True, exist_ok=True)
+            (root / "output" / "CASE_2016-09-01" / "weathering").mkdir(parents=True, exist_ok=True)
 
             (root / "output" / "CASE_MINDORO_RETRO_2023" / "phase3b" / "phase3b_summary.csv").write_text(
                 "metric,value\nfss_1km,0.0\n",
@@ -404,6 +405,10 @@ class Phase5LauncherAndDocsSyncTests(unittest.TestCase):
                 "png\n",
                 encoding="utf-8",
             )
+            (root / "output" / "CASE_2016-09-01" / "weathering" / "budget_light.csv").write_text(
+                "hour,surface_pct\n0,100.0\n",
+                encoding="utf-8",
+            )
             (root / "ui").mkdir(parents=True, exist_ok=True)
             (root / "ui" / "app.py").write_text("print('ui')\n", encoding="utf-8")
 
@@ -489,20 +494,26 @@ class Phase5LauncherAndDocsSyncTests(unittest.TestCase):
             )
             self.assertTrue(
                 (
-                    (output_catalog_df["track_id"] == "prototype_legacy_pygnome_similarity_summary")
+                    (output_catalog_df["track_id"] == "prototype_legacy_phase3a")
                     & (output_catalog_df["artifact_type"] == "prototype_pygnome_similarity_manifest.json")
                 ).any()
             )
             self.assertTrue(
                 (
-                    (output_catalog_df["track_id"] == "prototype_legacy_pygnome_similarity_summary")
+                    (output_catalog_df["track_id"] == "prototype_legacy_phase3a")
                     & (output_catalog_df["relative_path"] == "output/prototype_2016_pygnome_similarity/figures/prototype_single.png")
+                ).any()
+            )
+            self.assertTrue(
+                (
+                    (output_catalog_df["track_id"] == "prototype_legacy_phase4_weathering")
+                    & (output_catalog_df["relative_path"] == "output/CASE_2016-09-01/weathering/budget_light.csv")
                 ).any()
             )
 
             self.assertTrue(
                 (
-                    (manifest_index_df["track_id"] == "prototype_legacy_pygnome_similarity_summary")
+                    (manifest_index_df["track_id"] == "prototype_legacy_phase3a")
                     & (manifest_index_df["relative_path"] == "output/prototype_2016_pygnome_similarity/prototype_pygnome_similarity_manifest.json")
                 ).any()
             )

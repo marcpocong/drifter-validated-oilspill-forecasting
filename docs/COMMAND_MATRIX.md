@@ -19,7 +19,7 @@
 | `mindoro_appendix_sensitivity_bundle` | sensitivity/appendix | `mindoro_retro_2023` | rerun appendix and sensitivity branches | expensive | `.\start.ps1 -Entry mindoro_appendix_sensitivity_bundle -NoPause` |
 | `mindoro_march13_14_noaa_reinit_stress_test` | sensitivity/appendix | `mindoro_retro_2023` | backward-compatible alias that still resolves to the promoted March 13 -> March 14 bundle and comparator lane | expensive | `.\start.ps1 -Entry mindoro_march13_14_noaa_reinit_stress_test -NoPause` |
 | `prototype_2021_bundle` | legacy prototype | `prototype_2021` | preferred accepted-segment debug/demo path; exact 2021 drifter windows, official Phase 1 recipe family only, and transport-core bundle only | moderate | `.\start.ps1 -Entry prototype_2021_bundle -NoPause` |
-| `prototype_legacy_bundle` | legacy prototype | `prototype_2016` | legacy debug/regression only; prep attempts best-effort GFS, pads forcing coverage for the preserved ensemble jitter, writes the legacy similarity package after benchmark, and keeps `3`/`3b` only as appendix/smoke follow-ons | moderate | `.\start.ps1 -Entry prototype_legacy_bundle -NoPause` |
+| `prototype_legacy_bundle` | legacy prototype | `prototype_2016` | legacy debug/regression only; visible thesis-facing support flow is `Phase 1 -> Phase 2 -> Phase 3A -> Phase 4`, with best-effort GFS prep, deterministic plus `p50`/`p90` comparator outputs, and no thesis-facing 3B/3C lane | moderate | `.\start.ps1 -Entry prototype_legacy_bundle -NoPause` |
 
 ## Direct Docker Commands
 
@@ -77,17 +77,17 @@ docker-compose exec -T -e WORKFLOW_MODE=prototype_2021 -e PIPELINE_PHASE=benchma
 docker-compose exec -T -e WORKFLOW_MODE=prototype_2021 -e PIPELINE_PHASE=prototype_pygnome_similarity_summary pipeline python -m src
 ```
 
-Legacy prototype appendix/smoke lane:
+Legacy prototype Phase 1 / 2 / 3A / 4 lane:
 
 ```bash
 docker-compose exec -T -e WORKFLOW_MODE=prototype_2016 -e PIPELINE_PHASE=prep pipeline python -m src
 docker-compose exec -T -e WORKFLOW_MODE=prototype_2016 pipeline python -m src
 docker-compose exec -T -e WORKFLOW_MODE=prototype_2016 -e PIPELINE_PHASE=benchmark gnome python -m src
 docker-compose exec -T -e WORKFLOW_MODE=prototype_2016 -e PIPELINE_PHASE=prototype_pygnome_similarity_summary pipeline python -m src
-docker-compose exec -T -e WORKFLOW_MODE=prototype_2016 -e PIPELINE_PHASE=3 gnome python -m src
+docker-compose exec -T -e WORKFLOW_MODE=prototype_2016 -e PIPELINE_PHASE=prototype_legacy_phase4_weathering gnome python -m src
 ```
 
-`prototype_2021` fetches only the fixed accepted 2021 drifter rows, uses the official four-recipe Phase 1 family, and writes its support-only similarity package to `output/prototype_2021_pygnome_similarity/`. `prototype_2016` remains preserved as the historical legacy lane. `Phase 4 = Oil-Type Fate and Shoreline Impact Analysis` and is separate from both drifter-debug workflows.
+`prototype_2021` fetches only the fixed accepted 2021 drifter rows, uses the official four-recipe Phase 1 family, and writes its support-only similarity package to `output/prototype_2021_pygnome_similarity/`. `prototype_2016` remains preserved as the historical legacy lane, but it is now framed thesis-facing only as `Phase 1 / 2 / 3A / 4`, with `phase5_sync` separate and no thesis-facing 3B/3C lane.
 
 ## Guardrails
 
@@ -95,7 +95,7 @@ docker-compose exec -T -e WORKFLOW_MODE=prototype_2016 -e PIPELINE_PHASE=3 gnome
 - Use the scientific rerun entries only when a deliberate rerun is actually desired.
 - Do not interpret either prototype lane as the final Phase 1 study.
 - Prototype GFS is best-effort in the legacy lane; the dedicated Phase 1 regional rerun remains the strict GFS-required workflow.
-- Keep `3` and `3b` as legacy appendix/smoke paths, not part of the preferred `prototype_2021` proof story.
+- Keep `prototype_2016` on the legacy `Phase 1 / 2 / 3A / 4` support story; `3` and `3b` survive only as deprecated compatibility aliases and are not visible thesis-facing steps.
 - The dedicated Phase 1 rerun stages `output/phase1_production_rerun/phase1_baseline_selection_candidate.yaml` only; do not treat it as an automatic overwrite of `config/phase1_baseline_selection.yaml`.
 - Use `BASELINE_SELECTION_PATH` for downstream trials against the staged candidate; keep promotion of `config/phase1_baseline_selection.yaml` explicit and manual.
 - Keep `config/case_mindoro_retro_2023.yaml` frozen as the March 3 -> March 6 base case; the promoted March 13 -> March 14 B1 row is carried by amendment, not by silent rewrite.

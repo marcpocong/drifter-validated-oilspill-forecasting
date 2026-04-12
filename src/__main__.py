@@ -35,19 +35,23 @@ Container routing via the PIPELINE_PHASE environment variable:
   PIPELINE_PHASE=phase1_finalization_audit -> Read-only Chapter 3 Phase 1 architecture audit and verdict
   PIPELINE_PHASE=phase2_finalization_audit -> Read-only Chapter 3 Phase 2 semantics/manifests audit and verdict
   PIPELINE_PHASE=phase1_production_rerun -> Dedicated full 2016-2022 historical/regional Phase 1 production rerun
+  PIPELINE_PHASE=mindoro_march13_14_phase1_focus_trial -> Experimental March 13 -> March 14 replay using the staged Mindoro-focused pre-spill Phase 1 candidate
   PIPELINE_PHASE=mindoro_local_recipe_experiment -> Stage a Mindoro-local recipe candidate and replay the Mindoro event comparison with GFS
   PIPELINE_PHASE=phase4_oiltype_and_shoreline -> Mindoro Phase 4 oil-type fate and shoreline-impact workflow
   PIPELINE_PHASE=phase4_crossmodel_comparability_audit -> Read-only Phase 4 OpenDrift-vs-PyGNOME comparability audit
   PIPELINE_PHASE=phase5_launcher_and_docs_sync -> Read-only launcher/docs/reproducibility package sync
   PIPELINE_PHASE=trajectory_gallery_build -> Read-only static trajectory/overlay/shoreline figure gallery
   PIPELINE_PHASE=prototype_pygnome_similarity_summary -> Read-only cross-case prototype OpenDrift-vs-PyGNOME transport summary
-  PIPELINE_PHASE=3               -> Phase 3 (oil weathering & PyGNOME comparison)
+  PIPELINE_PHASE=prototype_legacy_phase4_weathering -> Prototype 2016 legacy Phase 4 oil weathering and fate analysis
+  PIPELINE_PHASE=3               -> Legacy compatibility alias (prototype_2016 Phase 4; otherwise legacy Phase 3 weathering path)
   PIPELINE_PHASE=benchmark       -> Phase 3A cross-model benchmark
+  PIPELINE_PHASE=3b              -> Legacy compatibility alias (prototype_2016 appendix-only hidden path)
 
 docker-compose exec pipeline runs Phase 1 + 2.
 docker-compose exec gnome   runs Phase 3.
 """
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -59,6 +63,27 @@ def print_workflow_context():
     print("Workflow Context:")
     for line in get_case_log_lines():
         print(f"  {line}")
+
+
+def emit_forcing_outage_skip_and_exit(exc) -> None:
+    from src.utils.forcing_outage_policy import (
+        FORCING_OUTAGE_SKIP_EXIT_CODE,
+        FORCING_OUTAGE_SKIP_PAYLOAD_PREFIX,
+    )
+
+    print("")
+    print("Phase skipped after a temporary forcing-provider outage.")
+    print(f"Reason: {exc.reason}")
+    if exc.missing_forcing_factors:
+        print(f"Missing forcing factors: {', '.join(exc.missing_forcing_factors)}")
+    if exc.skipped_recipe_ids:
+        print(f"Skipped recipes: {', '.join(exc.skipped_recipe_ids)}")
+    if exc.skipped_branch_ids:
+        print(f"Skipped branches: {', '.join(exc.skipped_branch_ids)}")
+    if exc.manifest_path:
+        print(f"Manifest: {exc.manifest_path}")
+    print(f"{FORCING_OUTAGE_SKIP_PAYLOAD_PREFIX}{json.dumps(exc.to_payload(), sort_keys=True)}")
+    sys.exit(FORCING_OUTAGE_SKIP_EXIT_CODE)
 
 
 def _prep_command_hint() -> str:
@@ -176,6 +201,12 @@ def ensure_data_exists(run_name: str, require_drifter: bool = True):
 def run_prep():
     from src.core.case_context import get_case_context
     from src.core.constants import RUN_NAME
+    from src.exceptions.custom import (
+        PREP_OUTAGE_DECISION_EXIT_CODE,
+        PREP_OUTAGE_PAYLOAD_PREFIX,
+        PREP_OUTAGE_PROMPT_SUPPORTED_ENV,
+        PrepOutageDecisionRequired,
+    )
     from src.services.ingestion import DataIngestionService
 
     pipeline_role = os.environ.get("PIPELINE_ROLE", "").strip().lower()
@@ -189,7 +220,21 @@ def run_prep():
     print("Starting pipeline-only input preparation...")
     print_workflow_context()
 
-    result = DataIngestionService().run() or {}
+    try:
+        result = DataIngestionService().run() or {}
+    except PrepOutageDecisionRequired as exc:
+        print("")
+        print("Required prep input hit a temporary remote-service outage.")
+        print(f"Source: {exc.source_id}")
+        print(f"Validated same-case cache: {exc.cache_path}")
+        print(f"Remote error: {exc.error}")
+        if os.environ.get(PREP_OUTAGE_PROMPT_SUPPORTED_ENV, "").strip() == "1":
+            print(f"{PREP_OUTAGE_PAYLOAD_PREFIX}{json.dumps(exc.to_payload(), sort_keys=True)}")
+            sys.exit(PREP_OUTAGE_DECISION_EXIT_CODE)
+        print("This direct prep command is non-interactive and will not prompt for cache reuse.")
+        print("Rerun prep through .\\start.ps1 so you can choose 'Reuse validated cache' or 'Cancel'.")
+        sys.exit(1)
+
     ensure_prepared_inputs(
         RUN_NAME,
         require_drifter=case.drifter_required,
@@ -366,7 +411,12 @@ def run_official_phase3b_minimal():
     run_phase3b()
 
 
-def run_phase3():
+def run_phase3(
+    *,
+    phase_label: str = "Phase 3",
+    refined_stage_label: str = "Stage 3b",
+    include_gnome_comparison: bool = True,
+):
     import yaml
 
     from src.core.constants import BASE_OUTPUT_DIR, RUN_NAME
@@ -377,7 +427,7 @@ def run_phase3():
     from src.services.weathering import run_refined_weathering, run_weathering
     from src.utils.io import resolve_recipe_selection, resolve_spill_origin
 
-    print("Starting Phase 3: Oil Weathering and Fate Analysis...")
+    print(f"Starting {phase_label}: Oil Weathering and Fate Analysis...")
     print_workflow_context()
 
     selection = resolve_recipe_selection()
@@ -412,7 +462,7 @@ def run_phase3():
         start_lon=start_lon,
     )
 
-    print("\nPhase 3 - Mass Budget Summary (at 72 h):")
+    print(f"\n{phase_label} - Mass Budget Summary (at 72 h):")
     for oil_key, res in weathering_results.items():
         df = res["budget_df"]
         last = df.iloc[-1]
@@ -467,7 +517,7 @@ def run_phase3():
         r_last = r_df.iloc[-1]
         r_qc = refined_result.get("qc", {})
         r_status = "PASS" if r_qc.get("passed", True) else "FAIL"
-        print("\nStage 3b - Refined Oil Budget (at 72 h):")
+        print(f"\n{refined_stage_label} - Refined Oil Budget (at 72 h):")
         print(f"  [{refined_result['display_name']}]")
         print(f"    Surface:    {r_last['surface_pct']:.1f}%")
         print(f"    Evaporated: {r_last['evaporated_pct']:.1f}%")
@@ -475,19 +525,44 @@ def run_phase3():
         print(f"    Beached:    {r_last['beached_pct']:.1f}%")
         print(f"  QC: {r_status}  (max deviation {r_qc.get('max_deviation_pct', 0):.2f} %)")
 
-    print("\nRunning supplementary PyGNOME cross-comparison...")
-    gnome_results = run_gnome_comparison(
-        start_lat=start_lat,
-        start_lon=start_lon,
-        start_time=start_time_str,
-        openoil_results=weathering_results,
-    )
-    if gnome_results:
-        print(f"PyGNOME comparison complete. Charts saved to {BASE_OUTPUT_DIR}/gnome_comparison/")
-    else:
-        print("PyGNOME not available - skipping cross-comparison.")
+    if include_gnome_comparison:
+        print("\nRunning supplementary PyGNOME cross-comparison...")
+        gnome_results = run_gnome_comparison(
+            start_lat=start_lat,
+            start_lon=start_lon,
+            start_time=start_time_str,
+            openoil_results=weathering_results,
+        )
+        if gnome_results:
+            print(f"PyGNOME comparison complete. Charts saved to {BASE_OUTPUT_DIR}/gnome_comparison/")
+        else:
+            print("PyGNOME not available - skipping cross-comparison.")
 
-    print(f"\nPhase 3 complete. Check {BASE_OUTPUT_DIR}/weathering/ for mass budget charts.")
+    print(f"\n{phase_label} complete. Check {BASE_OUTPUT_DIR}/weathering/ for mass budget charts.")
+
+
+def run_prototype_legacy_phase4_weathering(*, deprecated_alias: str | None = None):
+    from src.core.case_context import get_case_context
+
+    case = get_case_context()
+    if case.workflow_mode != "prototype_2016":
+        print("prototype_legacy_phase4_weathering is only supported for the prototype_2016 workflow.")
+        sys.exit(1)
+
+    if deprecated_alias:
+        print(
+            f"WARNING: PIPELINE_PHASE={deprecated_alias} is deprecated for prototype_2016. "
+            "Use PIPELINE_PHASE=prototype_legacy_phase4_weathering instead."
+        )
+    print(
+        "Legacy prototype 2016 thesis-facing flow is Phase 1 -> Phase 2 -> Phase 3A -> Phase 4. "
+        "No thesis-facing Phase 3B or Phase 3C exists for this lane."
+    )
+    run_phase3(
+        phase_label="Phase 4",
+        refined_stage_label="Legacy refined oil appendix",
+        include_gnome_comparison=False,
+    )
 
 
 def run_benchmark():
@@ -535,8 +610,8 @@ def run_prototype_pygnome_similarity_summary_phase():
         )
     else:
         print(
-            "This phase is legacy/debug only and builds a consolidated transport benchmark summary "
-            "from the existing three 2016 deterministic OpenDrift-vs-deterministic PyGNOME outputs."
+            "This phase is legacy/debug Phase 3A only and builds a consolidated transport benchmark summary "
+            "from the existing three 2016 OpenDrift deterministic, p50, and p90 tracks against deterministic PyGNOME."
         )
 
     results = run_prototype_pygnome_similarity_summary()
@@ -554,6 +629,8 @@ def run_prototype_pygnome_similarity_summary_phase():
     print(f"Single forecast figures: {results['single_figure_count']}")
     print(f"Comparison boards: {results['board_figure_count']}")
     print(f"Top-ranked case: {results['top_ranked_case_id']}")
+    if results.get("top_ranked_comparison_track_id"):
+        print(f"Top-ranked comparison track: {results['top_ranked_comparison_track_id']}")
     print(f"Top-ranked mean FSS @ 5 km: {results['top_ranked_mean_fss_5km']:.4f}")
     print(f"Top-ranked mean KL: {results['top_ranked_mean_kl']:.4f}")
     print(f"Cases summarized: {results['case_count']}")
@@ -565,9 +642,16 @@ def run_phase3b():
     from src.services.scoring import run_phase3b_scoring
     from src.utils.io import resolve_recipe_selection
 
-    print("Starting Phase 3B: Observational Validation vs Satellite Imagery...")
-    print_workflow_context()
     case = get_case_context()
+    if case.workflow_mode == "prototype_2016":
+        print(
+            "WARNING: prototype_2016 no longer treats PIPELINE_PHASE=3b as a thesis-facing phase. "
+            "This hidden compatibility path is appendix-only and outside the 2016 Phase 1 / 2 / 3A / 4 / 5 story."
+        )
+        print("Starting legacy appendix-only 3b scoring...")
+    else:
+        print("Starting Phase 3B: Observational Validation vs Satellite Imagery...")
+    print_workflow_context()
 
     selection = resolve_recipe_selection()
     best_recipe = selection.recipe
@@ -815,6 +899,7 @@ def run_phase3b_extended_public_phase():
 
 def run_phase3b_extended_public_scored_phase():
     from src.core.case_context import get_case_context
+    from src.exceptions.custom import ForcingOutagePhaseSkipped
     from src.services.phase3b_extended_public_scored import run_phase3b_extended_public_scored
 
     case = get_case_context()
@@ -825,7 +910,10 @@ def run_phase3b_extended_public_scored_phase():
     print("Starting appendix-only scored short extended public-observation validation...")
     print_workflow_context()
 
-    results = run_phase3b_extended_public_scored()
+    try:
+        results = run_phase3b_extended_public_scored()
+    except ForcingOutagePhaseSkipped as exc:
+        emit_forcing_outage_skip_and_exit(exc)
     print("\nShort extended public-observation scoring complete.")
     print(f"Outputs saved to: {results['output_dir']}")
     print(f"Accepted short-tier dates scored: {', '.join(results['accepted_short_dates_scored']) or 'none'}")
@@ -841,6 +929,7 @@ def run_phase3b_extended_public_scored_phase():
 
 def run_phase3b_extended_public_scored_march23_phase():
     from src.core.case_context import get_case_context
+    from src.exceptions.custom import ForcingOutagePhaseSkipped
     from src.services.phase3b_extended_public_scored_march23 import run_phase3b_extended_public_scored_march23
 
     case = get_case_context()
@@ -851,7 +940,10 @@ def run_phase3b_extended_public_scored_march23_phase():
     print("Starting appendix-only March 23 extended public branch stress test...")
     print_workflow_context()
 
-    results = run_phase3b_extended_public_scored_march23()
+    try:
+        results = run_phase3b_extended_public_scored_march23()
+    except ForcingOutagePhaseSkipped as exc:
+        emit_forcing_outage_skip_and_exit(exc)
     print("\nMarch 23 extended public branch stress test complete.")
     print(f"Outputs saved to: {results['output_dir']}")
     print(f"Accepted March 23 source key: {results['accepted_source_key']}")
@@ -865,6 +957,7 @@ def run_phase3b_extended_public_scored_march23_phase():
 
 def run_phase3b_extended_public_scored_march13_14_reinit_phase():
     from src.core.case_context import get_case_context
+    from src.exceptions.custom import ForcingOutagePhaseSkipped
     from src.services.phase3b_extended_public_scored_march13_14_reinit import (
         run_phase3b_extended_public_scored_march13_14_reinit,
     )
@@ -877,7 +970,10 @@ def run_phase3b_extended_public_scored_march13_14_reinit_phase():
     print("Starting Mindoro Phase 3B March 13 -> March 14 primary public-validation rerun...")
     print_workflow_context()
 
-    results = run_phase3b_extended_public_scored_march13_14_reinit()
+    try:
+        results = run_phase3b_extended_public_scored_march13_14_reinit()
+    except ForcingOutagePhaseSkipped as exc:
+        emit_forcing_outage_skip_and_exit(exc)
     print("\nMindoro Phase 3B March 13 -> March 14 primary public-validation rerun complete.")
     print(f"Outputs saved to: {results['output_dir']}")
     print(f"Start source key: {results['start_source_key']}")
@@ -1050,6 +1146,7 @@ def run_init_mode_sensitivity_r1_phase():
 
 def run_source_history_reconstruction_r1_phase():
     from src.core.case_context import get_case_context
+    from src.exceptions.custom import ForcingOutagePhaseSkipped
     from src.services.source_history_reconstruction_r1 import run_source_history_reconstruction_r1
 
     case = get_case_context()
@@ -1060,7 +1157,10 @@ def run_source_history_reconstruction_r1_phase():
     print("Starting R1 source-history reconstruction sensitivity...")
     print_workflow_context()
 
-    results = run_source_history_reconstruction_r1()
+    try:
+        results = run_source_history_reconstruction_r1()
+    except ForcingOutagePhaseSkipped as exc:
+        emit_forcing_outage_skip_and_exit(exc)
     summary = results["summary"]
     strict = summary[summary["pair_role"] == "strict_march6"]
     event = summary[summary["pair_role"] == "eventcorridor_march4_6"]
@@ -1371,6 +1471,7 @@ def run_dwh_phase3c_smoke_phase():
 
 def run_dwh_phase3c_scientific_forcing_ready_phase():
     from src.core.case_context import get_case_context
+    from src.exceptions.custom import ForcingOutagePhaseSkipped
     from src.services.dwh_phase3c_scientific_forcing import run_dwh_phase3c_scientific_forcing_ready
 
     case = get_case_context()
@@ -1381,7 +1482,10 @@ def run_dwh_phase3c_scientific_forcing_ready_phase():
     print("Starting DWH Phase 3C scientific forcing readiness...")
     print_workflow_context()
 
-    results = run_dwh_phase3c_scientific_forcing_ready()
+    try:
+        results = run_dwh_phase3c_scientific_forcing_ready()
+    except ForcingOutagePhaseSkipped as exc:
+        emit_forcing_outage_skip_and_exit(exc)
     sources = results["selected_sources"]
 
     print("\nDWH scientific forcing readiness complete.")
@@ -1644,23 +1748,39 @@ def run_phase2_finalization_audit_phase():
 
 
 def run_phase1_production_rerun_phase():
+    from src.core.case_context import get_case_context
+    from src.exceptions.custom import ForcingOutagePhaseSkipped
     from src.services.phase1_production_rerun import run_phase1_production_rerun
 
+    case = get_case_context()
     print("Starting dedicated Phase 1 regional production rerun...")
     print(
-        "This is an expensive scientific rerun for the 2016-2022 historical/regional drifter pool. "
+        f"This is an expensive scientific rerun for the {case.description.lower()}. "
         "It stages a candidate baseline artifact only and will not overwrite config/phase1_baseline_selection.yaml."
     )
 
-    results = run_phase1_production_rerun()
+    try:
+        results = run_phase1_production_rerun()
+    except ForcingOutagePhaseSkipped as exc:
+        emit_forcing_outage_skip_and_exit(exc)
 
     print("\nPhase 1 production rerun complete.")
     print(f"Outputs saved to: {results['output_dir']}")
     print(f"Accepted segments: {results['accepted_segment_count']}")
     print(f"Rejected segments: {results['rejected_segment_count']}")
+    print(f"Ranking-subset segments: {results['ranking_subset_segment_count']}")
     print(f"Winning recipe: {results['winning_recipe']}")
     print(f"GFS-capable recipes really ran: {results['gfs_capable_recipes_ran']}")
+    print(f"Forcing outage policy: {results['forcing_outage_policy']}")
+    print(f"Degraded continuation used: {results['degraded_continue_used']}")
+    print(f"Rerun required: {results['rerun_required']}")
+    if results.get("missing_forcing_factors"):
+        print(f"Missing forcing factors: {', '.join(results['missing_forcing_factors'])}")
+    if results.get("skipped_recipe_ids"):
+        print(f"Skipped recipes: {', '.join(results['skipped_recipe_ids'])}")
     print(f"Drifter registry: {results['drifter_registry_csv']}")
+    print(f"Ranking-subset registry: {results['ranking_subset_registry_csv']}")
+    print(f"Ranking-subset report: {results['ranking_subset_report_md']}")
     print(f"Loading audit: {results['loading_audit_csv']}")
     print(f"Segment metrics: {results['segment_metrics_csv']}")
     print(f"Recipe summary: {results['recipe_summary_csv']}")
@@ -1670,6 +1790,38 @@ def run_phase1_production_rerun_phase():
     print("  - Trial downstream runs with BASELINE_SELECTION_PATH pointed at the candidate artifact")
     print("  - Run phase1_audit manually if you want the read-only audit bundle refreshed")
     print("  - Run phase5_sync manually if you want launcher/docs/package outputs refreshed")
+
+
+def run_mindoro_march13_14_phase1_focus_trial_phase():
+    from src.core.case_context import get_case_context
+    from src.services.mindoro_march13_14_phase1_focus_trial import (
+        run_mindoro_march13_14_phase1_focus_trial,
+    )
+
+    case = get_case_context()
+    if case.workflow_mode != "mindoro_retro_2023" or not case.is_official:
+        print("mindoro_march13_14_phase1_focus_trial requires WORKFLOW_MODE=mindoro_retro_2023.")
+        sys.exit(1)
+
+    print("Starting experimental Mindoro March 13 -> March 14 Phase 1 focus trial...")
+    print(
+        "This phase uses a staged Mindoro-focused pre-spill Phase 1 candidate baseline, reruns only the "
+        "March 13 -> March 14 OpenDrift lane into a separate non-canonical directory, and compares it "
+        "against the stored canonical B1 result."
+    )
+    print("The canonical config/phase1_baseline_selection.yaml and canonical B1 outputs remain unchanged.")
+
+    results = run_mindoro_march13_14_phase1_focus_trial()
+
+    print("\nExperimental Mindoro March 13 -> March 14 Phase 1 focus trial complete.")
+    print(f"Outputs saved to: {results['output_dir']}")
+    print(f"Trial summary: {results['trial_summary_csv']}")
+    print(f"Comparison CSV: {results['comparison_csv']}")
+    print(f"Comparison report: {results['report_md']}")
+    print(f"Manifest: {results['manifest_json']}")
+    print(f"Canonical recipe: {results['canonical_recipe']}")
+    print(f"Experimental recipe: {results['experimental_recipe']}")
+    print(f"Comparison verdict: {results['comparison_verdict']}")
 
 
 def run_mindoro_local_recipe_experiment_phase():
@@ -1887,6 +2039,8 @@ def main():
     import subprocess
 
     from src.core.case_context import get_case_context
+    from src.exceptions.custom import PREP_OUTAGE_DECISION_EXIT_CODE
+    from src.utils.forcing_outage_policy import FORCING_OUTAGE_SKIP_EXIT_CODE
 
     is_spawned = os.environ.get("RUN_SPAWNED")
     phase = os.environ.get("PIPELINE_PHASE", "1_2")
@@ -1901,6 +2055,9 @@ def main():
         return
     if phase == "phase1_production_rerun":
         run_phase1_production_rerun_phase()
+        return
+    if phase == "mindoro_march13_14_phase1_focus_trial":
+        run_mindoro_march13_14_phase1_focus_trial_phase()
         return
     if phase == "mindoro_local_recipe_experiment":
         run_mindoro_local_recipe_experiment_phase()
@@ -1919,6 +2076,9 @@ def main():
         return
     if phase == "prototype_pygnome_similarity_summary":
         run_prototype_pygnome_similarity_summary_phase()
+        return
+    if phase == "prototype_legacy_phase4_weathering":
+        run_prototype_legacy_phase4_weathering()
         return
     if phase == "trajectory_gallery_panel_polish":
         run_trajectory_gallery_panel_polish_phase()
@@ -1946,6 +2106,11 @@ def main():
             env["RUN_SPAWNED"] = "1"
             result = subprocess.run([sys.executable, "-m", "src"], env=env)
             if result.returncode != 0:
+                if result.returncode == PREP_OUTAGE_DECISION_EXIT_CODE:
+                    sys.exit(result.returncode)
+                if result.returncode == FORCING_OUTAGE_SKIP_EXIT_CODE:
+                    print(f"Case {token} skipped after forcing outage under degraded continuation. Continuing to next case...")
+                    continue
                 print(f"Pipeline failed for case {token}. Continuing to next case...")
         return
 
@@ -2013,6 +2178,8 @@ def main():
         run_phase2_finalization_audit_phase()
     elif phase == "phase1_production_rerun":
         run_phase1_production_rerun_phase()
+    elif phase == "mindoro_march13_14_phase1_focus_trial":
+        run_mindoro_march13_14_phase1_focus_trial_phase()
     elif phase == "mindoro_local_recipe_experiment":
         run_mindoro_local_recipe_experiment_phase()
     elif phase == "phase4_oiltype_and_shoreline":
@@ -2028,7 +2195,10 @@ def main():
     elif phase == "figure_package_publication":
         run_figure_package_publication_phase()
     elif phase == "3":
-        run_phase3()
+        if case.workflow_mode == "prototype_2016":
+            run_prototype_legacy_phase4_weathering(deprecated_alias="3")
+        else:
+            run_phase3()
     elif phase == "3b":
         run_phase3b()
     else:

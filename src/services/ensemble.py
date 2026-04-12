@@ -877,6 +877,23 @@ class EnsembleForecastService:
             time=normalize_model_timestamp(start_time).to_pydatetime(),
         )
 
+    @staticmethod
+    def _seed_point_release(
+        model: OceanDrift,
+        *,
+        start_time,
+        start_lat: float,
+        start_lon: float,
+        num_elements: int,
+    ) -> None:
+        """Seed particles from a single legacy drifter-of-record point."""
+        model.seed_elements(
+            lon=float(start_lon),
+            lat=float(start_lat),
+            number=int(num_elements),
+            time=normalize_model_timestamp(start_time).to_pydatetime(),
+        )
+
     def _seed_official_release(
         self,
         model: OceanDrift,
@@ -1362,12 +1379,14 @@ class EnsembleForecastService:
         snapshots = self.snapshot_hours
         grid = GridBuilder()
         written_files: list[Path] = []
+        product_records: list[dict] = []
 
         metadata = {
             "ensemble_size": self.ensemble_size,
             "grid": grid.spec.to_metadata(),
             "snapshots_hours": snapshots,
-            "variables": ["probability"],
+            "variables": ["probability", "mask_p50", "mask_p90"],
+            "legacy_support_only": True,
         }
 
         metadata_path = self.output_dir / "metadata.json"
@@ -1433,6 +1452,32 @@ class EnsembleForecastService:
             tif_out = get_ensemble_probability_score_raster_path(hr, run_name=self.output_run_name)
             save_raster(grid, prob_density, tif_out)
             written_files.append(tif_out)
+            product_records.append(
+                {
+                    "product_type": "probability_density",
+                    "hour": int(hr),
+                    "relative_path": _relative_output_path(tif_out, self.base_output_dir),
+                    "semantics": "Legacy prototype support-only ensemble probability density raster.",
+                    "legacy_support_only": True,
+                }
+            )
+
+            for threshold, threshold_label in ((0.50, "p50"), (0.90, "p90")):
+                mask_out = self.output_dir / f"mask_{threshold_label}_{hr}h.tif"
+                save_raster(grid, (prob_density >= threshold).astype(np.float32), mask_out)
+                written_files.append(mask_out)
+                product_records.append(
+                    {
+                        "product_type": f"mask_{threshold_label}",
+                        "hour": int(hr),
+                        "relative_path": _relative_output_path(mask_out, self.base_output_dir),
+                        "semantics": (
+                            "Legacy prototype support-only ensemble threshold mask "
+                            f"where probability of presence is at least {threshold:.2f}."
+                        ),
+                        "legacy_support_only": True,
+                    }
+                )
 
             img_out = self.output_dir / f"probability_{hr}h.png"
             plot_corners = grid.display_bounds_wgs84 or [grid.min_lon, grid.max_lon, grid.min_lat, grid.max_lat]
@@ -1453,7 +1498,7 @@ class EnsembleForecastService:
                 written_files.append(alias_path)
 
         logger.info("All Phase 2 probability products saved to %s", self.output_dir)
-        return written_files
+        return written_files, product_records
 
     def _write_loading_audit_artifacts(self):
         phase2_finalization = self._build_phase2_finalization_context(self.active_recipe_selection)
@@ -1673,6 +1718,12 @@ class EnsembleForecastService:
             )
         else:
             payload = {
+                "manifest_type": "prototype_phase2_ensemble",
+                "workflow_mode": self.case.workflow_mode,
+                "case_id": self.case.case_id,
+                "run_name": self.output_run_name,
+                "legacy_support_only": True,
+                "products": product_records,
                 "written_files": [
                     {
                         "file_name": path.name,
@@ -1695,8 +1746,11 @@ class EnsembleForecastService:
         self,
         recipe_name: str,
         start_time: str,
+        start_lat: float | None = None,
+        start_lon: float | None = None,
         duration_hours: int = 72,
         selection: RecipeSelection | None = None,
+        force_point_release: bool = False,
     ) -> dict:
         """Run a single deterministic spill forecast for official Phase 3B scoring."""
         logger.info("Starting deterministic control forecast for recipe %s", recipe_name)
@@ -1743,13 +1797,39 @@ class EnsembleForecastService:
         model.set_config("drift:horizontal_diffusivity", horizontal_diffusivity)
         model.set_config("drift:wind_uncertainty", 0.0)
         model.set_config("drift:current_uncertainty", 0.0)
-        seed_record = self._seed_official_release(
-            model,
-            simulation_start,
-            num_elements=seed_element_count,
-            random_seed=seed_random_seed,
-            audit=audit,
-        )
+        if force_point_release and not self.case.is_official:
+            if start_lat is None or start_lon is None:
+                raise ValueError("force_point_release requires explicit start_lat and start_lon.")
+            self._seed_point_release(
+                model,
+                start_time=simulation_start,
+                start_lat=float(start_lat),
+                start_lon=float(start_lon),
+                num_elements=seed_element_count,
+            )
+            seed_record = {
+                "initialization_mode": "drifter_of_record_point",
+                "source_geometry_path": "",
+                "source_point_path": "",
+                "release_geometry": "legacy_drifter_of_record_point",
+                "point_release_surrogate": "exact_point_release",
+                "custom_polygon_override_used": False,
+                "random_seed": seed_random_seed if seed_random_seed is not None else "",
+                "source_lat": float(start_lat),
+                "source_lon": float(start_lon),
+                "release_start_utc": timestamp_to_utc_iso(simulation_start),
+                "release_end_utc": timestamp_to_utc_iso(simulation_start),
+                "release_duration_hours": 0.0,
+            }
+            audit["seed_initialization"] = seed_record
+        else:
+            seed_record = self._seed_official_release(
+                model,
+                simulation_start,
+                num_elements=seed_element_count,
+                random_seed=seed_random_seed,
+                audit=audit,
+            )
         audit["seed_element_count"] = seed_element_count
 
         output_file = get_deterministic_control_output_path(recipe_name, run_name=self.output_run_name)
@@ -1968,8 +2048,11 @@ class EnsembleForecastService:
                 start_lon=start_lon,
             )
         else:
-            product_files = self._generate_prototype_probability_products(ensemble_files, start_lat, start_lon)
-            product_records = []
+            product_files, product_records = self._generate_prototype_probability_products(
+                ensemble_files,
+                start_lat,
+                start_lon,
+            )
 
         manifest = self.write_output_manifest(
             recipe_name=recipe_name,
