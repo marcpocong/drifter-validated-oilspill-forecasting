@@ -24,6 +24,7 @@
 - Forcing-outage policy: strict/reportable by default. If a provider outage removes part of the official recipe family, the dedicated scientific lane now fails hard unless you explicitly set `FORCING_OUTAGE_POLICY=continue_degraded`.
 - Forcing-provider acquisition is also fail-fast now: each forcing source gets a shared `FORCING_SOURCE_BUDGET_SECONDS` wall-clock budget with a default of `300` seconds, while drifter truth and ArcGIS/observation truth remain strict inputs outside that timeout policy.
 - Biggest remaining follow-up: downstream spill-case trial or explicit promotion of `output/phase1_production_rerun/phase1_baseline_selection_candidate.yaml` remains manual by design.
+- Separate Mindoro-focused note: the `phase1_mindoro_focus_pre_spill_2016_2023` rerun remains confirmation-only for the Mindoro recipe story and is separate from canonical baseline governance.
 
 What is already in place:
 
@@ -103,6 +104,8 @@ Promotion and provenance control:
 - Frozen: `false`
 - Provenance: the original March 3 -> March 6 base case YAML stays frozen; this promotion is authorized through the separate amendment file above.
 - Recipe-confirmation note: the later `phase1_mindoro_focus_pre_spill_2016_2023` drifter rerun independently selected the same `cmems_era5` recipe used by the stored B1 run; that later rerun is packaged as confirmation provenance only, not as a replacement raw-generation history.
+- Thesis framing: separate focused Phase 1 confirmation -> Phase 2 -> Phase 3B primary validation.
+- PyGNOME role on the same case: comparator-only support evidence, not truth and not the main validation claim.
 - Guardrail: present it as the canonical Mindoro validation row, but keep the shared-imagery caveat explicit and do not describe it as independent day-to-day validation.
 
 ### Phase 3B2 Legacy March 6 Sparse Reference

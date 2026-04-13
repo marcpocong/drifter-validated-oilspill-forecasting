@@ -1,6 +1,6 @@
 workflow_mode: mindoro_retro_2023
 case_id: CASE_MINDORO_RETRO_2023
-description: "Official thesis-facing Mindoro spill-case scoring workflow"
+description: "Official thesis-facing Mindoro spill-case Phase 2 -> Phase 3B validation workflow anchored on the frozen March 3 -> March 6 provenance case"
 mode_label: "Official Mindoro spill-case workflow"
 mindoro_case_domain: [115.0, 122.0, 6.0, 14.5]
 phase3b_primary_validation_amendment_path: config/case_mindoro_retro_2023_phase3b_primary_validation_amendment.yaml
@@ -59,3 +59,5 @@ notes:
   - The frozen base spill-case definition remains the March 3 -> March 6 official replay in this file.
   - March 13 -> March 14 Phase 3B public-validation promotion is recorded separately in the amendment file above.
   - March 6 legacy outputs remain visible for methods honesty and are not silently rewritten by the promotion.
+  - The separate phase1_mindoro_focus_pre_spill_2016_2023 rerun is confirmation-only for the recipe story and does not rewrite this base case.
+  - Same-case March 13 -> March 14 PyGNOME work remains comparator-only support evidence rather than truth.

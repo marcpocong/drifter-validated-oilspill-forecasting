@@ -6,7 +6,8 @@ amendment_type: phase3b_primary_public_validation_promotion
 summary: >
   Promote March 13 -> March 14 as the canonical Phase 3B public-validation row in
   packaging, figures, and launcher/docs semantics without mutating the original
-  March 3 -> March 6 official spill-case definition.
+  March 3 -> March 6 official spill-case definition, while keeping March 6 visible
+  as the B2 legacy honesty row and keeping PyGNOME comparator-only.
 
 promotion:
   primary_track_id: B1
@@ -29,7 +30,7 @@ legacy_retention:
   legacy_honesty_track_id: B2
   legacy_honesty_phase_or_track: phase3b_legacy_strict
   legacy_honesty_output_dir: output/CASE_MINDORO_RETRO_2023/phase3b
-  legacy_honesty_label: Mindoro legacy March 6 sparse strict reference
+  legacy_honesty_label: Mindoro March 6 B2 legacy honesty row
   broader_support_track_id: B3
   broader_support_output_dir: output/CASE_MINDORO_RETRO_2023/public_obs_appendix
   preserve_visible_legacy_outputs: true

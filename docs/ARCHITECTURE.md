@@ -15,7 +15,8 @@ That separation is now explicit in both the code and the launcher. The project n
 
 - `prototype_2016`: backward-compatible legacy/debug lane only, now with an explicit six-recipe prototype debug family, a padded forcing-prep window that preserves the legacy `+/- 3 h` ensemble jitter, a visible `Phase 1 -> Phase 2 -> Phase 3A -> Phase 4 -> Phase 5` support story, a consolidated multi-track OpenDrift-vs-PyGNOME Phase 3A comparator package, a drifter-of-record-seeded legacy Phase 4 weathering path, and a legacy Phase 5 figure/package story
 - `prototype_2021`: preferred accepted-segment debug/demo lane built from the two fixed 2021 strict-gate drifter segments, restricted to the official Phase 1 recipe family, and intentionally scoped to the transport-core bundle only
-- `mindoro_retro_2023`: main Philippine spill-case lane
+- `mindoro_retro_2023`: main Philippine spill-case validation lane, with the separate focused Phase 1 confirmation path kept outside the canonical spill-case builder
+- `phase1_mindoro_focus_pre_spill_2016_2023`: separate Mindoro-focused Phase 1 confirmation lane for the recipe story only; not canonical baseline governance
 - `dwh_retro_2010`: external rich-data transfer-validation lane
 - `phase1_regional_2016_2022`: dedicated historical/regional Phase 1 scientific rerun lane
 
@@ -73,6 +74,7 @@ These should not be collapsed into a single validation claim. Mindoro remains th
 Within Mindoro, the original March 3 -> March 6 case definition remains frozen in `config/case_mindoro_retro_2023.yaml`, while the promoted March 13 -> March 14 B1 row is recorded separately in `config/case_mindoro_retro_2023_phase3b_primary_validation_amendment.yaml`. This preserves provenance and keeps March 6 visible as a legacy honesty-only row instead of silently rewriting history.
 The March 13 -> March 14 row is therefore the canonical public-validation row for thesis reporting under the thesis-facing title `Phase 3B Observation-Based Spatial Validation Using Public Mindoro Spill Extents`, but it still carries a shared-imagery guardrail because both NOAA/NESDIS public products cite the same March 12 WorldView-3 imagery. PyGNOME remains comparator-only in that promoted lane.
 The later `phase1_mindoro_focus_pre_spill_2016_2023` drifter rerun independently selected the same `cmems_era5` recipe used by the stored B1 run. That later rerun is used as recipe-confirmation provenance for the promoted B1 story; it does not rewrite the raw-generation history of the stored March 13 -> March 14 science bundle.
+Thesis-facing Mindoro sequencing is therefore separate focused Phase 1 confirmation -> Phase 2 -> Phase 3B primary validation, with the same-case March 13 -> March 14 PyGNOME lane kept as supporting comparator evidence rather than truth.
 
 Unlike Mindoro, DWH Phase 3C does not use a Phase 1 drifter-selected forcing recipe. It uses a frozen historical forcing stack chosen by a scientific-readiness gate: the first complete real current+wind+wave stack for the DWH May 20-23, 2010 window that is not smoke-only, spans the required window, exposes the required variables with usable metadata, opens cleanly in the OpenDrift reader, and passes a small end-to-end reader-check forecast. In the current repo state, that frozen DWH stack is HYCOM GOFS 3.1 currents plus ERA5 winds plus CMEMS wave/Stokes.
 Observed DWH daily masks remain truth, the cumulative DWH layer remains context-only, and PyGNOME remains comparator-only within that separate external-case story.

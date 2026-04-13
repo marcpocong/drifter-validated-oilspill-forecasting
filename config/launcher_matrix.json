@@ -29,12 +29,12 @@
       "menu_order": 10,
       "category_id": "scientific_reportable_tracks",
       "workflow_mode": "mindoro_retro_2023",
-      "label": "Mindoro reportable core bundle",
-      "description": "Prep, official Phase 1/2, promoted Phase 3B primary public validation, March 6 legacy honesty row, broader public support, and Mindoro Phase 4.",
+      "label": "Mindoro validation core + support bundle",
+      "description": "Prep, official Phase 1/2, the March 13 -> March 14 B1 Phase 3B primary public-validation row, the March 6 B2 legacy honesty row, broader public support, and the support-only Mindoro Phase 4 layer.",
       "service_profile": "pipeline_only",
       "rerun_cost": "expensive",
       "safe_default": false,
-      "notes": "Use only when an intentional scientific rerun of the main Mindoro reportable path, including the promoted B1 row, is desired.",
+      "notes": "Use only when an intentional rerun of the main Mindoro spill-case validation chain is desired. The separate phase1_mindoro_focus_pre_spill_2016_2023 confirmation lane stays outside this entry.",
       "steps": [
         {
           "phase": "prep",
@@ -59,17 +59,17 @@
         {
           "phase": "3b",
           "service": "pipeline",
-          "description": "Legacy March 6 honesty/reference row"
+          "description": "March 6 B2 legacy honesty row"
         },
         {
           "phase": "phase3b_multidate_public",
           "service": "pipeline",
-          "description": "Legacy broader public-support reference track"
+          "description": "Legacy broader public-support B3 track"
         },
         {
           "phase": "phase4_oiltype_and_shoreline",
           "service": "pipeline",
-          "description": "Mindoro Phase 4 oil-type fate and shoreline-impact workflow"
+          "description": "Mindoro support-only Phase 4 oil-type fate and shoreline-impact workflow"
         }
       ]
     },
@@ -83,7 +83,7 @@
       "service_profile": "pipeline_only",
       "rerun_cost": "expensive",
       "safe_default": false,
-      "notes": "Canonical B1 builder. This does not delete or relabel the March 6 legacy honesty row.",
+      "notes": "Canonical B1 builder. This does not delete or relabel the March 6 B2 legacy honesty row, and the same-case PyGNOME comparator lane stays separate and comparator-only.",
       "steps": [
         {
           "phase": "phase3b_extended_public",
@@ -121,17 +121,17 @@
       "menu_order": 20,
       "category_id": "scientific_reportable_tracks",
       "workflow_mode": "mindoro_retro_2023",
-      "label": "Mindoro Phase 4 only",
-      "description": "Rebuild only the Mindoro Phase 4 oil-type and shoreline interpretation layer.",
+      "label": "Mindoro support Phase 4 only",
+      "description": "Rebuild only the Mindoro support-only Phase 4 oil-type and shoreline interpretation layer.",
       "service_profile": "pipeline_only",
       "rerun_cost": "moderate",
       "safe_default": false,
-      "notes": "Does not overwrite stored Mindoro or DWH Phase 3 validation outputs.",
+      "notes": "Does not overwrite stored Mindoro or DWH Phase 3 validation outputs and does not change the main Mindoro validation claim.",
       "steps": [
         {
           "phase": "phase4_oiltype_and_shoreline",
           "service": "pipeline",
-          "description": "Mindoro Phase 4 oil-type fate and shoreline-impact workflow"
+          "description": "Mindoro support-only Phase 4 oil-type fate and shoreline-impact workflow"
         }
       ]
     },
@@ -266,17 +266,17 @@
       "menu_order": 41,
       "category_id": "sensitivity_appendix_tracks",
       "workflow_mode": "phase1_mindoro_focus_pre_spill_2016_2023",
-      "label": "Experimental Phase 1 Mindoro-focus pre-spill rerun",
-      "description": "Separate non-canonical 2016-2023 pre-spill drifter rerun using a Mindoro-focused box and February-April seasonal ranking subset.",
+      "label": "Experimental Mindoro-focused Phase 1 confirmation rerun",
+      "description": "Separate non-canonical 2016-2023 pre-spill drifter rerun using a Mindoro-focused box and February-April seasonal ranking subset for confirmation-only recipe checking.",
       "service_profile": "pipeline_only",
       "rerun_cost": "expensive",
       "safe_default": false,
-      "notes": "Trial-only. This does not overwrite config/phase1_baseline_selection.yaml, does not modify legacy 2016 prototype outputs, and may auto-skip outage-hit forcing families with provisional rerun-required outputs.",
+      "notes": "Trial-only and confirmation-only. This does not overwrite config/phase1_baseline_selection.yaml, does not modify legacy 2016 prototype outputs or stored B1 provenance, and may auto-skip outage-hit forcing families with provisional rerun-required outputs.",
       "steps": [
         {
           "phase": "phase1_production_rerun",
           "service": "pipeline",
-          "description": "Experimental pre-spill 2016-2023 Mindoro-focused Phase 1 production rerun"
+          "description": "Experimental pre-spill 2016-2023 Mindoro-focused Phase 1 confirmation rerun"
         }
       ]
     },
@@ -286,11 +286,11 @@
       "category_id": "sensitivity_appendix_tracks",
       "workflow_mode": "mindoro_retro_2023",
       "label": "Experimental Mindoro March 13-14 Phase 1 focus trial",
-      "description": "Separate non-canonical March 13 -> March 14 replay using the staged experimental Mindoro-focused Phase 1 candidate baseline, with a direct comparison report against the stored canonical B1 row.",
+      "description": "Separate non-canonical March 13 -> March 14 replay using the staged experimental Mindoro-focused Phase 1 confirmation candidate baseline, with a direct comparison report against the stored canonical B1 row.",
       "service_profile": "pipeline_only",
       "rerun_cost": "expensive",
       "safe_default": false,
-      "notes": "Trial-only. Runs only the OpenDrift March 13 -> March 14 lane in a separate directory; does not rerun PyGNOME or overwrite canonical B1 outputs.",
+      "notes": "Trial-only and confirmation-only. Runs only the OpenDrift March 13 -> March 14 lane in a separate directory; does not rerun PyGNOME or overwrite canonical B1 outputs.",
       "steps": [
         {
           "phase": "phase3b_extended_public",
@@ -300,7 +300,7 @@
         {
           "phase": "mindoro_march13_14_phase1_focus_trial",
           "service": "pipeline",
-          "description": "Experimental March 13 -> March 14 replay using the staged Mindoro-focused Phase 1 candidate baseline",
+          "description": "Experimental March 13 -> March 14 replay using the staged Mindoro-focused Phase 1 confirmation candidate baseline",
           "extra_env": {
             "MINDORO_PHASE1_FOCUS_TRIAL_BASELINE_SELECTION_PATH": "output/phase1_mindoro_focus_pre_spill_2016_2023/phase1_baseline_selection_candidate.yaml",
             "MINDORO_PHASE1_FOCUS_TRIAL_OUTPUT_DIR_NAME": "phase3b_extended_public_scored_march13_14_reinit_phase1_mindoro_focus_pre_spill"

@@ -1,8 +1,8 @@
 workflow_mode: phase1_mindoro_focus_pre_spill_2016_2023
 workflow_track: historical_regional_validation
 case_id: phase1_mindoro_focus_pre_spill_2016_2023
-mode_label: Experimental Mindoro-focused historical/regional validation workflow
-description: Experimental pre-spill 2016-2023 Mindoro-focused drifter-calibration rerun for trial recipe selection only
+mode_label: Experimental Mindoro-focused historical/regional Phase 1 confirmation workflow
+description: Experimental pre-spill 2016-2023 Mindoro-focused drifter-calibration rerun for confirmation-only recipe checking
 
 # Experimental Mindoro-focused Chapter 3 support box.
 # This is a separate non-canonical validation box used only for the trial lane below.
@@ -74,7 +74,7 @@ distance_audit_source_point:
 
 candidate_baseline:
   baseline_id: phase1_mindoro_focus_pre_spill_candidate_2016_2023_v1
-  description: Staged experimental Mindoro-focused pre-spill candidate baseline from the 2016-2023 drifter rerun
+  description: Staged experimental Mindoro-focused pre-spill candidate baseline artifact for confirmation/trial use only
   source_kind: staged_production_candidate
   status_flag: provisional
   valid: false
@@ -86,6 +86,7 @@ candidate_baseline:
     - mindoro_retro_2023
   current_local_evidence_scope: experimental_mindoro_focused_pre_spill_2016_2023_regional_transport_validation_rerun
   notes:
+    - This experimental lane is confirmation-only for the Mindoro recipe story and is separate from canonical baseline governance.
     - This artifact is staged only and does not overwrite config/phase1_baseline_selection.yaml.
     - This experimental lane does not modify legacy 2016 prototype outputs or the canonical March 13 -> March 14 B1 outputs.
     - Downstream trial runs may set BASELINE_SELECTION_PATH to this candidate artifact explicitly.
