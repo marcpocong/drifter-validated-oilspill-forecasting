@@ -21,5 +21,6 @@ Packaging guidance:
 - Present Phase 3A as comparator-only benchmarking, not as a truth-source replacement.
 - Preserve `config/case_mindoro_retro_2023.yaml` as the frozen March 3 -> March 6 case definition and carry the Phase 3B promotion through the amendment file instead.
 - Present March 13 -> March 14 as the canonical Mindoro validation with the shared-imagery caveat stated explicitly.
-- State that the later 2016-2023 Mindoro-focused drifter rerun confirmed the same cmems_era5 recipe used by the stored B1 run without rewriting the original run provenance.
+- State that the separate focused 2016-2023 Mindoro drifter rerun now supplies the active cmems_era5 recipe provenance used by the stored B1 story without rewriting the original run provenance.
+- State that the broader 2016-2022 regional rerun is preserved as reference/governance context rather than as the active B1 provenance lane.
 - Keep March 6 and March 3-6 visible as legacy/reference material rather than deleting or hiding them.

@@ -1,10 +1,17 @@
 import unittest
+import tempfile
 from pathlib import Path
+import json
 
 import pandas as pd
 
 from src.services.final_validation_package import (
     FinalValidationPackageService,
+    MINDORO_B1_FINAL_OUTPUT_DIR,
+    MINDORO_B1_PUBLICATION_EXPORTS,
+    MINDORO_B1_SCIENTIFIC_SOURCE_EXPORTS,
+    MINDORO_B1_SUMMARY_EXPORTS,
+    MINDORO_MARCH14_TARGET_MASK_PATH,
     decide_final_structure,
     mean_fss,
 )
@@ -214,6 +221,70 @@ class FinalValidationPackageTests(unittest.TestCase):
         self.assertIn("mindoro_crossmodel_top", headlines)
         self.assertIn("mindoro_legacy_march6", headlines)
         self.assertIn("mindoro_legacy_broader_support", headlines)
+
+    def test_build_mindoro_final_output_export_writes_nested_tree_and_registry(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            for exports in MINDORO_B1_PUBLICATION_EXPORTS.values():
+                for source in exports.values():
+                    if source is None:
+                        continue
+                    path = root / source
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text("png\n", encoding="utf-8")
+            for exports in MINDORO_B1_SCIENTIFIC_SOURCE_EXPORTS.values():
+                for source in exports.values():
+                    path = root / source
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text("png\n", encoding="utf-8")
+            for exports in MINDORO_B1_SUMMARY_EXPORTS.values():
+                for source in exports.values():
+                    path = root / source
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text("summary\n", encoding="utf-8")
+            target_mask = root / MINDORO_MARCH14_TARGET_MASK_PATH
+            target_mask.parent.mkdir(parents=True, exist_ok=True)
+            target_mask.write_text("tif\n", encoding="utf-8")
+
+            service = object.__new__(FinalValidationPackageService)
+            service.repo_root = root
+            service._mindoro_final_output_readme = (
+                FinalValidationPackageService._mindoro_final_output_readme.__get__(service, FinalValidationPackageService)
+            )
+            service._build_mindoro_final_output_export = (
+                FinalValidationPackageService._build_mindoro_final_output_export.__get__(service, FinalValidationPackageService)
+            )
+            service._render_mindoro_target_mask_publication_png = lambda destination: destination.write_text(
+                "generated png\n", encoding="utf-8"
+            )
+
+            export = service._build_mindoro_final_output_export(
+                {
+                    "matches_stored_b1_recipe": True,
+                    "stored_run_recipe_source_path": "config/phase1_baseline_selection.yaml",
+                    "stored_run_selected_recipe": "cmems_era5",
+                    "posthoc_phase1_confirmation_workflow_mode": "phase1_mindoro_focus_pre_spill_2016_2023",
+                    "posthoc_phase1_confirmation_candidate_baseline_path": "output/phase1_mindoro_focus_pre_spill_2016_2023/phase1_baseline_selection_candidate.yaml",
+                    "posthoc_phase1_confirmation_selected_recipe": "cmems_era5",
+                    "confirmation_interpretation": "Focused rerun selected the same recipe.",
+                }
+            )
+
+            export_root = root / MINDORO_B1_FINAL_OUTPUT_DIR
+            self.assertTrue((export_root / "publication" / "observations" / "march14_target_mask_on_grid.png").exists())
+            self.assertTrue((export_root / "publication" / "opendrift_primary" / "mindoro_primary_validation_board.png").exists())
+            self.assertTrue((export_root / "publication" / "comparator_pygnome" / "mindoro_crossmodel_board.png").exists())
+            self.assertTrue((export_root / "scientific_source_pngs" / "opendrift_primary" / "qa_march14_reinit_R1_previous_overlay.png").exists())
+            self.assertTrue((export_root / "scientific_source_pngs" / "comparator_pygnome" / "qa_march14_crossmodel_pygnome_reinit_deterministic_overlay.png").exists())
+            self.assertTrue((export_root / "summary" / "opendrift_primary" / "march13_14_reinit_run_manifest.json").exists())
+            self.assertTrue((export_root / "summary" / "comparator_pygnome" / "march13_14_reinit_crossmodel_run_manifest.json").exists())
+            self.assertTrue((export_root / "manifests" / "final_output_manifest.json").exists())
+            self.assertTrue((export_root / "manifests" / "phase3b_final_output_registry.csv").exists())
+            self.assertTrue((export_root / "manifests" / "phase3b_final_output_registry.json").exists())
+            self.assertTrue((export_root / "final_output_manifest.json").exists())
+            manifest = json.loads((export_root / "manifests" / "final_output_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["registry_path"], "output/Phase 3B March13-14 Final Output/manifests/phase3b_final_output_registry.csv")
+            self.assertEqual(export["manifest_path"], "output/Phase 3B March13-14 Final Output/manifests/final_output_manifest.json")
 
 
 if __name__ == "__main__":

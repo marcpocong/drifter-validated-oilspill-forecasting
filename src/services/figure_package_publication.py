@@ -1994,9 +1994,9 @@ class FigurePackagePublicationService:
             f"{MINDORO_PRIMARY_VALIDATION_THESIS_PHASE_TITLE} is now carried by the March 13 -> March 14 promoted Mindoro validation pair, seeded from the March 13 NOAA polygon and scored against the March 14 NOAA target.",
             MINDORO_SHARED_IMAGERY_CAVEAT,
             (
-                f"The later 2016-2023 Mindoro-focused drifter rerun confirmed the same {confirmation_recipe} recipe used by the stored B1 run."
+                f"The separate focused 2016-2023 Mindoro drifter rerun selected the same {confirmation_recipe} recipe used by the stored B1 run and now serves as the active B1 recipe-provenance lane."
                 if confirmation_recipe
-                else "The later 2016-2023 Mindoro-focused drifter rerun confirmation artifact was unavailable."
+                else "The separate focused 2016-2023 Mindoro drifter provenance artifact was unavailable."
             ),
             f"The promoted OpenDrift R1 previous reinit p50 row reaches FSS beyond zero at 3/5/10 km with {int(row.get('forecast_nonzero_cells', 0))} forecast cells against {int(row.get('obs_nonzero_cells', 0))} observed cells.",
         ]
@@ -2161,7 +2161,7 @@ class FigurePackagePublicationService:
                 notes=(
                     "Built from the stored March 13 seed mask raster, shoreline context, and "
                     "source-point geometry only; no scientific rerun was triggered, and the later "
-                    "2016-2023 Mindoro-focused drifter rerun is used only as recipe-confirmation provenance."
+                    "2016-2023 Mindoro-focused drifter rerun now provides the active B1 recipe-provenance story."
                 ),
                 note_lines=self._mindoro_primary_note_lines(
                     "Seed geometry is shown on the same canonical grid used downstream for the March 14 comparison."
@@ -2201,7 +2201,7 @@ class FigurePackagePublicationService:
                 ),
                 notes=(
                     "Built from the stored March 13 seed mask and March 14 observation mask only, "
-                    "with the shared-imagery caveat and recipe-confirmation provenance carried into the note box."
+                    "with the shared-imagery caveat and the separate focused Phase 1 provenance note carried into the note box."
                 ),
                 note_lines=self._mindoro_primary_note_lines(
                     "Orange shows the March 13 seed geometry and dark slate shows the March 14 observation target."
@@ -2249,7 +2249,7 @@ class FigurePackagePublicationService:
                 notes=(
                     "Built from the stored March 14 observation mask, the stored March 13 seed mask "
                     "outline, and the stored OpenDrift R1 previous p50 raster only; the later "
-                    "2016-2023 Mindoro-focused drifter rerun confirmed the same recipe without rewriting stored run provenance."
+                    "2016-2023 Mindoro-focused drifter rerun selected the same recipe without rewriting stored run provenance."
                 ),
                 note_lines=self._mindoro_primary_note_lines(
                     self._mindoro_primary_branch_score_line("R1_previous", "OpenDrift R1 previous reinit p50")

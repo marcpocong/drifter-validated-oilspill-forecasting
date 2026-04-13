@@ -2,9 +2,9 @@
 
 ## Current Project Verdict
 
-- Phase 1: dedicated production rerun implemented; candidate baseline staged, but canonical promotion remains manual.
+- Phase 1: Mindoro-specific recipe provenance is now finalized through the separate focused `2016-2023` drifter rerun selecting `cmems_era5`; the broader `2016-2022` regional rerun remains preserved as a reference/governance lane and currently selects `cmems_gfs`.
 - Phase 2: scientifically usable, not frozen.
-- Mindoro Phase 3: validation-focused and reportable; `Phase 3B Observation-Based Spatial Validation Using Public Mindoro Spill Extents` is now carried by the March 13 -> March 14 B1 row, March 6 remains the preserved sparse-reference honesty case, the promotion is tracked by amendment rather than by rewriting the frozen March 3 -> March 6 case file, and the later `2016-2023` Mindoro-focused drifter rerun confirmed the same `cmems_era5` recipe without rewriting stored B1 provenance.
+- Mindoro Phase 3: validation-focused and reportable; `Phase 3B Observation-Based Spatial Validation Using Public Mindoro Spill Extents` is now carried by the March 13 -> March 14 B1 row, March 6 remains the preserved sparse-reference honesty case, the promotion is tracked by amendment rather than by rewriting the frozen March 3 -> March 6 case file, and B1 now inherits its recipe provenance from the separate focused `2016-2023` Mindoro drifter rerun without claiming direct drifter ingestion inside Phase 3B itself.
 - DWH Phase 3C: validation-only external rich-data transfer case.
 - Mindoro `phase4_oiltype_and_shoreline`: implemented as a support/context bundle outside the main thesis phase count; thesis-facing `Phase 4` labeling is reserved for `prototype_2016`.
 - Phase 4 cross-model comparison: deferred; current PyGNOME branches remain comparator-only for transport/spatial work rather than matched Phase 4 fate-and-shoreline outputs.
@@ -16,15 +16,15 @@
 
 ## Phase 1
 
-- Plain-language status: the dedicated 2016-2022 historical/regional production rerun is now implemented and stages the missing strict drogued-only non-overlapping 72 h evidence bundle, but the current default spill-case baseline file (`config/phase1_baseline_selection.yaml`) still points at the preserved three-date 2016 prototype evidence and is not auto-promoted.
+- Plain-language status: the focused `2016-2023` Mindoro rerun now provides the active spill-case recipe provenance in `config/phase1_baseline_selection.yaml`, while the dedicated `2016-2022` historical/regional production rerun is preserved as a broader reference/governance lane and still stages its own regional candidate artifact.
 - Scientifically reportable: `true`
 - Scientifically frozen: `candidate_staged_but_not_promoted`
 - Inherited provisional: `false`
 - Official Phase 1 audit box/window: `119.5-124.5E / 11.5-16.5N`, `2016-2022`
 - Forcing-outage policy: strict/reportable by default. If a provider outage removes part of the official recipe family, the dedicated scientific lane now fails hard unless you explicitly set `FORCING_OUTAGE_POLICY=continue_degraded`.
 - Forcing-provider acquisition is also fail-fast now: each forcing source gets a shared `FORCING_SOURCE_BUDGET_SECONDS` wall-clock budget with a default of `300` seconds, while drifter truth and ArcGIS/observation truth remain strict inputs outside that timeout policy.
-- Biggest remaining follow-up: downstream spill-case trial or explicit promotion of `output/phase1_production_rerun/phase1_baseline_selection_candidate.yaml` remains manual by design.
-- Separate Mindoro-focused note: the `phase1_mindoro_focus_pre_spill_2016_2023` rerun remains confirmation-only for the Mindoro recipe story and is separate from canonical baseline governance.
+- Biggest remaining follow-up: archived NOAA/NCEI GFS access is still blocking a full four-recipe rerun of the focused Mindoro provenance lane, so the active Mindoro story remains explicitly outage-constrained to the ERA5-backed family for now.
+- Separate Mindoro-focused note: the `phase1_mindoro_focus_pre_spill_2016_2023` rerun is now the active Mindoro-specific recipe-provenance lane for B1. It searched through early 2023, but its accepted registry does not include near-2023 accepted segments.
 
 What is already in place:
 
@@ -103,8 +103,8 @@ Promotion and provenance control:
 - Reportable: `true`
 - Frozen: `false`
 - Provenance: the original March 3 -> March 6 base case YAML stays frozen; this promotion is authorized through the separate amendment file above.
-- Recipe-confirmation note: the later `phase1_mindoro_focus_pre_spill_2016_2023` drifter rerun independently selected the same `cmems_era5` recipe used by the stored B1 run; that later rerun is packaged as confirmation provenance only, not as a replacement raw-generation history.
-- Thesis framing: separate focused Phase 1 confirmation -> Phase 2 -> Phase 3B primary validation.
+- Recipe-provenance note: the separate `phase1_mindoro_focus_pre_spill_2016_2023` drifter rerun selected the same `cmems_era5` recipe used by the stored B1 run; that rerun is now the active Mindoro-specific provenance lane, not a replacement raw-generation history for the stored B1 bundle.
+- Thesis framing: separate focused drifter-based Phase 1 provenance -> Phase 2 -> Phase 3B primary validation.
 - PyGNOME role on the same case: comparator-only support evidence, not truth and not the main validation claim.
 - Guardrail: present it as the canonical Mindoro validation row, but keep the shared-imagery caveat explicit and do not describe it as independent day-to-day validation.
 

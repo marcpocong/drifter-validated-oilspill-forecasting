@@ -34,7 +34,7 @@
       "service_profile": "pipeline_only",
       "rerun_cost": "expensive",
       "safe_default": false,
-      "notes": "Use only when an intentional rerun of the main Mindoro spill-case validation chain is desired. The separate phase1_mindoro_focus_pre_spill_2016_2023 confirmation lane stays outside this entry.",
+      "notes": "Use only when an intentional rerun of the main Mindoro spill-case validation chain is desired. The separate phase1_mindoro_focus_pre_spill_2016_2023 Mindoro-specific provenance lane stays outside this entry.",
       "steps": [
         {
           "phase": "prep",
@@ -102,12 +102,12 @@
       "menu_order": 15,
       "category_id": "scientific_reportable_tracks",
       "workflow_mode": "phase1_regional_2016_2022",
-      "label": "Phase 1 regional production rerun",
-      "description": "Dedicated 2016-2022 historical/regional drifter rerun that stages the missing drogued-only non-overlapping 72 h registry and a candidate baseline artifact.",
+      "label": "Phase 1 regional reference rerun",
+      "description": "Dedicated 2016-2022 historical/regional drifter rerun preserved as the broader regional reference/governance lane; it stages the strict drogued-only non-overlapping 72 h registry and a regional candidate baseline artifact.",
       "service_profile": "pipeline_only",
       "rerun_cost": "expensive",
       "safe_default": false,
-      "notes": "Scientific rerun only. This does not overwrite config/phase1_baseline_selection.yaml, does not auto-run phase1_audit or phase5_sync, and fails hard by default if a forcing-provider outage removes part of the official recipe family.",
+      "notes": "Scientific rerun only. This broader regional lane is preserved for reference/governance context and does not overwrite config/phase1_baseline_selection.yaml, does not auto-run phase1_audit or phase5_sync, and fails hard by default if a forcing-provider outage removes part of the official recipe family.",
       "steps": [
         {
           "phase": "phase1_production_rerun",
@@ -266,17 +266,17 @@
       "menu_order": 41,
       "category_id": "sensitivity_appendix_tracks",
       "workflow_mode": "phase1_mindoro_focus_pre_spill_2016_2023",
-      "label": "Experimental Mindoro-focused Phase 1 confirmation rerun",
-      "description": "Separate non-canonical 2016-2023 pre-spill drifter rerun using a Mindoro-focused box and February-April seasonal ranking subset for confirmation-only recipe checking.",
+      "label": "Mindoro-focused Phase 1 provenance rerun",
+      "description": "Separate 2016-2023 pre-spill Mindoro-focused drifter rerun that finalizes the Mindoro-specific recipe-provenance story for B1 using the February-April seasonal ranking subset.",
       "service_profile": "pipeline_only",
       "rerun_cost": "expensive",
       "safe_default": false,
-      "notes": "Trial-only and confirmation-only. This does not overwrite config/phase1_baseline_selection.yaml, does not modify legacy 2016 prototype outputs or stored B1 provenance, and may auto-skip outage-hit forcing families with provisional rerun-required outputs.",
+      "notes": "Mindoro-specific provenance lane only. This does not rewrite the stored March 13 -> March 14 B1 raw-generation history, does not modify legacy 2016 prototype outputs, and currently evaluates the outage-constrained ERA5-backed family while archived NOAA/NCEI GFS access remains unavailable.",
       "steps": [
         {
           "phase": "phase1_production_rerun",
           "service": "pipeline",
-          "description": "Experimental pre-spill 2016-2023 Mindoro-focused Phase 1 confirmation rerun"
+          "description": "Focused pre-spill 2016-2023 Mindoro Phase 1 provenance rerun"
         }
       ]
     },
@@ -286,11 +286,11 @@
       "category_id": "sensitivity_appendix_tracks",
       "workflow_mode": "mindoro_retro_2023",
       "label": "Experimental Mindoro March 13-14 Phase 1 focus trial",
-      "description": "Separate non-canonical March 13 -> March 14 replay using the staged experimental Mindoro-focused Phase 1 confirmation candidate baseline, with a direct comparison report against the stored canonical B1 row.",
+      "description": "Separate archive-labeled March 13 -> March 14 replay using the staged Mindoro-focused Phase 1 provenance candidate baseline, with a direct comparison report against the stored canonical B1 row.",
       "service_profile": "pipeline_only",
       "rerun_cost": "expensive",
       "safe_default": false,
-      "notes": "Trial-only and confirmation-only. Runs only the OpenDrift March 13 -> March 14 lane in a separate directory; does not rerun PyGNOME or overwrite canonical B1 outputs.",
+      "notes": "Archive-labeled comparison trial only. Runs only the OpenDrift March 13 -> March 14 lane in a separate directory; does not rerun PyGNOME or overwrite canonical B1 outputs.",
       "steps": [
         {
           "phase": "phase3b_extended_public",
@@ -300,7 +300,7 @@
         {
           "phase": "mindoro_march13_14_phase1_focus_trial",
           "service": "pipeline",
-          "description": "Experimental March 13 -> March 14 replay using the staged Mindoro-focused Phase 1 confirmation candidate baseline",
+          "description": "Archive-labeled March 13 -> March 14 replay using the staged Mindoro-focused Phase 1 provenance candidate baseline",
           "extra_env": {
             "MINDORO_PHASE1_FOCUS_TRIAL_BASELINE_SELECTION_PATH": "output/phase1_mindoro_focus_pre_spill_2016_2023/phase1_baseline_selection_candidate.yaml",
             "MINDORO_PHASE1_FOCUS_TRIAL_OUTPUT_DIR_NAME": "phase3b_extended_public_scored_march13_14_reinit_phase1_mindoro_focus_pre_spill"

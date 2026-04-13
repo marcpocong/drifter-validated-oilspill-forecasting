@@ -33,6 +33,12 @@ MINDORO_PHASE1_CONFIRMATION_WORKFLOW_MODE = "phase1_mindoro_focus_pre_spill_2016
 MINDORO_PHASE1_CONFIRMATION_CANDIDATE_BASELINE_PATH = (
     Path("output") / "phase1_mindoro_focus_pre_spill_2016_2023" / "phase1_baseline_selection_candidate.yaml"
 )
+MINDORO_PHASE1_CONFIRMATION_ACCEPTED_REGISTRY_PATH = (
+    Path("output") / "phase1_mindoro_focus_pre_spill_2016_2023" / "phase1_accepted_segment_registry.csv"
+)
+MINDORO_PHASE1_REGIONAL_REFERENCE_CANDIDATE_BASELINE_PATH = (
+    Path("output") / "phase1_production_rerun" / "phase1_baseline_selection_candidate.yaml"
+)
 
 MINDORO_SHARED_IMAGERY_CAVEAT = (
     "Both NOAA/NESDIS public products cite WorldView-3 imagery acquired on 2023-03-12, so the promoted "
@@ -41,6 +47,7 @@ MINDORO_SHARED_IMAGERY_CAVEAT = (
 )
 
 MINDORO_PHASE1_CONFIRMATION_INTERPRETATION_TEMPLATE = (
-    "The later {workflow_mode} Mindoro-focused drifter rerun independently selected the same recipe used by "
-    "the stored B1 run ({recipe}), so it supports promoting B1 without rewriting the original run provenance."
+    "The separate {workflow_mode} Mindoro-focused drifter rerun selected the same recipe used by the stored "
+    "B1 run ({recipe}). It now serves as the active Mindoro-specific recipe-provenance lane for B1 without "
+    "rewriting the original March 13 -> March 14 raw-generation history."
 )

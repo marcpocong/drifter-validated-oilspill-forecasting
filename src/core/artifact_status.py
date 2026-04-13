@@ -34,17 +34,19 @@ STATUS_REGISTRY: dict[str, ArtifactStatus] = {
         official_status="promoted_primary_validation",
         frozen_status="not_frozen",
         provenance_label=(
-            "March 13 seed, March 14 target, explicit shared March 12 imagery caveat, and later "
-            "2016-2023 Mindoro-focused drifter confirmation of the same cmems_era5 recipe."
+            "March 13 seed, March 14 target, explicit shared March 12 imagery caveat, and active "
+            "Mindoro-specific recipe provenance from the separate focused 2016-2023 drifter rerun "
+            "selecting the same cmems_era5 recipe."
         ),
         panel_text=(
-            "Use this as the main Mindoro Phase 3B observation-based spatial validation view. The stored B1 run "
-            "remains tied to the frozen baseline artifact, while the later 2016-2023 Mindoro-focused drifter rerun "
-            "independently confirmed the same cmems_era5 recipe. Keep the shared March 12 imagery caveat explicit."
+            "Use this as the main Mindoro Phase 3B observation-based spatial validation view. Phase 3B itself does "
+            "not directly ingest drifters; it inherits the cmems_era5 recipe selected by the separate focused "
+            "2016-2023 Mindoro drifter rerun, while the broader 2016-2022 regional rerun stays reference-only. "
+            "Keep the shared March 12 imagery caveat explicit."
         ),
         dashboard_summary=(
-            "Promoted primary validation; later 2016-2023 drifter rerun confirmed the same cmems_era5 recipe; "
-            "inherited-provisional; not frozen."
+            "Promoted primary validation; focused 2016-2023 Mindoro drifter rerun selected the same cmems_era5 "
+            "recipe; reportable now but not fully frozen."
         ),
     ),
     "mindoro_crossmodel_comparator": ArtifactStatus(

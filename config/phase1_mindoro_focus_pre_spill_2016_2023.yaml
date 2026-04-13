@@ -1,11 +1,11 @@
 workflow_mode: phase1_mindoro_focus_pre_spill_2016_2023
 workflow_track: historical_regional_validation
 case_id: phase1_mindoro_focus_pre_spill_2016_2023
-mode_label: Experimental Mindoro-focused historical/regional Phase 1 confirmation workflow
-description: Experimental pre-spill 2016-2023 Mindoro-focused drifter-calibration rerun for confirmation-only recipe checking
+mode_label: Mindoro-focused Phase 1 recipe-provenance workflow
+description: Separate pre-spill 2016-2023 Mindoro-focused drifter-calibration rerun used to finalize Mindoro B1 recipe provenance
 
-# Experimental Mindoro-focused Chapter 3 support box.
-# This is a separate non-canonical validation box used only for the trial lane below.
+# Focused Mindoro Chapter 3 support box.
+# This is the separate Mindoro-specific provenance box used to finalize the B1 recipe story.
 phase1_validation_box: [118.751, 124.305, 10.620, 16.026]
 forcing_bbox_halo_degrees: 0.5
 drifter_acquisition_halo_degrees: 3.0
@@ -53,7 +53,7 @@ drifter:
     - DrogueLength
     - DrogueDetectSensor
 
-# Temporary outage-constrained family for the experimental Mindoro-focused lane.
+# Temporary outage-constrained family for the focused Mindoro provenance lane.
 # GFS-backed recipes are excluded here only while archived NOAA/NCEI GFS access is unavailable.
 phase1_recipe_family:
   - cmems_era5
@@ -74,20 +74,20 @@ distance_audit_source_point:
 
 candidate_baseline:
   baseline_id: phase1_mindoro_focus_pre_spill_candidate_2016_2023_v1
-  description: Staged experimental Mindoro-focused pre-spill candidate baseline artifact for confirmation/trial use only
+  description: Staged focused Mindoro pre-spill candidate baseline artifact preserved as the source snapshot behind the finalized B1 recipe-provenance story
   source_kind: staged_production_candidate
   status_flag: provisional
   valid: false
   provisional: true
   rerun_required: false
   promotion_required: true
-  selection_basis: Experimental Mindoro-focused pre-spill 2016-2023 drogued-only non-overlapping 72 h transport-validation rerun ranked on the February-April seasonal subset
+  selection_basis: Focused Mindoro pre-spill 2016-2023 drogued-only non-overlapping 72 h transport-validation rerun ranked on the February-April seasonal subset
   workflow_scope:
     - mindoro_retro_2023
   current_local_evidence_scope: experimental_mindoro_focused_pre_spill_2016_2023_regional_transport_validation_rerun
   notes:
-    - This experimental lane is confirmation-only for the Mindoro recipe story and is separate from canonical baseline governance.
-    - This artifact is staged only and does not overwrite config/phase1_baseline_selection.yaml.
+    - This separate focused rerun now serves as the authoritative Mindoro-specific recipe-provenance lane for B1 while keeping the broader regional rerun preserved as reference.
+    - This staged artifact is kept as a non-destructive provenance snapshot and does not auto-overwrite config/phase1_baseline_selection.yaml.
     - This experimental lane does not modify legacy 2016 prototype outputs or the canonical March 13 -> March 14 B1 outputs.
     - Downstream trial runs may set BASELINE_SELECTION_PATH to this candidate artifact explicitly.
-    - This temporary outage-constrained experiment excludes GFS-backed recipes until archived NOAA/NCEI GFS access is healthy again.
+    - This temporary outage-constrained provenance lane excludes GFS-backed recipes until archived NOAA/NCEI GFS access is healthy again.

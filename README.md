@@ -4,9 +4,9 @@ Thesis workflow for transport validation, machine-readable forecast generation, 
 
 ## Plain-Language Status
 
-- Phase 1: dedicated 2016-2022 regional production rerun is now implemented and stages a candidate baseline artifact, but canonical baseline promotion into `config/phase1_baseline_selection.yaml` remains a manual step.
+- Phase 1: Mindoro-specific recipe provenance is now finalized through the separate focused `2016-2023` drifter rerun, which selected `cmems_era5` from an outage-constrained `cmems_era5` / `hycom_era5` family; the broader `2016-2022` regional rerun remains preserved as a reference/governance lane and currently selects `cmems_gfs`.
 - Phase 2: scientifically usable as implemented, but not scientifically frozen.
-- Mindoro Phase 3: validation-focused and reportable, with `Phase 3B Observation-Based Spatial Validation Using Public Mindoro Spill Extents` carried by the March 13 -> March 14 B1 row, March 6 preserved as a legacy sparse-reference honesty case, the promotion recorded in `config/case_mindoro_retro_2023_phase3b_primary_validation_amendment.yaml` rather than by rewriting the frozen March 3 -> March 6 base case YAML, and the later `2016-2023` Mindoro-focused drifter rerun confirming the same `cmems_era5` recipe without rewriting the stored B1 provenance.
+- Mindoro Phase 3: validation-focused and reportable, with `Phase 3B Observation-Based Spatial Validation Using Public Mindoro Spill Extents` carried by the March 13 -> March 14 B1 row, March 6 preserved as a legacy sparse-reference honesty case, the promotion recorded in `config/case_mindoro_retro_2023_phase3b_primary_validation_amendment.yaml` rather than by rewriting the frozen March 3 -> March 6 base case YAML, and B1 now inheriting its recipe provenance from the separate focused `2016-2023` Mindoro drifter rerun without claiming direct drifter ingestion inside Phase 3B itself.
 - DWH Phase 3C: validation-only external rich-data transfer case under the current case definition.
 - DWH forcing rule: readiness-gated historical stack, not the Phase 1 drifter-selected baseline; current stack is HYCOM GOFS 3.1 currents + ERA5 winds + CMEMS wave/Stokes.
 - Forcing-outage policy: strict/reportable lanes fail hard by default, while appendix/legacy/experimental lanes may continue in explicit degraded mode for forcing-only outages; drifter and ArcGIS/observation truth inputs remain hard requirements.
@@ -22,10 +22,10 @@ Thesis workflow for transport validation, machine-readable forecast generation, 
 
 - `prototype_2021`: preferred accepted-segment debug/demo workflow. It is frozen from the two accepted 2021 strict-gate drifter segments, uses only the official Phase 1 recipe family, stops at the transport-core bundle (`prep -> 1_2 -> benchmark -> prototype_pygnome_similarity_summary`), and is still support-only rather than final Chapter 3 evidence.
 - `prototype_2016`: legacy debug/regression workflow. This lane is preserved because it records the earliest prototype stage of the study, when the ingestion-and-validation pipeline was first exercised on 2016 drifter records in the Palawan-side western Philippine context before the study widened toward the broader west-coast Palawan/Mindoro context. It is not the final Chapter 3 Phase 1 study. Its visible thesis-facing support flow now remains `Phase 1 -> Phase 2 -> Phase 3A -> Phase 4 -> Phase 5`. Methodologically, it shows that the early pipeline could carry drifter-driven transport validation through Phase 1 and Phase 2, then through a Phase 3A OpenDrift-versus-deterministic-PyGNOME comparator check using fraction skill score, before continuing into legacy Phase 4 weathering/fate work and the legacy Phase 5 figure/package story. The comparator result remains support-only: a non-zero FSS means the ensemble footprint was not completely disjoint from the deterministic PyGNOME forecast, not that PyGNOME is truth or that this lane is final proof. Prototype prep still attempts `gfs_wind.nc` on a best-effort basis, the legacy Phase 3A package now surfaces deterministic plus `p50`/`p90` OpenDrift support tracks against deterministic PyGNOME, and the legacy Phase 4 weathering path now seeds from the selected drifter-of-record start in `data/drifters/CASE_2016-*/drifters_noaa.csv` rather than from the old prototype polygon. There is no thesis-facing `Phase 3B` or `Phase 3C` in this 2016 lane.
-- `mindoro_retro_2023`: main Philippine thesis lane for spill-case validation. Thesis-facing, it is presented as a separate focused Phase 1 confirmation path, then Phase 2, then Phase 3B primary validation on the March 13 -> March 14 B1 row; March 6 remains the visible B2 legacy honesty row, and the March 13 -> March 14 PyGNOME lane stays comparator-only on the same case.
+- `mindoro_retro_2023`: main Philippine thesis lane for spill-case validation. Thesis-facing, it is presented as a separate focused drifter-based Phase 1 provenance path, then Phase 2, then Phase 3B primary validation on the March 13 -> March 14 B1 row; March 6 remains the visible B2 legacy honesty row, and the March 13 -> March 14 PyGNOME lane stays comparator-only on the same case.
 - `dwh_retro_2010`: external rich-data transfer-validation lane for deterministic, ensemble, and PyGNOME comparator work. It keeps DWH observed daily masks as truth, keeps PyGNOME comparator-only, and freezes a readiness-gated HYCOM GOFS 3.1 + ERA5 + CMEMS wave/Stokes stack rather than inheriting Phase 1 drifter-selected baseline logic.
-- `phase1_regional_2016_2022`: dedicated historical/regional Phase 1 scientific rerun lane for the strict drogued-only non-overlapping 72 h validation corpus and staged candidate baseline artifact.
-- `phase1_mindoro_focus_pre_spill_2016_2023`: separate Mindoro-focused Phase 1 confirmation lane for the recipe story. It is confirmation-only, separate from canonical baseline governance, defaults to degraded continuation for forcing-only outages, and is the preferred experimental path when you want the startup prompt to ask about cache reuse and wait budget for the focused rerun.
+- `phase1_regional_2016_2022`: dedicated historical/regional Phase 1 scientific rerun lane preserved as the broader reference/governance lane for the strict drogued-only non-overlapping 72 h validation corpus; it is not the active provenance for Mindoro B1.
+- `phase1_mindoro_focus_pre_spill_2016_2023`: separate Mindoro-focused Phase 1 provenance lane for the B1 recipe story. It is the active Mindoro-specific provenance path, remains separate from the broader regional reference lane, defaults to degraded continuation for forcing-only outages, and currently excludes GFS-backed recipes while archived NOAA/NCEI GFS access is unavailable.
 
 ## Current Launcher
 
@@ -57,8 +57,9 @@ Intentional scientific reruns remain available, but they are no longer hidden be
 - The canonical launcher entry for that promoted row is `mindoro_phase3b_primary_public_validation`.
 - The older `mindoro_march13_14_noaa_reinit_stress_test` launcher entry is retained as a backward-compatible alias only.
 - The thesis-facing title for B1 is `Phase 3B Observation-Based Spatial Validation Using Public Mindoro Spill Extents`.
-- The later `phase1_mindoro_focus_pre_spill_2016_2023` drifter rerun independently confirmed the same `cmems_era5` recipe used by the stored B1 run; this is confirmation provenance only and does not replace the raw-generation history of the original March 13 -> March 14 bundle.
-- Thesis-facing Mindoro sequencing is: separate focused Phase 1 confirmation -> Phase 2 -> Phase 3B primary validation.
+- The separate `phase1_mindoro_focus_pre_spill_2016_2023` drifter rerun selected the same `cmems_era5` recipe used by the stored B1 run and now serves as the active Mindoro-specific recipe-provenance lane; it does not replace the raw-generation history of the original March 13 -> March 14 bundle.
+- That focused rerun searched through early 2023, but its accepted registry does not include near-2023 accepted segments.
+- Thesis-facing Mindoro sequencing is: separate focused drifter-based Phase 1 provenance -> Phase 2 -> Phase 3B primary validation.
 - March 6 remains visible as a legacy honesty-only row and must not be called primary.
 - The March 13 -> March 14 PyGNOME lane remains same-case supporting comparator evidence only, and the shared-imagery caveat means March 13 -> March 14 must not be described as independent day-to-day validation.
 
@@ -141,7 +142,7 @@ The launcher command and the direct `docker-compose exec` form without `-T` are 
 - Treat `Phase 3B` and `Phase 3C` as validation-only lanes.
 - Keep the drifter-debug lanes separate from the support-only `phase4_oiltype_and_shoreline` workflow outside `prototype_2016`.
 - Keep `prototype_2016` framed as legacy `Phase 1 / 2 / 3A / 4 / 5` support only, with no thesis-facing 3B/3C lane.
-- Keep the Mindoro-focused Phase 1 rerun as a separate confirmation-only path; do not treat it as canonical baseline governance or as a rewrite of stored B1 provenance.
+- Keep the Mindoro-focused Phase 1 rerun as the active Mindoro-specific recipe-provenance path; do not treat it as direct drifter ingestion inside Phase 3B or as a rewrite of stored B1 raw-generation history.
 - For `prototype_2016`, treat the selected drifter-of-record start lat/lon/time as the authoritative release origin. Some legacy audit fields may still point at `data/arcgis/CASE_2016-*/source_point_metadata.geojson` for compatibility, but that file is not the release geometry used by the run.
 - Do not auto-promote `output/phase1_production_rerun/phase1_baseline_selection_candidate.yaml` over `config/phase1_baseline_selection.yaml`.
 - Do not describe DWH Phase 3C as using the Phase 1 drifter-selected baseline for forcing selection; DWH uses a readiness-gated HYCOM GOFS 3.1 + ERA5 + CMEMS wave/Stokes stack.
@@ -199,6 +200,8 @@ Large raw data, scientific raster stacks, NetCDF outputs, and bulk case rerun ar
 - [docs/LAUNCHER_USER_GUIDE.md](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/docs/LAUNCHER_USER_GUIDE.md)
 - [docs/MINDORO_PRIMARY_VALIDATION_MIGRATION.md](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/docs/MINDORO_PRIMARY_VALIDATION_MIGRATION.md)
 - [docs/METHODOLOGY_AMENDMENT_2016_MINDORO.md](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/docs/METHODOLOGY_AMENDMENT_2016_MINDORO.md)
+- [docs/MINDORO_PHASE1_PROVENANCE_FINAL.md](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/docs/MINDORO_PHASE1_PROVENANCE_FINAL.md)
+- [docs/PHASE1_REGIONAL_2016_2022_REFERENCE_NOTE.md](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/docs/PHASE1_REGIONAL_2016_2022_REFERENCE_NOTE.md)
 
 ## Contact
 

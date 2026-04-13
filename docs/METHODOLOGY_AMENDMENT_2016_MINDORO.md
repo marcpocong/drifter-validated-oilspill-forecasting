@@ -16,14 +16,14 @@ This lane records the earliest prototype stage of the study, keeps the selected 
 
 Mindoro keeps two separate stories:
 
-- A separate `phase1_mindoro_focus_pre_spill_2016_2023` rerun used only as confirmation for the recipe story.
+- A separate `phase1_mindoro_focus_pre_spill_2016_2023` rerun now used as the active Mindoro-specific recipe-provenance lane for the B1 story.
 - The canonical spill-case validation story built from the frozen March 3 -> March 6 base case, official Phase 2 outputs, and the promoted March 13 -> March 14 B1 primary validation row.
 
 Thesis-facing, the Mindoro sequence is:
 
-separate focused Phase 1 confirmation -> Phase 2 -> Phase 3B primary validation
+separate focused drifter-based Phase 1 provenance -> Phase 2 -> Phase 3B primary validation
 
-The focused Phase 1 rerun is confirmation-only. It does not replace canonical baseline governance, does not rewrite the stored B1 raw-generation history, and does not auto-promote any staged baseline artifact over `config/phase1_baseline_selection.yaml`.
+The focused Phase 1 rerun now supplies the active Mindoro-specific recipe provenance. It does not rewrite the stored B1 raw-generation history, does not claim that Phase 3B itself directly used drifters, and does not erase the broader 2016-2022 regional rerun, which remains preserved as reference/governance context.
 
 ## B1 And B2
 

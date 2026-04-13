@@ -142,7 +142,7 @@ The publication package adds:
 - separate paper-ready single-image figures
 - explicit side-by-side comparison boards
 - plain-language captions and defense talking points
-- a promoted March 13 -> March 14 Mindoro validation presentation lane for `Phase 3B Observation-Based Spatial Validation Using Public Mindoro Spill Extents`, with the shared March 12 imagery caveat kept explicit and the later drifter-confirmation note carried as provenance rather than rewritten run history
+- a promoted March 13 -> March 14 Mindoro validation presentation lane for `Phase 3B Observation-Based Spatial Validation Using Public Mindoro Spill Extents`, with the shared March 12 imagery caveat kept explicit and the separate focused Mindoro Phase 1 drifter-based provenance note carried as provenance rather than rewritten run history
 - an explicit publication-grade note figure explaining why Phase 4 OpenDrift-versus-PyGNOME comparison is still deferred
 - support-only prototype family `K`, which now republishes the preferred accepted-segment 2021 deterministic OpenDrift-vs-PyGNOME forecast figures without elevating them into the default main-defense list
 - the canonical presentation layer for defense and manuscript use
@@ -151,11 +151,16 @@ The publication package adds:
 
 - `output/Phase 3B March13-14 Final Output/README.md`
 - `output/Phase 3B March13-14 Final Output/final_output_manifest.json`
-- `output/Phase 3B March13-14 Final Output/publication/*.png`
-- `output/Phase 3B March13-14 Final Output/scientific_source_pngs/*.png`
-- `output/Phase 3B March13-14 Final Output/summary/*`
+- `output/Phase 3B March13-14 Final Output/publication/observations/*.png`
+- `output/Phase 3B March13-14 Final Output/publication/opendrift_primary/*.png`
+- `output/Phase 3B March13-14 Final Output/publication/comparator_pygnome/*.png`
+- `output/Phase 3B March13-14 Final Output/scientific_source_pngs/opendrift_primary/*.png`
+- `output/Phase 3B March13-14 Final Output/scientific_source_pngs/comparator_pygnome/*.png`
+- `output/Phase 3B March13-14 Final Output/summary/opendrift_primary/*`
+- `output/Phase 3B March13-14 Final Output/summary/comparator_pygnome/*`
+- `output/Phase 3B March13-14 Final Output/manifests/*`
 
-This export is the thesis-facing alias for the promoted B1 family. It reuses the publication package and the stored March 13 -> March 14 scientific source PNGs without renaming the canonical scientific directory.
+This export is the thesis-facing alias for the promoted B1 family. It reuses the publication package and the stored March 13 -> March 14 scientific source PNGs without renaming the canonical scientific directory, while keeping the primary OpenDrift claim separate from the comparator-only PyGNOME subgroup.
 
 ## Prototype Forecast Support Figures
 
@@ -183,7 +188,7 @@ These figures remain:
 - The polished board pack reorganizes existing evidence into clearer presentation boards, but it does not fabricate trajectories or relabel score products.
 - The publication package redraws from the stored rasters, tracks, and Phase 4 tables, but it still does not fabricate trajectories or relabel score products.
 - The publication package includes Phase 3 OpenDrift-versus-PyGNOME comparison boards, but it does not generate fake Phase 4 cross-model figures; instead it writes a deferred-comparison note figure grounded in `output/phase4_crossmodel_comparability_audit/`.
-- Mindoro validation figures remain inherited-provisional from the unfinished Phase 1/2 frozen-baseline story, and the Phase 4 figures remain support/context material outside `prototype_2016`.
+- Mindoro validation figures now report the promoted March 13 -> March 14 B1 row while explicitly inheriting recipe provenance from the separate focused 2016-2023 Mindoro drifter rerun; the Phase 4 figures remain support/context material outside `prototype_2016`.
 - DWH figures remain reportable transfer-validation/support visuals, not a replacement for the Mindoro thesis case.
 
 ## Still Optional

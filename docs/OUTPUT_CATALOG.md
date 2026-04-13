@@ -222,7 +222,7 @@ Interpretation:
 - Phase 3 OpenDrift-versus-PyGNOME comparison figures are included where those comparator products exist now
 - Mindoro Phase 4 is shown as OpenDrift-only support/context material; the package includes a deferred-comparison note figure instead of a fake Phase 4 OpenDrift-versus-PyGNOME board
 - publication family `K` republishes the preferred accepted-segment 2021 deterministic OpenDrift-vs-PyGNOME forecast figures as support-only material rather than main-defense evidence, while the 2016 prototype package remains preserved as legacy output
-- Mindoro publication figures remain inherited-provisional from the unfinished Phase 1/2 freeze story, while DWH figures remain transfer-validation/support visuals
+- Mindoro publication figures now report the promoted March 13 -> March 14 B1 validation while explicitly inheriting recipe provenance from the separate focused 2016-2023 Mindoro Phase 1 rerun; DWH figures remain transfer-validation/support visuals
 
 ## Frozen Thesis Validation Package
 
@@ -260,18 +260,25 @@ Expected files:
 
 - `README.md`
 - `final_output_manifest.json`
-- `publication/*.png`
-- `scientific_source_pngs/*.png`
-- `summary/march13_14_reinit_summary.csv`
-- `summary/march13_14_reinit_decision_note.md`
-- `summary/march13_14_reinit_run_manifest.json`
+- `publication/observations/*.png`
+- `publication/opendrift_primary/*.png`
+- `publication/comparator_pygnome/*.png`
+- `scientific_source_pngs/opendrift_primary/*.png`
+- `scientific_source_pngs/comparator_pygnome/*.png`
+- `summary/opendrift_primary/*`
+- `summary/comparator_pygnome/*`
+- `manifests/final_output_manifest.json`
+- `manifests/phase3b_final_output_registry.csv`
+- `manifests/phase3b_final_output_registry.json`
 
 Interpretation:
 
 - this directory is an alias/export layer, not the canonical scientific directory
-- it packages the B1 publication figures, the stored canonical March 13 -> March 14 QA/source PNGs, and the summary artifacts in one thesis-facing location
-- the stored B1 raw provenance remains tied to `config/phase1_baseline_selection.yaml`
-- the later `2016-2023` Mindoro-focused drifter rerun is carried here only as recipe-confirmation provenance showing the same `cmems_era5` recipe
+- it packages the B1 publication figures, the stored canonical March 13 -> March 14 QA/source PNGs, and the summary artifacts in one thesis-facing location with primary OpenDrift and comparator-only PyGNOME groups kept separate
+- the stored B1 raw-generation outputs remain preserved in their canonical scientific directories, while the active thesis-facing recipe provenance now points to the separate focused `phase1_mindoro_focus_pre_spill_2016_2023` rerun selecting `cmems_era5`
+- the broader `phase1_regional_2016_2022` rerun remains preserved as a regional reference/governance lane rather than the active provenance for B1
+- the focused rerun searched through early 2023 but its accepted registry does not include near-2023 accepted segments
+- GFS-backed recipes were excluded in the focused rerun while archived NOAA/NCEI GFS access remained unavailable
 - the shared-imagery caveat remains explicit; do not describe March 13 -> March 14 as independent day-to-day validation
 
 ## Final Reproducibility Package

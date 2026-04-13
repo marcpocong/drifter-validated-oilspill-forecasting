@@ -948,7 +948,7 @@ class Phase5LauncherAndDocsSyncService:
                 ),
                 (
                     f"- The thesis-facing B1 title is `{MINDORO_PRIMARY_VALIDATION_THESIS_PHASE_TITLE}`, and the "
-                    "later 2016-2023 Mindoro-focused drifter rerun confirmed the same `cmems_era5` recipe "
+                    "separate focused 2016-2023 Mindoro drifter rerun selected the same `cmems_era5` recipe "
                     "without rewriting the stored B1 raw provenance."
                 ),
                 (
@@ -1009,7 +1009,7 @@ class Phase5LauncherAndDocsSyncService:
             "- No finished Mindoro or DWH scientific outputs were overwritten.",
             "- The March 3 -> March 6 Mindoro base case YAML remains frozen; the promoted March 13 -> March 14 row is recorded as an amendment rather than a silent rewrite.",
             f"- `{MINDORO_PRIMARY_VALIDATION_THESIS_PHASE_TITLE}` remains tied to B1, and {MINDORO_SHARED_IMAGERY_CAVEAT.lower()}",
-            "- The later 2016-2023 Mindoro-focused drifter rerun is packaged only as recipe-confirmation provenance for B1, not as the raw generation history of the stored March 13 -> March 14 science bundle.",
+            "- The separate focused 2016-2023 Mindoro drifter rerun now supplies the active B1 recipe-provenance story, not the raw generation history of the stored March 13 -> March 14 science bundle.",
             "- The legacy `prototype_2016` lane is framed as Phase 1 / 2 / 3A / 4 only; it has no thesis-facing Phase 3B or Phase 3C.",
             "- The launcher/menu is now organized around current track categories instead of the older monolithic Mindoro full-chain story.",
             "- The first dashboard version is intentionally read-only and does not add scientific run buttons.",
