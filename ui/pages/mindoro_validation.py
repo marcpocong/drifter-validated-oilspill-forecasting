@@ -21,7 +21,15 @@ import streamlit as st
 
 from src.core.artifact_status import get_artifact_status
 from ui.data_access import figure_subset
-from ui.pages.common import render_figure_cards, render_markdown_block, render_page_intro, render_status_callout, render_table
+from ui.pages.common import (
+    render_export_note,
+    render_figure_cards,
+    render_markdown_block,
+    render_page_intro,
+    render_section_stack,
+    render_status_callout,
+    render_table,
+)
 
 
 def _mindoro_final_subset(df, artifact_groups: set[str]) -> object:
@@ -33,6 +41,7 @@ def _mindoro_final_subset(df, artifact_groups: set[str]) -> object:
 
 
 def render(state: dict, ui_state: dict) -> None:
+    export_mode = bool(ui_state.get("export_mode"))
     primary_status = get_artifact_status("mindoro_primary_validation")
     legacy_status = get_artifact_status("mindoro_legacy_march6")
     support_status = get_artifact_status("mindoro_legacy_support")
@@ -43,6 +52,14 @@ def render(state: dict, ui_state: dict) -> None:
         "This page leads with the promoted March 13 -> March 14 B1 family, keeps the shared-imagery caveat visible, and treats all other Mindoro rows as comparator or support material rather than co-primary evidence.",
         badge="Mindoro B1 | primary validation row",
     )
+
+    if export_mode:
+        render_export_note(
+            [
+                "Export mode presents the Mindoro validation story as a single sequential brief.",
+                "B1 stays first, Track A remains comparator-only, B2 stays a legacy reference row, and B3 remains broader support rather than co-primary evidence.",
+            ]
+        )
 
     render_status_callout("Primary validation", primary_status.panel_text, "info")
     render_status_callout(
@@ -81,25 +98,15 @@ def render(state: dict, ui_state: dict) -> None:
         status_keys=[trajectory_status.key],
     )
 
-    tabs = st.tabs(
-        [
-            "B1 primary package",
-            "A comparator support",
-            "B2 legacy reference",
-            "B3 broader support",
-            "Trajectory context",
-            "Tables and notes",
-        ]
-    )
-
-    with tabs[0]:
+    def _primary_package() -> None:
         render_figure_cards(
             primary_figures,
             title="B1 curated primary-validation figures",
             caption="These figures come from the curated Phase 3B March13-14 final package and should be used first for thesis-facing Mindoro discussion.",
-            limit=None if ui_state["advanced"] else 5,
-            compact_selector=not ui_state["advanced"],
+            limit=2 if export_mode else (None if ui_state["advanced"] else 5),
+            compact_selector=not ui_state["advanced"] and not export_mode,
             selector_key="mindoro_primary_figures",
+            export_mode=export_mode,
         )
         render_table(
             "B1 summary",
@@ -107,9 +114,10 @@ def render(state: dict, ui_state: dict) -> None:
             download_name="march13_14_reinit_summary.csv",
             caption="Curated B1 summary table from the final March13-14 package.",
             height=250,
+            export_mode=export_mode,
         )
 
-    with tabs[1]:
+    def _comparator_support() -> None:
         render_status_callout(
             "Comparator-only rule",
             "Track A is attached to B1 as same-case comparator support. PyGNOME is comparator-only and never truth.",
@@ -119,7 +127,10 @@ def render(state: dict, ui_state: dict) -> None:
             comparator_figures,
             title="A comparator-only figures",
             caption="These figures come from the curated comparator subgroup under the final March13-14 package and remain separate from the primary B1 claim.",
-            limit=None if ui_state["advanced"] else 4,
+            limit=2 if export_mode else (None if ui_state["advanced"] else 4),
+            compact_selector=not ui_state["advanced"] and not export_mode,
+            selector_key="mindoro_comparator_support_figures",
+            export_mode=export_mode,
         )
         render_table(
             "Comparator model ranking",
@@ -127,47 +138,52 @@ def render(state: dict, ui_state: dict) -> None:
             download_name="march13_14_reinit_crossmodel_model_ranking.csv",
             caption="Curated cross-model ranking table for the same-case March 14 comparator lane.",
             height=240,
+            export_mode=export_mode,
         )
 
-    with tabs[2]:
+    def _legacy_reference() -> None:
         render_status_callout("Legacy reference rule", "B2 remains visible as a legacy reference and limitations row, but it is not the main Mindoro validation claim.", "warning")
         render_figure_cards(
             legacy_figures,
             title=legacy_status.panel_label,
             caption="B2 remains visible for legacy reference and limitations. It is not the promoted primary result.",
-            limit=None if ui_state["advanced"] else 4,
-            compact_selector=not ui_state["advanced"],
+            limit=2 if export_mode else (None if ui_state["advanced"] else 4),
+            compact_selector=not ui_state["advanced"] and not export_mode,
             selector_key="mindoro_legacy_figures",
+            export_mode=export_mode,
         )
 
-    with tabs[3]:
+    def _broader_support() -> None:
         render_status_callout("Support-only rule", support_status.panel_text, "info")
         render_figure_cards(
             support_figures,
             title=support_status.panel_label,
             caption="B3 remains broader support / appendix context only and should not be presented as the main validation row.",
-            limit=None if ui_state["advanced"] else 4,
-            compact_selector=not ui_state["advanced"],
+            limit=2 if export_mode else (None if ui_state["advanced"] else 4),
+            compact_selector=not ui_state["advanced"] and not export_mode,
             selector_key="mindoro_support_figures",
+            export_mode=export_mode,
         )
 
-    with tabs[4]:
+    def _trajectory_context() -> None:
         render_figure_cards(
             trajectory_figures,
             title=trajectory_status.panel_label,
             caption="These figures give transport context from stored outputs only. Publication mode stays compact; advanced mode can open lower-level layers.",
-            limit=None if ui_state["advanced"] else 4,
-            compact_selector=not ui_state["advanced"],
+            limit=2 if export_mode else (None if ui_state["advanced"] else 4),
+            compact_selector=not ui_state["advanced"] and not export_mode,
             selector_key="mindoro_trajectory_figures",
+            export_mode=export_mode,
         )
 
-    with tabs[5]:
+    def _tables_and_notes() -> None:
         render_table(
             "B1 FSS by window",
             state["mindoro_b1_fss"],
             download_name="march13_14_reinit_fss_by_window.csv",
             caption="Curated FSS table from the primary March13-14 package.",
             height=220,
+            export_mode=export_mode,
         )
         render_table(
             "Comparator summary",
@@ -175,5 +191,18 @@ def render(state: dict, ui_state: dict) -> None:
             download_name="march13_14_reinit_crossmodel_summary.csv",
             caption="Curated summary for the March14 comparator-only subgroup.",
             height=220,
+            export_mode=export_mode,
         )
-        render_markdown_block("Mindoro B1 final-package note", state["mindoro_final_readme"], collapsed=True)
+        render_markdown_block("Mindoro B1 final-package note", state["mindoro_final_readme"], collapsed=True, export_mode=export_mode)
+
+    render_section_stack(
+        [
+            ("B1 primary package", _primary_package),
+            ("A comparator support", _comparator_support),
+            ("B2 legacy reference", _legacy_reference),
+            ("B3 broader support", _broader_support),
+            ("Trajectory context", _trajectory_context),
+            ("Tables and notes", _tables_and_notes),
+        ],
+        export_mode=export_mode,
+    )

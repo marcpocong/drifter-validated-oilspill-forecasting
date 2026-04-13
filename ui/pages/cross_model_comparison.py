@@ -20,10 +20,18 @@ ensure_repo_root_on_path(__file__)
 import streamlit as st
 
 from src.core.artifact_status import get_artifact_status
-from ui.pages.common import render_figure_cards, render_markdown_block, render_page_intro, render_status_callout, render_table
+from ui.pages.common import (
+    render_export_note,
+    render_figure_cards,
+    render_markdown_block,
+    render_page_intro,
+    render_status_callout,
+    render_table,
+)
 
 
 def render(state: dict, ui_state: dict) -> None:
+    export_mode = bool(ui_state.get("export_mode"))
     comparator_status = get_artifact_status("mindoro_crossmodel_comparator")
     registry = state["mindoro_final_registry"]
     figures = registry.loc[
@@ -35,6 +43,14 @@ def render(state: dict, ui_state: dict) -> None:
         "This page is the dedicated home for Track A. It stays comparator-only, uses the same March 14 target as B1, and never lets PyGNOME read like truth or a co-primary validation row.",
         badge="Mindoro A | comparator-only",
     )
+
+    if export_mode:
+        render_export_note(
+            [
+                "Export mode keeps the comparator page concise so the PDF reads as cross-model context rather than a second validation claim.",
+                "The figures below remain comparator-only and should be read alongside the main B1 page, not instead of it.",
+            ]
+        )
 
     render_status_callout("Comparator-only rule", comparator_status.panel_text, "warning")
     render_status_callout(
@@ -52,28 +68,47 @@ def render(state: dict, ui_state: dict) -> None:
         figures,
         title=comparator_status.panel_label,
         caption="These figures come from the curated comparator subgroup in the March13-14 final package.",
-        limit=None if ui_state["advanced"] else 4,
-        compact_selector=not ui_state["advanced"],
+        limit=2 if export_mode else (None if ui_state["advanced"] else 4),
+        compact_selector=not ui_state["advanced"] and not export_mode,
         selector_key="mindoro_comparator_figures",
+        export_mode=export_mode,
     )
 
-    left, right = st.columns(2)
-    with left:
+    if export_mode:
         render_table(
             "Comparator ranking",
             state["mindoro_comparator_ranking"],
             download_name="march13_14_reinit_crossmodel_model_ranking.csv",
             caption="Curated ranking table for the same-case March 14 comparator lane.",
             height=260,
+            export_mode=export_mode,
         )
-    with right:
         render_table(
             "Comparator summary",
             state["mindoro_comparator_summary"],
             download_name="march13_14_reinit_crossmodel_summary.csv",
             caption="Curated summary table for the Mindoro comparator subgroup.",
             height=260,
+            export_mode=export_mode,
         )
+    else:
+        left, right = st.columns(2)
+        with left:
+            render_table(
+                "Comparator ranking",
+                state["mindoro_comparator_ranking"],
+                download_name="march13_14_reinit_crossmodel_model_ranking.csv",
+                caption="Curated ranking table for the same-case March 14 comparator lane.",
+                height=260,
+            )
+        with right:
+            render_table(
+                "Comparator summary",
+                state["mindoro_comparator_summary"],
+                download_name="march13_14_reinit_crossmodel_summary.csv",
+                caption="Curated summary table for the Mindoro comparator subgroup.",
+                height=260,
+            )
 
-    if ui_state["advanced"]:
-        render_markdown_block("Mindoro final-package note", state["mindoro_final_readme"], collapsed=True)
+    if ui_state["advanced"] or export_mode:
+        render_markdown_block("Mindoro final-package note", state["mindoro_final_readme"], collapsed=True, export_mode=export_mode)

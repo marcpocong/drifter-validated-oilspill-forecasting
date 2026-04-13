@@ -10,10 +10,81 @@ try:
 except ImportError:  # pragma: no cover - host environments may not have streamlit installed
     AppTest = None
 
+from ui.data_access import build_dashboard_state
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 APP_PATH = REPO_ROOT / "ui" / "app.py"
 PAGES_DIR = REPO_ROOT / "ui" / "pages"
+
+
+def _phase1_wrapper_for_test() -> None:
+    from ui.data_access import build_dashboard_state
+    from ui.pages import phase1_recipe_selection
+
+    state = build_dashboard_state()
+    panel_state = {"advanced": False, "mode_label": "Panel-friendly", "visual_layer": "publication", "export_mode": False}
+    phase1_recipe_selection.render(state, panel_state)
+
+
+def _phase1_wrapper_missing_focused_for_test() -> None:
+    from ui.data_access import build_dashboard_state
+    from ui.pages import phase1_recipe_selection
+
+    state = build_dashboard_state()
+    state["phase1_focused_manifest"] = {}
+    state["phase1_focused_recipe_ranking"] = state["phase1_focused_recipe_ranking"].iloc[0:0].copy()
+    state["phase1_focused_recipe_summary"] = state["phase1_focused_recipe_summary"].iloc[0:0].copy()
+    state["phase1_focused_accepted_segments"] = state["phase1_focused_accepted_segments"].iloc[0:0].copy()
+    state["phase1_focused_ranking_subset"] = state["phase1_focused_ranking_subset"].iloc[0:0].copy()
+    state["phase1_focused_loading_audit"] = state["phase1_focused_loading_audit"].iloc[0:0].copy()
+    panel_state = {"advanced": False, "mode_label": "Panel-friendly", "visual_layer": "publication", "export_mode": False}
+    phase1_recipe_selection.render(state, panel_state)
+
+
+def _phase4_wrapper_for_test() -> None:
+    from ui.data_access import build_dashboard_state
+    from ui.pages import phase4_oiltype_and_shoreline
+
+    state = build_dashboard_state()
+    panel_state = {"advanced": False, "mode_label": "Panel-friendly", "visual_layer": "publication", "export_mode": False}
+    phase4_oiltype_and_shoreline.render(state, panel_state)
+
+
+def _home_panel_wrapper_for_test() -> None:
+    from ui.data_access import build_dashboard_state
+    from ui.pages import home
+
+    state = build_dashboard_state()
+    panel_state = {"advanced": False, "mode_label": "Panel-friendly", "visual_layer": "publication", "export_mode": False}
+    home.render(state, panel_state)
+
+
+def _home_advanced_wrapper_for_test() -> None:
+    from ui.data_access import build_dashboard_state
+    from ui.pages import home
+
+    state = build_dashboard_state()
+    advanced_state = {"advanced": True, "mode_label": "Advanced", "visual_layer": "publication", "export_mode": False}
+    home.render(state, advanced_state)
+
+
+def _home_export_wrapper_for_test() -> None:
+    from ui.data_access import build_dashboard_state
+    from ui.pages import home
+
+    state = build_dashboard_state()
+    export_state = {"advanced": False, "mode_label": "Export", "visual_layer": "publication", "export_mode": True}
+    home.render(state, export_state)
+
+
+def _phase1_export_wrapper_for_test() -> None:
+    from ui.data_access import build_dashboard_state
+    from ui.pages import phase1_recipe_selection
+
+    state = build_dashboard_state()
+    export_state = {"advanced": False, "mode_label": "Export", "visual_layer": "publication", "export_mode": True}
+    phase1_recipe_selection.render(state, export_state)
 
 
 def _probe_script_style_import(path: Path) -> subprocess.CompletedProcess[str]:
@@ -77,30 +148,71 @@ class UiImportBootstrapTests(unittest.TestCase):
 
 @unittest.skipIf(AppTest is None, "streamlit.testing is not available")
 class UiAppSmokeTests(unittest.TestCase):
-    def test_key_pages_render_without_exceptions(self):
+    def test_app_home_renders_without_exceptions(self):
         at = AppTest.from_file(str(APP_PATH), default_timeout=60)
         at.run()
         self.assertFalse(at.exception)
+        titles = [element.value for element in at.title]
+        self.assertIn("Home / Overview", titles)
+        self.assertEqual(len(at.sidebar.selectbox), 1)
+        self.assertEqual(at.sidebar.selectbox[0].label, "Visual layer")
 
-        for label, expected_title in (
-            ("Phase 1 Recipe Selection", "Phase 1 Recipe Selection"),
-            ("Mindoro B1 Primary Validation", "Mindoro B1 Primary Validation"),
-            ("Mindoro Cross-Model Comparator", "Mindoro Cross-Model Comparator"),
-            ("DWH Phase 3C Transfer Validation", "DWH Phase 3C Transfer Validation"),
-            ("Legacy 2016 Support Package", "Legacy 2016 Support Package"),
-            ("Phase 4 Oil-Type and Shoreline Context", "Phase 4 Oil-Type and Shoreline Context"),
-            ("Artifacts / Logs / Registries", "Artifacts / Logs / Registries"),
+    def test_pages_render_via_wrapper_functions(self):
+        for wrapper, expected_title in (
+            (_home_panel_wrapper_for_test, "Home / Overview"),
+            (_home_advanced_wrapper_for_test, "Home / Overview"),
+            (_phase1_wrapper_for_test, "Phase 1 Recipe Selection"),
+            (_phase4_wrapper_for_test, "Phase 4 Oil-Type and Shoreline Context"),
+            (_home_export_wrapper_for_test, "Home / Overview"),
+            (_phase1_export_wrapper_for_test, "Phase 1 Recipe Selection"),
         ):
-            at.sidebar.selectbox[1].set_value(label).run()
-            self.assertFalse(at.exception, msg=f"App raised an exception while loading {label}")
+            at = AppTest.from_function(wrapper, default_timeout=60)
+            at.run()
+            self.assertFalse(at.exception, msg=f"Wrapper page raised for {expected_title}")
             titles = [element.value for element in at.title]
             self.assertIn(expected_title, titles)
 
-        at.sidebar.radio[0].set_value("Advanced").run()
-        at.sidebar.selectbox[1].set_value("Trajectory Explorer").run()
-        self.assertFalse(at.exception, msg="App raised an exception while loading Trajectory Explorer in advanced mode")
-        titles = [element.value for element in at.title]
-        self.assertIn("Trajectory Explorer", titles)
+    def test_home_panel_gallery_uses_hover_preview_without_dropdown(self):
+        at = AppTest.from_function(_home_panel_wrapper_for_test, default_timeout=60)
+        at.run()
+        self.assertFalse(at.exception)
+        selectbox_labels = [element.label for element in at.selectbox]
+        self.assertNotIn("Featured figure", selectbox_labels)
+        button_labels = [element.label for element in at.button]
+        self.assertNotIn("Enlarge figure", button_labels)
+        expected_count = len(build_dashboard_state(REPO_ROOT)["curated_recommended_figures"])
+        download_buttons = [element for element in at.download_button if element.label == "Download PNG"]
+        self.assertEqual(len(download_buttons), expected_count)
+        text_blocks = " ".join(element.value for element in at.markdown)
+        self.assertNotIn("keyboard_double", text_blocks)
+
+    def test_home_advanced_gallery_matches_panel_gallery_count(self):
+        at = AppTest.from_function(_home_advanced_wrapper_for_test, default_timeout=60)
+        at.run()
+        self.assertFalse(at.exception)
+        selectbox_labels = [element.label for element in at.selectbox]
+        self.assertNotIn("Featured figure", selectbox_labels)
+        button_labels = [element.label for element in at.button]
+        self.assertNotIn("Enlarge figure", button_labels)
+        expected_count = len(build_dashboard_state(REPO_ROOT)["curated_recommended_figures"])
+        download_buttons = [element for element in at.download_button if element.label == "Download PNG"]
+        self.assertEqual(len(download_buttons), expected_count)
+
+    def test_export_mode_renders_note_cards_without_sidebar_controls(self):
+        at = AppTest.from_function(_home_export_wrapper_for_test, default_timeout=60)
+        at.run()
+        self.assertFalse(at.exception)
+        text_blocks = " ".join(element.value for element in at.markdown)
+        self.assertIn("Export mode converts the dashboard into a print-friendly snapshot", text_blocks)
+        button_labels = [element.label for element in at.button]
+        self.assertNotIn("Enlarge figure", button_labels)
+
+    def test_phase1_page_degrades_gracefully_when_focused_artifacts_are_missing(self):
+        at = AppTest.from_function(_phase1_wrapper_missing_focused_for_test, default_timeout=60)
+        at.run()
+        self.assertFalse(at.exception)
+        info_text = " ".join(element.value for element in at.warning)
+        self.assertIn("falls back to the broader regional reference artifacts", info_text)
 
 
 if __name__ == "__main__":

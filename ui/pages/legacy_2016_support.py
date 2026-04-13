@@ -21,10 +21,12 @@ import streamlit as st
 
 from src.core.artifact_status import get_artifact_status
 from ui.pages.common import (
+    render_export_note,
     render_figure_cards,
     render_markdown_block,
     render_metric_row,
     render_page_intro,
+    render_section_stack,
     render_status_callout,
     render_table,
 )
@@ -39,23 +41,36 @@ def _filter_case(df, case_id: str) -> object:
 
 
 def render(state: dict, ui_state: dict) -> None:
+    export_mode = bool(ui_state.get("export_mode"))
     support_status = get_artifact_status("prototype_2016_support")
     registry = state["legacy_2016_final_registry"]
     comparator_registry = state["legacy_2016_phase4_comparator_registry"]
+    provenance = state.get("legacy_2016_provenance_metadata", {})
     case_options = ["ALL"] + sorted(registry.get("case_id", []).astype(str).unique().tolist()) if not registry.empty else ["ALL"]
-    selected_case = st.selectbox(
-        "Legacy case",
-        options=case_options,
-        format_func=lambda value: "All cases" if value == "ALL" else value,
-        index=0,
-        key="legacy_2016_case_selector",
-    )
+    if export_mode:
+        selected_case = "ALL"
+    else:
+        selected_case = st.selectbox(
+            "Legacy case",
+            options=case_options,
+            format_func=lambda value: "All cases" if value == "ALL" else value,
+            index=0,
+            key="legacy_2016_case_selector",
+        )
 
     render_page_intro(
         "Legacy 2016 Support Package",
         "This page surfaces the authoritative curated prototype_2016 package. It is support-only legacy material and should be read as a thesis-facing packaging layer for historical pipeline development, not as the main Mindoro or DWH validation evidence.",
         badge="prototype_2016 | support-only legacy package",
     )
+
+    if export_mode:
+        render_export_note(
+            [
+                "Export mode shows the legacy package as a single support-only brief across all three 2016 cases.",
+                "The Phase 4 comparator section remains budget-only and deterministic, and shoreline comparison is still not packaged.",
+            ]
+        )
 
     render_status_callout("Lane status", support_status.panel_text, "warning")
     render_status_callout(
@@ -68,6 +83,55 @@ def render(state: dict, ui_state: dict) -> None:
         "There is no thesis-facing Phase 3B or Phase 3C in prototype_2016, and this lane does not replace the final regional Phase 1 study.",
         "warning",
     )
+
+    def _format_box(bounds: object) -> str:
+        if not isinstance(bounds, list) or len(bounds) != 4:
+            return ""
+        formatted: list[str] = []
+        for value in bounds:
+            try:
+                formatted.append(format(float(value), ".4f").rstrip("0").rstrip("."))
+            except (TypeError, ValueError):
+                formatted.append(str(value))
+        return ", ".join(formatted)
+
+    initial_capture_box = provenance.get("prototype_2016_initial_capture_box", [])
+    source_boxes = provenance.get("prototype_2016_initial_capture_source_boxes", [])
+    initial_capture_box_text = _format_box(initial_capture_box)
+    render_status_callout(
+        "Early prototype capture context",
+        (
+            f"The earliest first-ingested prototype_2016 cases sat inside the shared provenance-only initial capture box "
+            f"[{initial_capture_box_text}] when only the first three 2016 cases had been ingested. Later ingestion widened "
+            "and refined the study, and the stored case-local prototype extents remain the operative scientific/display extents."
+        )
+        if initial_capture_box_text
+        else (
+            "The earliest prototype_2016 capture-box provenance metadata is not available in the current package copy. "
+            "Stored case-local prototype extents still remain the operative scientific/display extents."
+        ),
+        "info",
+    )
+    if source_boxes:
+        source_box_lines = "\n".join(
+            f"- Source box {index}: [{_format_box(box)}]"
+            for index, box in enumerate(source_boxes, start=1)
+            if _format_box(box)
+        )
+        if export_mode:
+            render_markdown_block(
+                "Original source boxes",
+                source_box_lines
+                + "\n\nThese source boxes are provenance-only and did not replace the stored per-case local prototype extents.",
+                collapsed=False,
+                export_mode=export_mode,
+            )
+        else:
+            with st.expander("Original source boxes", expanded=False):
+                st.markdown(source_box_lines)
+                st.caption(
+                    "These source boxes are provenance-only and did not replace the stored per-case local prototype extents."
+                )
 
     filtered_registry = _filter_case(registry, selected_case)
     phase3a_figures = filtered_registry.loc[
@@ -93,17 +157,7 @@ def render(state: dict, ui_state: dict) -> None:
     ) if not comparator_registry.empty and "scenario_key" in comparator_registry.columns else []
     scenario_text = ", ".join(scenario_keys) if scenario_keys else "no comparator scenarios"
 
-    tabs = st.tabs(
-        [
-            "Package overview",
-            "Phase 3A publication",
-            "Phase 4 publication",
-            "Phase 4 comparator",
-            "Summaries and manifests",
-        ]
-    )
-
-    with tabs[0]:
+    def _package_overview() -> None:
         metrics = [
             ("Indexed artifacts", str(len(filtered_registry))),
             ("Phase 3A figures", str(len(phase3a_figures))),
@@ -111,17 +165,18 @@ def render(state: dict, ui_state: dict) -> None:
             ("Phase 4 comparator figures", str(len(phase4_comparator_figures))),
             ("Cases", str(len(sorted(registry.get("case_id", []).astype(str).unique().tolist())) if not registry.empty else 0)),
         ]
-        render_metric_row(metrics)
-        render_markdown_block("Legacy package README", state["legacy_2016_final_readme"], collapsed=False)
+        render_metric_row(metrics, export_mode=export_mode)
+        render_markdown_block("Legacy package README", state["legacy_2016_final_readme"], collapsed=False, export_mode=export_mode)
 
-    with tabs[1]:
+    def _phase3a_publication() -> None:
         render_figure_cards(
             phase3a_figures,
             title="Phase 3A publication figures",
             caption="These figures come from the curated legacy package and keep the Phase 3A comparator-only OpenDrift vs deterministic PyGNOME framing explicit.",
-            limit=None if ui_state["advanced"] else 6,
-            compact_selector=not ui_state["advanced"],
+            limit=3 if export_mode else (None if ui_state["advanced"] else 6),
+            compact_selector=not ui_state["advanced"] and not export_mode,
             selector_key="legacy_phase3a_figures",
+            export_mode=export_mode,
         )
         render_table(
             "Phase 3A similarity by case",
@@ -129,16 +184,18 @@ def render(state: dict, ui_state: dict) -> None:
             download_name="prototype_pygnome_similarity_by_case.csv",
             caption="Curated similarity summary from the legacy Phase 3A support package.",
             height=240,
+            export_mode=export_mode,
         )
 
-    with tabs[2]:
+    def _phase4_publication() -> None:
         render_figure_cards(
             phase4_figures,
             title="Phase 4 publication figures",
             caption="These figures reuse the stored weathering/fate outputs and shoreline summaries derived from stored CSVs only.",
-            limit=None if ui_state["advanced"] else 6,
-            compact_selector=not ui_state["advanced"],
+            limit=3 if export_mode else (None if ui_state["advanced"] else 6),
+            compact_selector=not ui_state["advanced"] and not export_mode,
             selector_key="legacy_phase4_figures",
+            export_mode=export_mode,
         )
         render_table(
             "Phase 4 registry",
@@ -146,9 +203,10 @@ def render(state: dict, ui_state: dict) -> None:
             download_name="prototype_2016_phase4_registry.csv",
             caption="Phase 4 registry copied into the curated legacy package.",
             height=260,
+            export_mode=export_mode,
         )
 
-    with tabs[3]:
+    def _phase4_comparator() -> None:
         render_status_callout(
             "Comparator scope",
             f"Budget-only deterministic PyGNOME comparator pilot. Currently packaged scenarios: {scenario_text}. Shoreline comparison is not packaged because matched PyGNOME shoreline outputs are not available.",
@@ -163,9 +221,10 @@ def render(state: dict, ui_state: dict) -> None:
             phase4_comparator_figures,
             title="Phase 4 comparator figures",
             caption="These figures stay support-only and comparator-only. They describe cross-model budget differences from the stored prototype_2016 Phase 4 PyGNOME pilot; they are not observational skill products.",
-            limit=None if ui_state["advanced"] else 6,
-            compact_selector=not ui_state["advanced"],
+            limit=4 if export_mode else (None if ui_state["advanced"] else 6),
+            compact_selector=not ui_state["advanced"] and not export_mode,
             selector_key="legacy_phase4_comparator_figures",
+            export_mode=export_mode,
         )
         render_table(
             "Phase 4 comparator registry",
@@ -173,14 +232,16 @@ def render(state: dict, ui_state: dict) -> None:
             download_name="prototype_2016_phase4_pygnome_comparator_registry.csv",
             caption="Registry for the deterministic prototype_2016 Phase 4 PyGNOME comparator pilot artifacts copied into the curated legacy package.",
             height=260,
+            export_mode=export_mode,
         )
         render_markdown_block(
             "Phase 4 comparator decision note",
             state["legacy_2016_phase4_comparator_decision_note"],
             collapsed=False,
+            export_mode=export_mode,
         )
 
-    with tabs[4]:
+    def _summaries_and_manifests() -> None:
         render_table(
             "Legacy final-output registry",
             filtered_registry,
@@ -188,6 +249,7 @@ def render(state: dict, ui_state: dict) -> None:
             caption="Machine-readable registry for the authoritative curated legacy package.",
             height=320,
             max_rows=None if ui_state["advanced"] else 30,
+            export_mode=export_mode,
         )
         render_table(
             "Phase 3A FSS by case/window",
@@ -195,5 +257,17 @@ def render(state: dict, ui_state: dict) -> None:
             download_name="prototype_pygnome_fss_by_case_window.csv",
             caption="Legacy Phase 3A FSS summary copied into the curated package.",
             height=220,
+            export_mode=export_mode,
         )
-        render_markdown_block("Phase 5 packaging summary", state["legacy_2016_packaging_summary"], collapsed=True)
+        render_markdown_block("Phase 5 packaging summary", state["legacy_2016_packaging_summary"], collapsed=True, export_mode=export_mode)
+
+    render_section_stack(
+        [
+            ("Package overview", _package_overview),
+            ("Phase 3A publication", _phase3a_publication),
+            ("Phase 4 publication", _phase4_publication),
+            ("Phase 4 comparator", _phase4_comparator),
+            ("Summaries and manifests", _summaries_and_manifests),
+        ],
+        export_mode=export_mode,
+    )

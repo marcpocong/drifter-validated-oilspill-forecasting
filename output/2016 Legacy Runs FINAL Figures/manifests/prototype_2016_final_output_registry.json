@@ -2698,5 +2698,17 @@
     "support_only": true,
     "comparator_only": false,
     "notes": "CSV registry for the authoritative curated prototype_2016 final-output package."
+  },
+  {
+    "final_relative_path": "output/2016 Legacy Runs FINAL Figures/manifests/prototype_2016_provenance_metadata.json",
+    "source_relative_path": "README.md | docs/ARCHITECTURE.md | output/prototype_2016_pygnome_similarity/prototype_pygnome_case_registry.csv",
+    "phase_group": "phase5",
+    "artifact_group": "prototype_legacy_phase5_packaging",
+    "scientific_vs_display_only": "metadata",
+    "copied_vs_regenerated": "regenerated_from_existing_metadata",
+    "case_id": "",
+    "support_only": true,
+    "comparator_only": false,
+    "notes": "Provenance-only metadata for the earliest first-ingested prototype_2016 capture box and source boxes. Per-case local prototype extents remain unchanged."
   }
 ]

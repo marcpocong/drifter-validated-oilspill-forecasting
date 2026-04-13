@@ -43,10 +43,27 @@ class UiDataAccessTests(unittest.TestCase):
             "publication_manifest",
             "phase4_crossmodel_matrix",
             "curated_recommended_figures",
+            "legacy_2016_provenance_metadata",
             "legacy_2016_phase4_comparator_registry",
             "legacy_2016_phase4_comparator_decision_note",
         ):
             self.assertIn(key, state)
+
+    def test_legacy_2016_provenance_metadata_records_union_and_source_boxes(self):
+        metadata = data_access.legacy_2016_provenance_metadata(REPO_ROOT)
+
+        self.assertEqual(
+            metadata.get("prototype_2016_initial_capture_box"),
+            [108.6465, 121.3655, 6.1865, 20.3515],
+        )
+        self.assertEqual(
+            metadata.get("prototype_2016_initial_capture_source_boxes"),
+            [
+                [113.267, 121.267, 6.3685, 14.3685],
+                [113.3655, 121.3655, 6.1865, 14.1865],
+                [108.6465, 116.6465, 12.3515, 20.3515],
+            ],
+        )
 
     def test_phase1_focused_artifacts_load(self):
         manifest = data_access.phase1_focused_manifest(REPO_ROOT)

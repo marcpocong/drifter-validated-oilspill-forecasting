@@ -74,6 +74,7 @@ What remains provisional:
 - Plain-language status: preserved legacy support lane only, reframed thesis-facing as `Phase 1 -> Phase 2 -> Phase 3A -> Phase 4 -> Phase 5`.
 - Reportable: `false` as final evidence, `true` as legacy support/comparator context.
 - Methodological role: this preserved three-date 2016 lane captures the earliest prototype stage of the study, when the ingestion-and-validation pipeline was first exercised on 2016 drifter records in the Palawan-side western Philippine context before the study widened toward the broader west-coast Palawan/Mindoro context.
+- Early-capture provenance note: the earliest first-ingested three-case prototype stage is now recorded with the shared provenance-only initial capture box `[108.6465, 121.3655, 6.1865, 20.3515]` plus the three original source boxes that formed that union; later ingestion widened/refined the study, and the stored case-local prototype extents remain unchanged.
 - Guardrail: there is no thesis-facing `Phase 3B` or `Phase 3C` for `prototype_2016`.
 - Phase 3A package scope: deterministic plus support-only `p50`/`p90` OpenDrift tracks against deterministic PyGNOME.
 - Comparator interpretation: the Phase 3A OpenDrift-versus-deterministic-PyGNOME check is support-only. A non-zero fraction skill score means the ensemble footprint was not completely disjoint from the deterministic PyGNOME forecast; it does not make PyGNOME truth or elevate this lane into final Chapter 3 evidence.

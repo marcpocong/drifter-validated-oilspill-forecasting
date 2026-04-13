@@ -20,6 +20,7 @@ ensure_repo_root_on_path(__file__)
 import streamlit as st
 
 from ui.pages.common import (
+    render_export_note,
     render_figure_cards,
     render_markdown_block,
     render_package_cards,
@@ -30,11 +31,20 @@ from ui.pages.common import (
 
 
 def render(state: dict, ui_state: dict) -> None:
+    export_mode = bool(ui_state.get("export_mode"))
     render_page_intro(
         "Home / Overview",
         "This dashboard is a read-only thesis launch surface over the current curated outputs. It leads with Mindoro B1 primary validation, keeps comparator and support lanes explicit, and surfaces packaged evidence before raw case folders.",
         badge="Read-only dashboard | curated final packages first",
     )
+
+    if export_mode:
+        render_export_note(
+            [
+                "Export mode converts the dashboard into a print-friendly snapshot of the current curated packages.",
+                "This view hides the sidebar and interactive controls, keeps only the publication-first layer, and limits the page to a small set of featured figures for PDF export.",
+            ]
+        )
 
     render_status_callout(
         "Primary claim",
@@ -100,29 +110,36 @@ def render(state: dict, ui_state: dict) -> None:
                 "page_label": "Legacy 2016 Support Package",
             },
         ],
-        columns_per_row=3,
+        columns_per_row=2 if export_mode else 3,
+        export_mode=export_mode,
     )
 
     st.subheader("Quick Links")
     st.caption("These cards open the current curated package roots rather than raw case folders.")
-    render_package_cards(state.get("curated_package_roots", []), columns_per_row=2)
+    render_package_cards(
+        state.get("curated_package_roots", []),
+        columns_per_row=1 if export_mode else 2,
+        export_mode=export_mode,
+    )
 
     render_figure_cards(
         recommended,
         title="Featured publication figures",
-        caption="Panel mode starts with one featured publication figure at a time so the page stays readable during live discussion. Advanced mode can still open larger galleries.",
-        limit=8,
-        columns_per_row=2,
-        compact_selector=not ui_state["advanced"],
-        selector_key="home_featured_figure",
+        caption="Home shows the full curated featured set in both Panel-friendly and Advanced browsing. Hover over any figure image to open a larger preview; export mode stays smaller and static for cleaner PDF snapshots.",
+        limit=2 if export_mode else None,
+        columns_per_row=1 if export_mode else 2,
+        compact_selector=False,
+        export_mode=export_mode,
+        image_interaction="hover_lightbox" if not export_mode else "none",
+        image_overlay_label="View larger",
     )
 
-    if ui_state["advanced"]:
+    if ui_state["advanced"] and not export_mode:
         render_status_callout(
             "Advanced note",
             "Advanced mode keeps the lower-level reproducibility notes available, but panel mode deliberately avoids internal governance counters and status jargon.",
             "info",
         )
-        render_markdown_block("Final reproducibility summary", state["final_reproducibility_summary"], collapsed=True)
-        render_markdown_block("Publication talking points", state["publication_talking_points"], collapsed=True)
-        render_markdown_block("Publication captions", state["publication_captions"], collapsed=True)
+        render_markdown_block("Final reproducibility summary", state["final_reproducibility_summary"], collapsed=True, export_mode=export_mode)
+        render_markdown_block("Publication talking points", state["publication_talking_points"], collapsed=True, export_mode=export_mode)
+        render_markdown_block("Publication captions", state["publication_captions"], collapsed=True, export_mode=export_mode)

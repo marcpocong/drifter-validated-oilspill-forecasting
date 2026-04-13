@@ -19,7 +19,34 @@
   "phase5_dir": "output/2016 Legacy Runs FINAL Figures/phase5",
   "registry_csv": "output/2016 Legacy Runs FINAL Figures/manifests/prototype_2016_final_output_registry.csv",
   "registry_json": "output/2016 Legacy Runs FINAL Figures/manifests/prototype_2016_final_output_registry.json",
-  "registry_row_count": 227,
+  "prototype_2016_provenance_metadata_path": "output/2016 Legacy Runs FINAL Figures/manifests/prototype_2016_provenance_metadata.json",
+  "prototype_2016_initial_capture_box": [
+    108.6465,
+    121.3655,
+    6.1865,
+    20.3515
+  ],
+  "prototype_2016_initial_capture_source_boxes": [
+    [
+      113.267,
+      121.267,
+      6.3685,
+      14.3685
+    ],
+    [
+      113.3655,
+      121.3655,
+      6.1865,
+      14.1865
+    ],
+    [
+      108.6465,
+      116.6465,
+      12.3515,
+      20.3515
+    ]
+  ],
+  "registry_row_count": 226,
   "figure_count": 42,
   "missing_figure_count": 0,
   "notes": [
@@ -28,6 +55,7 @@
     "Phase 4 is the legacy weathering/fate family seeded from the selected drifter-of-record start.",
     "A limited deterministic Phase 4 PyGNOME budget comparator pilot may be packaged when stored case-local comparator outputs exist; shoreline comparison remains unavailable in that pilot.",
     "Phase 5 is this read-only packaging/export layer built from stored outputs only.",
-    "No Phase 3B or Phase 3C exists in the thesis-facing prototype_2016 lane."
+    "No Phase 3B or Phase 3C exists in the thesis-facing prototype_2016 lane.",
+    "The shared wide initial capture box is now recorded as provenance-only metadata for the earliest first-ingested 2016 prototype cases; stored per-case local extents remain unchanged."
   ]
 }

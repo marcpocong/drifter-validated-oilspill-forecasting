@@ -6,12 +6,14 @@ This folder is the authoritative curated `prototype_2016` legacy support export.
 
 - `prototype_2016` is legacy support-only.
 - The visible legacy support flow here is `Phase 1 -> Phase 2 -> Phase 3A -> Phase 4 -> Phase 5`.
+- The earliest first-ingested 2016 prototype cases are now documented with one shared provenance-only initial capture box `[108.6465, 121.3655, 6.1865, 20.3515]` plus the three original source boxes that formed that union.
 - `Phase 3A` is comparator-only OpenDrift vs deterministic PyGNOME support.
 - `Phase 4` is the legacy weathering/fate family seeded from the selected drifter-of-record start.
 - A limited deterministic `Phase 4` PyGNOME budget comparator pilot may also be packaged when stored case-local comparator outputs exist; shoreline comparison remains unavailable unless matched PyGNOME shoreline products are present.
 - `Phase 5` is this read-only packaging/export layer built from stored outputs.
 - There is no thesis-facing `Phase 3B` or `Phase 3C` in this lane.
 - This lane does not replace the final regional Phase 1 study.
+- The wide initial capture box is provenance-only and does not replace the stored case-local prototype scientific/display extents.
 
 ## Folder Guide
 
@@ -24,7 +26,7 @@ This folder is the authoritative curated `prototype_2016` legacy support export.
 - `summary/phase3a/`: similarity/FSS/KL tables, per-case pairing artifacts, and source-path notes.
 - `summary/phase4/`: copied budget/shoreline CSVs plus a lightweight phase4 registry.
 - `summary/phase4_comparator/`: copied deterministic PyGNOME budget-comparator tables plus the decision note describing why shoreline comparison is still unavailable.
-- `manifests/`: machine-readable registries for this curated export.
+- `manifests/`: machine-readable registries for this curated export, including `prototype_2016_provenance_metadata.json` for the earliest prototype capture-box record.
 - `phase5/`: packaging notes describing what was copied vs regenerated.
 
 ## Compatibility Note

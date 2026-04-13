@@ -20,7 +20,15 @@ ensure_repo_root_on_path(__file__)
 import pandas as pd
 import streamlit as st
 
-from ui.pages.common import render_markdown_block, render_metric_row, render_page_intro, render_status_callout, render_table
+from ui.pages.common import (
+    render_export_note,
+    render_markdown_block,
+    render_metric_row,
+    render_page_intro,
+    render_section_stack,
+    render_status_callout,
+    render_table,
+)
 
 
 def _year_counts(df: pd.DataFrame) -> pd.DataFrame:
@@ -41,6 +49,7 @@ def _format_recipe_family(values: object) -> str:
 
 
 def render(state: dict, ui_state: dict) -> None:
+    export_mode = bool(ui_state.get("export_mode"))
     manifest = state["phase1_focused_manifest"] or {}
     ranking = state["phase1_focused_recipe_ranking"]
     summary = state["phase1_focused_recipe_summary"]
@@ -50,6 +59,7 @@ def render(state: dict, ui_state: dict) -> None:
     reference_manifest = state["phase1_reference_manifest"] or {}
     reference_ranking = state["phase1_reference_recipe_ranking"]
     reference_summary = state["phase1_reference_recipe_summary"]
+    focused_missing = not manifest and ranking.empty and summary.empty
 
     time_window = manifest.get("time_window") or {}
     subset_info = manifest.get("ranking_subset") or {}
@@ -67,6 +77,14 @@ def render(state: dict, ui_state: dict) -> None:
         "This page explains how the Mindoro forcing recipe was chosen before the main validation step. It keeps the focused drifter-based provenance lane separate from the broader regional reference lane and shows how B1 inherits the selected recipe without directly ingesting drifters in Phase 3B.",
         badge="Phase 1 provenance | recipe selection before B1",
     )
+
+    if export_mode:
+        render_export_note(
+            [
+                "Export mode keeps the Phase 1 story on one page so the PDF can be read without tabs.",
+                "The focused Mindoro provenance lane remains the primary recipe-selection story, while the broader regional lane stays visible only as reference context.",
+            ]
+        )
 
     render_status_callout(
         "What Phase 1 does",
@@ -88,6 +106,12 @@ def render(state: dict, ui_state: dict) -> None:
         "GFS-backed recipes were not part of the focused Mindoro provenance lane while archived access was unavailable, so the focused comparison stayed limited to the recipes that could be run cleanly.",
         "warning",
     )
+    if focused_missing:
+        render_status_callout(
+            "Focused-lane fallback",
+            "The focused Mindoro provenance artifacts are not available in this repo state. This page stays visible and falls back to the broader regional reference artifacts where possible so Phase 1 does not look absent.",
+            "warning",
+        )
 
     render_metric_row(
         [
@@ -96,20 +120,11 @@ def render(state: dict, ui_state: dict) -> None:
             ("Accepted segments", str(manifest.get("accepted_segment_count", 0))),
             ("Ranking subset", str(subset_info.get("segment_count", len(subset)) or 0)),
             ("Study window", f"{str(time_window.get('start_utc', ''))[:10]} to {str(time_window.get('end_utc', ''))[:10]}"),
-        ]
+        ],
+        export_mode=export_mode,
     )
 
-    tabs = st.tabs(
-        [
-            "Focused Mindoro provenance lane",
-            "How B1 inherits the recipe",
-            "Regional reference lane",
-            "Legacy 2016 support lane",
-            "Source tables",
-        ]
-    )
-
-    with tabs[0]:
+    def _focused_lane() -> None:
         render_status_callout(
             "Focused lane role",
             "This is the active Mindoro-specific provenance lane used to justify the B1 recipe choice.",
@@ -121,6 +136,7 @@ def render(state: dict, ui_state: dict) -> None:
             download_name="phase1_recipe_ranking.csv",
             caption="Stored ranking for the focused Mindoro Phase 1 provenance lane.",
             height=220,
+            export_mode=export_mode,
         )
         render_table(
             "Focused recipe summary",
@@ -128,6 +144,7 @@ def render(state: dict, ui_state: dict) -> None:
             download_name="phase1_recipe_summary.csv",
             caption="Stored summary of the recipe family actually tested for the focused Mindoro provenance lane.",
             height=220,
+            export_mode=export_mode,
         )
         render_table(
             "Accepted segments by year",
@@ -135,6 +152,7 @@ def render(state: dict, ui_state: dict) -> None:
             download_name="phase1_accepted_segments_by_year.csv",
             caption="Accepted segments are historical drifter windows used for the provenance lane. Near-2023 accepted windows are not present in the current stored registry.",
             height=220,
+            export_mode=export_mode,
         )
         render_table(
             "Ranking subset registry",
@@ -143,9 +161,10 @@ def render(state: dict, ui_state: dict) -> None:
             caption="This is the subset used to rank the focused Mindoro recipe family. The stored lane hard-fails if this subset is empty.",
             height=260,
             max_rows=None if ui_state["advanced"] else 20,
+            export_mode=export_mode,
         )
 
-    with tabs[1]:
+    def _inheritance_story() -> None:
         render_status_callout(
             "Provenance chain",
             f"Focused Phase 1 selected `{selected_recipe}`. The active Mindoro B1 package then inherits that recipe choice through the repo baseline-selection layer.",
@@ -166,14 +185,16 @@ def render(state: dict, ui_state: dict) -> None:
             "Focused ranking-subset report",
             state["phase1_focused_ranking_subset_report"],
             collapsed=not ui_state["advanced"],
+            export_mode=export_mode,
         )
         render_markdown_block(
             "Focused baseline candidate",
             state["phase1_focused_baseline_candidate"],
             collapsed=not ui_state["advanced"],
+            export_mode=export_mode,
         )
 
-    with tabs[2]:
+    def _regional_reference() -> None:
         reference_note = (
             f"The broader regional reference lane currently resolves to `{reference_recipe}`."
             if reference_recipe
@@ -190,6 +211,7 @@ def render(state: dict, ui_state: dict) -> None:
             download_name="phase1_production_rerun_recipe_ranking.csv",
             caption="Stored ranking from the broader regional reference lane.",
             height=220,
+            export_mode=export_mode,
         )
         render_table(
             "Regional reference recipe summary",
@@ -197,14 +219,16 @@ def render(state: dict, ui_state: dict) -> None:
             download_name="phase1_production_rerun_recipe_summary.csv",
             caption="Stored recipe family summary from the broader regional reference lane.",
             height=220,
+            export_mode=export_mode,
         )
         render_markdown_block(
             "Regional reference baseline candidate",
             state["phase1_reference_baseline_candidate"],
             collapsed=True,
+            export_mode=export_mode,
         )
 
-    with tabs[3]:
+    def _legacy_support_lane() -> None:
         render_status_callout(
             "Legacy lane role",
             "The prototype_2016 lane remains a legacy support package. It still shows a full support flow, but it does not replace the current Mindoro-specific Phase 1 provenance story.",
@@ -221,7 +245,7 @@ def render(state: dict, ui_state: dict) -> None:
             )
         )
 
-    with tabs[4]:
+    def _source_tables() -> None:
         render_table(
             "Focused loading audit",
             loading_audit,
@@ -229,9 +253,22 @@ def render(state: dict, ui_state: dict) -> None:
             caption="Stored read-only loading audit for the focused provenance lane.",
             height=240,
             max_rows=None if ui_state["advanced"] else 20,
+            export_mode=export_mode,
         )
         render_markdown_block(
             "Focused production manifest excerpt",
             f"```json\n{pd.Series(manifest).to_json(indent=2)}\n```" if manifest else "",
             collapsed=True,
+            export_mode=export_mode,
         )
+
+    render_section_stack(
+        [
+            ("Focused Mindoro provenance lane", _focused_lane),
+            ("How B1 inherits the recipe", _inheritance_story),
+            ("Regional reference lane", _regional_reference),
+            ("Legacy 2016 support lane", _legacy_support_lane),
+            ("Source tables", _source_tables),
+        ],
+        export_mode=export_mode,
+    )

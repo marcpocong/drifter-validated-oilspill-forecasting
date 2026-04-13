@@ -1,0 +1,44 @@
+{
+  "workflow_mode": "prototype_2016",
+  "metadata_role": "provenance_only",
+  "metadata_scope": "earliest_first_ingested_2016_prototype_cases_only",
+  "bounds_order": [
+    "west_lon",
+    "east_lon",
+    "south_lat",
+    "north_lat"
+  ],
+  "prototype_2016_initial_capture_box": [
+    108.6465,
+    121.3655,
+    6.1865,
+    20.3515
+  ],
+  "prototype_2016_initial_capture_source_boxes": [
+    [
+      113.267,
+      121.267,
+      6.3685,
+      14.3685
+    ],
+    [
+      113.3655,
+      121.3655,
+      6.1865,
+      14.1865
+    ],
+    [
+      108.6465,
+      116.6465,
+      12.3515,
+      20.3515
+    ]
+  ],
+  "notes": [
+    "This is a provenance-only record for the earliest prototype_2016 ingestion stage.",
+    "It reflects only the first three 2016 prototype cases that were first ingested together.",
+    "Later ingestion logic widened and refined the study beyond that stage.",
+    "Stored per-case local prototype extents remain the actual prototype scientific and display extents for the preserved 2016 cases.",
+    "This initial capture box does not replace the focused Mindoro Phase 1 provenance box or the broader regional Phase 1 audit box."
+  ]
+}

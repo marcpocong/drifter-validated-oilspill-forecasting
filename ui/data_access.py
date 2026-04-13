@@ -377,6 +377,10 @@ def legacy_2016_final_readme(repo_root: str | Path | None = None) -> str:
     return read_text(LEGACY_2016_FINAL_DIR / "README.md", repo_root)
 
 
+def legacy_2016_provenance_metadata(repo_root: str | Path | None = None) -> dict[str, Any]:
+    return read_json(LEGACY_2016_FINAL_DIR / "manifests" / "prototype_2016_provenance_metadata.json", repo_root)
+
+
 def legacy_2016_final_registry(repo_root: str | Path | None = None) -> pd.DataFrame:
     root = _root(repo_root)
     payload = _prepare_curated_registry(
@@ -818,6 +822,7 @@ def build_dashboard_state(repo_root: str | Path | None = None) -> dict[str, Any]
         "dwh_all_results": dwh_all_results(root),
         "legacy_2016_final_manifest": legacy_2016_final_manifest(root),
         "legacy_2016_final_readme": legacy_2016_final_readme(root),
+        "legacy_2016_provenance_metadata": legacy_2016_provenance_metadata(root),
         "legacy_2016_final_registry": legacy_2016_final_registry(root),
         "legacy_2016_phase4_registry": legacy_2016_phase4_registry(root),
         "legacy_2016_phase4_comparator_registry": legacy_2016_phase4_comparator_registry(root),

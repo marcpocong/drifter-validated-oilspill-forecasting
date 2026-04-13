@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import base64
 import html
+import hashlib
+import io
 import json
 from pathlib import Path
 from typing import Any
@@ -22,6 +25,7 @@ ensure_repo_root_on_path(__file__)
 
 import pandas as pd
 import streamlit as st
+from PIL import Image as PILImage
 
 from ui.data_access import parse_source_paths, read_json, read_text, resolve_repo_path
 
@@ -60,11 +64,34 @@ def render_status_callout(label: str, value: str, tone: str = "info") -> None:
         st.info(message)
 
 
-def render_metric_row(metrics: list[tuple[str, str]]) -> None:
-    columns = st.columns(len(metrics))
-    for column, (label, value) in zip(columns, metrics):
-        with column:
-            st.metric(label, value)
+def render_metric_row(metrics: list[tuple[str, str]], *, export_mode: bool = False) -> None:
+    if not metrics:
+        return
+    columns_per_row = min(2 if export_mode else len(metrics), len(metrics))
+    for start in range(0, len(metrics), columns_per_row):
+        columns = st.columns(columns_per_row)
+        for column, (label, value) in zip(columns, metrics[start : start + columns_per_row]):
+            with column:
+                st.metric(label, value)
+
+
+def render_section_stack(
+    sections: list[tuple[str, Any]],
+    *,
+    export_mode: bool,
+    divider: bool = True,
+) -> None:
+    if not export_mode:
+        tabs = st.tabs([title for title, _ in sections])
+        for tab, (_, renderer) in zip(tabs, sections):
+            with tab:
+                renderer()
+        return
+    for index, (title, renderer) in enumerate(sections):
+        st.markdown(f"## {title}")
+        renderer()
+        if divider and index < len(sections) - 1:
+            st.divider()
 
 
 def render_table(
@@ -75,6 +102,7 @@ def render_table(
     caption: str = "",
     height: int = 260,
     max_rows: int | None = None,
+    export_mode: bool = False,
 ) -> None:
     st.subheader(title)
     if caption:
@@ -83,22 +111,26 @@ def render_table(
         st.info("No rows are available for this view in the current repo state.")
         return
     display_df = df.head(max_rows).copy() if max_rows else df.copy()
-    st.dataframe(display_df, width="stretch", height=height)
-    st.download_button(
-        "Download CSV",
-        df.to_csv(index=False).encode("utf-8"),
-        file_name=download_name,
-        mime="text/csv",
-        key=f"download::{download_name}",
-    )
+    if export_mode and len(display_df) <= 20:
+        st.table(display_df)
+    else:
+        st.dataframe(display_df, width="stretch", height=height)
+    if not export_mode:
+        st.download_button(
+            "Download CSV",
+            df.to_csv(index=False).encode("utf-8"),
+            file_name=download_name,
+            mime="text/csv",
+            key=f"download::{download_name}",
+        )
 
 
-def render_markdown_block(title: str, content: str, *, collapsed: bool = True) -> None:
+def render_markdown_block(title: str, content: str, *, collapsed: bool = True, export_mode: bool = False) -> None:
     st.subheader(title)
     if not content.strip():
         st.info("This markdown artifact is not available in the current repo state.")
         return
-    if collapsed:
+    if collapsed and not export_mode:
         with st.expander(f"Open {title}", expanded=False):
             st.markdown(content)
     else:
@@ -113,16 +145,18 @@ def render_badge_strip(labels: list[str]) -> None:
     st.markdown(f"<div class='ui-badge-strip'>{spans}</div>", unsafe_allow_html=True)
 
 
-def render_package_cards(packages: list[dict[str, Any]], *, columns_per_row: int = 2) -> None:
+def render_package_cards(packages: list[dict[str, Any]], *, columns_per_row: int = 2, export_mode: bool = False) -> None:
     records = [package for package in packages if package]
     if not records:
         st.info("No curated package cards are available in the current repo state.")
         return
+    if export_mode:
+        columns_per_row = min(columns_per_row, 2)
     for start in range(0, len(records), columns_per_row):
         columns = st.columns(columns_per_row)
         for column, package in zip(columns, records[start : start + columns_per_row]):
             with column:
-                with st.container(border=True):
+                with st.container(border=not export_mode):
                     st.markdown(f"### {package.get('label', 'Package')}")
                     badges = []
                     if package.get("secondary_note"):
@@ -134,34 +168,92 @@ def render_package_cards(packages: list[dict[str, Any]], *, columns_per_row: int
                         st.write(str(package["description"]))
                     if package.get("relative_path"):
                         st.code(str(package["relative_path"]), language="text")
-                    if package.get("page_label"):
+                    if package.get("page_label") and not export_mode:
                         button_label = package.get("button_label") or f"Open {package['page_label']}"
                         if st.button(button_label, key=f"nav::{package['package_id']}"):
-                            st.session_state["page_selector"] = package["page_label"]
-                            st.rerun()
+                            page_objects = st.session_state.get("_ui_nav_pages_by_label", {})
+                            target_page = page_objects.get(package["page_label"])
+                            if target_page is not None:
+                                st.switch_page(target_page)
+                            else:
+                                st.info("This page is not available in the current viewing mode.")
 
 
-def render_study_structure_cards(cards: list[dict[str, Any]], *, columns_per_row: int = 3) -> None:
+def render_export_note(lines: list[str]) -> None:
+    clean = [line.strip() for line in lines if str(line).strip()]
+    if not clean:
+        return
+    st.markdown(
+        "<div class='export-note'>"
+        + "".join(f"<p>{html.escape(line)}</p>" for line in clean)
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def render_study_structure_cards(cards: list[dict[str, Any]], *, columns_per_row: int = 3, export_mode: bool = False) -> None:
     records = [card for card in cards if card]
     if not records:
         st.info("No study-structure cards are available in the current repo state.")
         return
+    if export_mode:
+        columns_per_row = min(columns_per_row, 2)
     for start in range(0, len(records), columns_per_row):
         columns = st.columns(columns_per_row)
         for column, card in zip(columns, records[start : start + columns_per_row]):
             with column:
-                with st.container(border=True):
+                with st.container(border=not export_mode):
                     st.markdown(f"### {card.get('title', 'Study section')}")
                     render_badge_strip([str(card.get("classification", "")).strip()])
                     if card.get("body"):
                         st.write(str(card["body"]))
                     if card.get("note"):
                         st.caption(str(card["note"]))
-                    if card.get("page_label"):
+                    if card.get("page_label") and not export_mode:
                         button_label = card.get("button_label") or f"Open {card['page_label']}"
                         if st.button(button_label, key=f"study::{card['page_label']}"):
-                            st.session_state["page_selector"] = card["page_label"]
-                            st.rerun()
+                            page_objects = st.session_state.get("_ui_nav_pages_by_label", {})
+                            target_page = page_objects.get(card["page_label"])
+                            if target_page is not None:
+                                st.switch_page(target_page)
+                            else:
+                                st.info("This page is not available in the current viewing mode.")
+
+
+def render_figure_strip(
+    df: pd.DataFrame,
+    *,
+    title: str,
+    caption: str = "",
+    limit: int = 3,
+    columns_per_row: int = 3,
+) -> None:
+    st.subheader(title)
+    if caption:
+        st.caption(caption)
+    if df.empty:
+        st.info("No additional figures are available for this view.")
+        return
+    records = df.head(limit).to_dict(orient="records")
+    columns_per_row = max(1, min(columns_per_row, len(records)))
+    for start in range(0, len(records), columns_per_row):
+        columns = st.columns(columns_per_row)
+        for column, record in zip(columns, records[start : start + columns_per_row]):
+            row = pd.Series(record)
+            figure_path = resolve_repo_path(row.get("resolved_path") or row.get("file_path") or row.get("relative_path"))
+            title_text, subtitle = _figure_header(row)
+            with column:
+                with st.container(border=True):
+                    st.markdown(f"##### {title_text}")
+                    if subtitle:
+                        st.caption(subtitle)
+                    if figure_path and figure_path.exists():
+                        try:
+                            st.image(str(figure_path), width="stretch")
+                        except OSError:
+                            st.info("This packaged figure could not be opened in the strip view.")
+                    else:
+                        st.info("Figure file is missing on disk.")
 
 
 def filter_family(df: pd.DataFrame, code: str) -> pd.DataFrame:
@@ -234,6 +326,125 @@ def _figure_badges(row: pd.Series) -> list[str]:
     return badges[:4]
 
 
+def _figure_download_key(row: pd.Series, figure_path: Path | None, *, namespace: str = "card") -> str:
+    base_key = str(
+        row.get("relative_path")
+        or row.get("final_relative_path")
+        or row.get("figure_id")
+        or figure_path
+        or "figure"
+    )
+    return f"download::{namespace}::{base_key}"
+
+
+@st.cache_data(show_spinner=False)
+def _image_data_uri(path_text: str, max_width: int = 0) -> str:
+    path = Path(path_text)
+    with PILImage.open(path) as image:
+        if image.mode not in {"RGB", "RGBA"}:
+            image = image.convert("RGBA")
+        if max_width and image.width > max_width:
+            height = int(round(image.height * (max_width / image.width)))
+            image = image.resize((max_width, max(1, height)), PILImage.Resampling.LANCZOS)
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG", optimize=True)
+    encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+    return f"data:image/png;base64,{encoded}"
+
+
+def _hover_lightbox_markup(
+    row: pd.Series,
+    figure_path: Path,
+    *,
+    overlay_label: str,
+) -> str:
+    figure_key = str(row.get("figure_id") or figure_path)
+    token = hashlib.sha1(figure_key.encode("utf-8")).hexdigest()[:12]
+    anchor_id = f"figure-preview-{token}"
+    modal_id = f"figure-lightbox-{token}"
+    title_text, _ = _figure_header(row)
+    alt_text = html.escape(title_text, quote=True)
+    overlay_text = html.escape(overlay_label, quote=False)
+    title_html = html.escape(title_text, quote=False)
+    thumbnail_uri = _image_data_uri(str(figure_path), max_width=1100)
+    full_uri = _image_data_uri(str(figure_path), max_width=2200)
+    return (
+        f"<div class='figure-hover-lightbox' id='{anchor_id}'>"
+        f"<a class='figure-hover-lightbox__trigger' href='#{modal_id}' aria-label='View larger: {alt_text}'>"
+        f"<img class='figure-hover-lightbox__thumb' src='{thumbnail_uri}' alt='{alt_text}' />"
+        f"<span class='figure-hover-lightbox__overlay'>{overlay_text}</span>"
+        "</a>"
+        f"<div class='figure-hover-lightbox__modal' id='{modal_id}'>"
+        f"<a class='figure-hover-lightbox__backdrop' href='#{anchor_id}' aria-label='Close preview'></a>"
+        "<div class='figure-hover-lightbox__panel' role='dialog' aria-modal='true'>"
+        f"<a class='figure-hover-lightbox__close' href='#{anchor_id}' aria-label='Close preview'>Close</a>"
+        f"<div class='figure-hover-lightbox__title'>{title_html}</div>"
+        f"<img class='figure-hover-lightbox__full' src='{full_uri}' alt='{alt_text}' />"
+        "</div>"
+        "</div>"
+        "</div>"
+    )
+
+
+def _render_figure_details(
+    row: pd.Series,
+    figure_path: Path | None,
+    *,
+    export_mode: bool = False,
+    heading_level: str = "####",
+    image_interaction: str = "none",
+    image_overlay_label: str = "View larger",
+    action_namespace: str = "card",
+) -> None:
+    title_text, subtitle = _figure_header(row)
+    status_summary, provenance = _status_summary_text(row)
+
+    st.markdown(f"{heading_level} {title_text}")
+    render_badge_strip(_figure_badges(row))
+    if subtitle:
+        st.caption(subtitle)
+    if status_summary:
+        st.caption(status_summary)
+    if figure_path and figure_path.exists():
+        try:
+            if not export_mode and image_interaction == "hover_lightbox":
+                st.html(
+                    _hover_lightbox_markup(
+                        row,
+                        figure_path,
+                        overlay_label=image_overlay_label,
+                    ),
+                    width="stretch",
+                )
+            else:
+                st.image(str(figure_path), width="stretch")
+            if not export_mode:
+                st.download_button(
+                    "Download PNG",
+                    figure_path.read_bytes(),
+                    file_name=figure_path.name,
+                    mime="image/png",
+                    key=_figure_download_key(row, figure_path, namespace=action_namespace),
+                )
+        except OSError:
+            st.info("The packaged figure exists, but the image could not be opened in this view.")
+    else:
+        st.warning("Figure file is missing on disk.")
+    interpretation = str(
+        row.get("short_plain_language_interpretation")
+        or row.get("plain_language_interpretation")
+        or row.get("notes")
+        or ""
+    ).strip()
+    if interpretation:
+        st.markdown(f"> {interpretation}")
+    notes = str(row.get("notes", "")).strip()
+    if notes and notes != interpretation:
+        st.caption(notes)
+    if provenance:
+        st.caption(f"Provenance: {provenance}")
+
+
 def render_figure_cards(
     df: pd.DataFrame,
     *,
@@ -243,6 +454,9 @@ def render_figure_cards(
     columns_per_row: int = 2,
     compact_selector: bool = False,
     selector_key: str = "",
+    export_mode: bool = False,
+    image_interaction: str = "none",
+    image_overlay_label: str = "View larger",
 ) -> None:
     st.subheader(title)
     if caption:
@@ -251,6 +465,10 @@ def render_figure_cards(
         st.info("No figures are available for this selection.")
         return
     records = df.head(limit).to_dict(orient="records") if limit else df.to_dict(orient="records")
+    if export_mode:
+        columns_per_row = 1
+        compact_selector = False
+        image_interaction = "none"
     if compact_selector and len(records) > 1:
         labels = []
         for record in records:
@@ -265,54 +483,22 @@ def render_figure_cards(
         )
         selected_index = labels.index(chosen_label)
         records = [records[selected_index]]
+        columns_per_row = 1
     for start in range(0, len(records), columns_per_row):
         columns = st.columns(columns_per_row)
         for column, record in zip(columns, records[start : start + columns_per_row]):
             row = pd.Series(record)
             figure_path = resolve_repo_path(row.get("resolved_path") or row.get("file_path") or row.get("relative_path"))
-            title_text, subtitle = _figure_header(row)
-            status_summary, provenance = _status_summary_text(row)
             with column:
-                with st.container(border=True):
-                    st.markdown(f"#### {title_text}")
-                    render_badge_strip(_figure_badges(row))
-                    if subtitle:
-                        st.caption(subtitle)
-                    if status_summary:
-                        st.caption(status_summary)
-                    if figure_path and figure_path.exists():
-                        try:
-                            st.image(str(figure_path), width="stretch")
-                            download_key = str(
-                                row.get("relative_path")
-                                or row.get("final_relative_path")
-                                or row.get("figure_id")
-                                or figure_path
-                            )
-                            st.download_button(
-                                "Download PNG",
-                                figure_path.read_bytes(),
-                                file_name=figure_path.name,
-                                mime="image/png",
-                                key=f"download::{download_key}",
-                            )
-                        except OSError:
-                            st.info("The packaged figure exists, but the image could not be opened in this view.")
-                    else:
-                        st.warning("Figure file is missing on disk.")
-                    interpretation = str(
-                        row.get("short_plain_language_interpretation")
-                        or row.get("plain_language_interpretation")
-                        or row.get("notes")
-                        or ""
-                    ).strip()
-                    if interpretation:
-                        st.markdown(f"> {interpretation}")
-                    notes = str(row.get("notes", "")).strip()
-                    if notes and notes != interpretation:
-                        st.caption(notes)
-                    if provenance:
-                        st.caption(f"Provenance: {provenance}")
+                with st.container(border=not export_mode):
+                    _render_figure_details(
+                        row,
+                        figure_path,
+                        export_mode=export_mode,
+                        image_interaction=image_interaction,
+                        image_overlay_label=image_overlay_label,
+                        action_namespace="card",
+                    )
 
 
 def render_source_artifact_summary(row: pd.Series) -> None:

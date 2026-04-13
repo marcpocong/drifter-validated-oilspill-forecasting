@@ -24,6 +24,33 @@ Open:
 http://localhost:8501
 ```
 
+## Print / Export Mode
+
+The UI now has a dedicated export snapshot mode for browser-to-PDF saves.
+
+Open any dashboard page with:
+
+```text
+http://localhost:8501/?export=1
+```
+
+If you are already on a page route, keep the route and add the query parameter:
+
+```text
+http://localhost:8501/<page-path>?export=1
+```
+
+Export mode is read-only and intentionally simplified:
+
+- the sidebar is hidden
+- navigation chrome is hidden
+- publication figures render in a wider, print-friendly layout
+- tabs are flattened into sequential static sections
+- download buttons and other interactive-only controls are hidden
+- the page stays in the publication-first layer
+
+Export mode is meant for panel snapshots and PDF handouts, not for deep artifact inspection.
+
 ## What The UI Reads
 
 The UI reads existing artifacts only:
@@ -53,6 +80,22 @@ This is the default mode. It prioritizes:
 - simplified summary tables
 - soft-fail messaging instead of debug-style missing-file errors
 
+## What Export Mode Includes
+
+- page title and short framing note
+- main plain-language callouts
+- sequential sections instead of tabs
+- one or a few featured figures per section instead of large figure grids
+- concise summary tables and notes
+
+## What Export Mode Omits
+
+- sidebar controls
+- advanced/raw figure layers
+- download buttons
+- artifact preview selectors
+- tab-only or expander-only navigation patterns
+
 Recommended first stops:
 
 - `Home / Overview`
@@ -73,6 +116,15 @@ Advanced mode opens lower-level inspection without changing the scientific state
 - trajectory source artifact inspection
 
 This mode is still read-only.
+
+## Recommended PDF Workflow
+
+1. Launch the UI and open the page you want to export.
+2. Add `?export=1` to the URL.
+3. Wait for the page to re-render in export mode.
+4. In the browser, use `Print` or `Save as PDF`.
+5. Use portrait or landscape based on the page, but keep background graphics enabled so the title and note cards render correctly.
+6. Save one page at a time if you want stable panel-ready PDFs.
 
 ## Pages
 

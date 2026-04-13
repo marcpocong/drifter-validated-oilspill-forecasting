@@ -146,6 +146,7 @@ Expected structure:
 - `manifests/legacy_final_output_manifest.json`
 - `manifests/prototype_2016_final_output_registry.csv`
 - `manifests/prototype_2016_final_output_registry.json`
+- `manifests/prototype_2016_provenance_metadata.json`
 - `phase5/prototype_2016_packaging_summary.md`
 - compatibility files `final_figure_manifest.json` and `missing_figures.csv`
 
@@ -158,10 +159,12 @@ Interpretation:
 - `publication/phase4_comparator/` packages the budget-only deterministic PyGNOME Phase 4 pilot when stored case-local comparator outputs exist
 - `scientific_source_pngs/` keeps the exact stored source PNGs used by the curated publication family
 - `summary/` keeps the copied similarity tables, per-case pairing artifacts, weathering CSVs, the Phase 4 comparator decision note, and packaging notes
+- `manifests/prototype_2016_provenance_metadata.json` records the earliest first-ingested three-case prototype capture box `[108.6465, 121.3655, 6.1865, 20.3515]` and the three original source boxes as provenance-only metadata
 - `prototype_2016` remains support-only, with visible thesis-facing support flow `Phase 1 -> Phase 2 -> Phase 3A -> Phase 4 -> Phase 5`
 - this lane has no thesis-facing `Phase 3B` or `Phase 3C`
 - the generic `output/figure_package_publication/` package remains mostly a 2016 Phase 3A figure source; the dedicated 2016 Phase 4/Phase 5 packaging now lives here
 - the Phase 4 comparator pilot stays budget-only and descriptive; shoreline comparison is not packaged unless matched PyGNOME shoreline products exist
+- the shared wide initial capture box is provenance-only and does not replace the stored case-local prototype scientific/display extents
 
 ## Phase 4 Support Outputs
 
