@@ -238,7 +238,7 @@ Large raw data, scientific raster stacks, NetCDF outputs, and bulk case rerun ar
 
 ## Contact
 
-For questions or issues, contact `arjayninosaguisa@gmail.com`.
+For questions or issues, contact `marcpocong@gmail.com`.
 
 ## Status Stamp
 

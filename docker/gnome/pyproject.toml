@@ -2,7 +2,7 @@
 name = "oil-spill-phase3"
 version = "0.1.0"
 description = "Phase 3: Oil Spill Modeling with PyGNOME"
-authors = ["Arjay Saguisa <arjayninosaguisa@gmail.com>"]
+authors = ["Marc Pocong <marcpocong@gmail.com>"]
 readme = "README.md"
 license = "MIT"
 repository = "https://github.com/kkreiju/drifter-validated-oilspill-forecasting"
