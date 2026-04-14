@@ -26,8 +26,8 @@ def render(state: dict, ui_state: dict) -> None:
     export_mode = bool(ui_state.get("export_mode"))
     render_page_intro(
         "Artifacts / Logs / Registries",
-        "This page exposes the synced reproducibility indexes, manifest inventory, final case registry, and log inventory in a read-only way. Panel-friendly mode stays high-level; advanced mode allows direct artifact preview and download.",
-        badge="Read-only artifact browser",
+        "This is the reference page for synced reproducibility indexes, manifest inventory, final case registry, and log inventory. Panel-friendly mode stays high-level; advanced mode allows direct artifact preview and download.",
+        badge="Reference page | read-only registries",
     )
 
     if export_mode:
@@ -117,4 +117,5 @@ def render(state: dict, ui_state: dict) -> None:
             ("Package notes", _package_notes),
         ],
         export_mode=export_mode,
+        use_tabs=ui_state["advanced"],
     )

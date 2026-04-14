@@ -9,7 +9,9 @@ import json
 import logging
 import os
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
+from shutil import copy2
 from typing import Any
 
 import numpy as np
@@ -96,6 +98,10 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _utcnow_isoformat() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 @dataclass(frozen=True)
@@ -262,6 +268,11 @@ class Phase1ProductionRerunService(BaseService):
         self.distance_audit_config = dict(self.config.get("distance_audit_source_point") or {})
         self.distance_audit_source = self._load_distance_audit_source_point()
         self.candidate_baseline_config = dict(self.config.get("candidate_baseline") or {})
+        self.gfs_preflight_config = dict(self.config.get("gfs_preflight") or {})
+        self.official_baseline_update_config = dict(
+            self.config.get("official_baseline_update") or {}
+        )
+        self.adoption_decision_config = dict(self.config.get("adoption_decision") or {})
         self.required_drifter_fields = [
             str(value)
             for value in ((self.config.get("drifter") or {}).get("required_fields") or [])
@@ -285,6 +296,9 @@ class Phase1ProductionRerunService(BaseService):
             "recipe_ranking": self.output_root / "phase1_recipe_ranking.csv",
             "manifest": self.output_root / "phase1_production_manifest.json",
             "baseline_candidate": self.output_root / "phase1_baseline_selection_candidate.yaml",
+            "gfs_preflight": self.output_root / "phase1_gfs_month_preflight.csv",
+            "adoption_decision_json": self.output_root / "phase1_official_adoption_decision.json",
+            "adoption_decision_md": self.output_root / "phase1_official_adoption_decision.md",
         }
 
     def _force_refresh_enabled(self) -> bool:
@@ -442,6 +456,420 @@ class Phase1ProductionRerunService(BaseService):
         self.paths["ranking_subset_report"].write_text("\n".join(lines) + "\n", encoding="utf-8")
         return self.paths["ranking_subset_report"]
 
+    def _gfs_recipes_requested(self) -> bool:
+        return any(str(recipe).endswith("_gfs") for recipe in self.official_recipe_family)
+
+    def _require_full_accepted_gfs_preflight(self) -> bool:
+        return bool(self.gfs_preflight_config.get("require_full_accepted_month_coverage", False))
+
+    def _allow_secondary_gfs_source(self) -> bool:
+        return bool(self.gfs_preflight_config.get("allow_secondary_source", False))
+
+    def _secondary_gfs_source_id(self) -> str:
+        return str(self.gfs_preflight_config.get("secondary_source_id") or "ucar_gdex_d084001")
+
+    def _official_baseline_update_enabled(self) -> bool:
+        return bool(self.official_baseline_update_config.get("enabled", False))
+
+    def _gfs_provenance_sidecar_path(self, forcing_dir: Path) -> Path:
+        return forcing_dir / "gfs_wind.provenance.json"
+
+    def _default_gfs_provenance_payload(
+        self,
+        *,
+        source_system: str,
+        source_tier: str,
+        source_inferred: bool,
+        output_path: Path,
+        required_start: pd.Timestamp,
+        required_end: pd.Timestamp,
+        cache_inspection: dict[str, Any],
+        acquisition_record: dict[str, Any] | None = None,
+        primary_failure: str = "",
+    ) -> dict[str, Any]:
+        payload = {
+            "source_system": str(source_system),
+            "source_tier": str(source_tier),
+            "source_inferred": bool(source_inferred),
+            "cache_path": _relative(self.repo_root, output_path),
+            "required_start_utc": required_start.isoformat(),
+            "required_end_utc": required_end.isoformat(),
+            "coverage_start_utc": str(cache_inspection.get("coverage_start_utc") or ""),
+            "coverage_end_utc": str(cache_inspection.get("coverage_end_utc") or ""),
+            "reader_metadata_ok": bool(cache_inspection.get("reader_metadata_ok", False)),
+            "coverage_ok": bool(cache_inspection.get("coverage_ok", False)),
+            "written_at_utc": _utcnow_isoformat(),
+            "primary_failure": str(primary_failure or ""),
+        }
+        if acquisition_record:
+            payload["acquisition_record"] = acquisition_record
+        return payload
+
+    def _read_gfs_provenance_payload(
+        self,
+        forcing_dir: Path,
+    ) -> dict[str, Any] | None:
+        path = self._gfs_provenance_sidecar_path(forcing_dir)
+        if not path.exists():
+            return None
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                payload = json.load(handle) or {}
+            if not isinstance(payload, dict):
+                return None
+            return payload
+        except Exception:
+            return None
+
+    def _write_gfs_provenance_payload(
+        self,
+        forcing_dir: Path,
+        payload: dict[str, Any],
+    ) -> Path:
+        path = self._gfs_provenance_sidecar_path(forcing_dir)
+        _write_json(path, payload)
+        return path
+
+    def _inspect_gfs_cache(
+        self,
+        output_path: Path,
+        *,
+        required_start: pd.Timestamp,
+        required_end: pd.Timestamp,
+    ) -> dict[str, Any]:
+        if not output_path.exists():
+            return {
+                "present": False,
+                "valid": False,
+                "reason": "missing",
+                "coverage_ok": False,
+                "reader_metadata_ok": False,
+                "coverage_start_utc": "",
+                "coverage_end_utc": "",
+            }
+
+        try:
+            self._ensure_wind_cache_reader_metadata(output_path)
+            with xr.open_dataset(output_path) as raw:
+                loaded = raw.load()
+        except Exception as exc:
+            return {
+                "present": True,
+                "valid": False,
+                "reason": f"open_failed:{type(exc).__name__}",
+                "error": str(exc),
+                "coverage_ok": False,
+                "reader_metadata_ok": False,
+                "coverage_start_utc": "",
+                "coverage_end_utc": "",
+            }
+
+        reader_metadata_ok = bool(_wind_cache_has_reader_metadata(loaded))
+        if not {"x_wind", "y_wind"}.issubset(set(loaded.data_vars)):
+            return {
+                "present": True,
+                "valid": False,
+                "reason": "missing_reader_variables",
+                "coverage_ok": False,
+                "reader_metadata_ok": reader_metadata_ok,
+                "coverage_start_utc": "",
+                "coverage_end_utc": "",
+            }
+        if "time" not in loaded.coords:
+            return {
+                "present": True,
+                "valid": False,
+                "reason": "missing_time_coordinate",
+                "coverage_ok": False,
+                "reader_metadata_ok": reader_metadata_ok,
+                "coverage_start_utc": "",
+                "coverage_end_utc": "",
+            }
+
+        time_index = pd.to_datetime(loaded["time"].values, utc=True, errors="coerce")
+        time_index = pd.DatetimeIndex(time_index).dropna()
+        if time_index.empty:
+            return {
+                "present": True,
+                "valid": False,
+                "reason": "empty_time_axis",
+                "coverage_ok": False,
+                "reader_metadata_ok": reader_metadata_ok,
+                "coverage_start_utc": "",
+                "coverage_end_utc": "",
+            }
+
+        coverage_start = pd.Timestamp(time_index.min()).tz_convert("UTC")
+        coverage_end = pd.Timestamp(time_index.max()).tz_convert("UTC")
+        coverage_ok = bool(coverage_start <= required_start and coverage_end >= required_end)
+        return {
+            "present": True,
+            "valid": bool(reader_metadata_ok and coverage_ok),
+            "reason": "" if reader_metadata_ok and coverage_ok else ("insufficient_coverage" if reader_metadata_ok else "missing_reader_metadata"),
+            "coverage_ok": coverage_ok,
+            "reader_metadata_ok": reader_metadata_ok,
+            "coverage_start_utc": coverage_start.isoformat(),
+            "coverage_end_utc": coverage_end.isoformat(),
+            "time_count": int(len(time_index)),
+        }
+
+    def _ensure_gfs_provenance_payload(
+        self,
+        forcing_dir: Path,
+        *,
+        required_start: pd.Timestamp,
+        required_end: pd.Timestamp,
+    ) -> dict[str, Any]:
+        output_path = forcing_dir / "gfs_wind.nc"
+        cache_inspection = self._inspect_gfs_cache(
+            output_path,
+            required_start=required_start,
+            required_end=required_end,
+        )
+        payload = self._read_gfs_provenance_payload(forcing_dir)
+        if payload:
+            return payload
+        inferred_payload = self._default_gfs_provenance_payload(
+            source_system="ncei_thredds_archive",
+            source_tier="primary",
+            source_inferred=True,
+            output_path=output_path,
+            required_start=required_start,
+            required_end=required_end,
+            cache_inspection=cache_inspection,
+        )
+        self._write_gfs_provenance_payload(forcing_dir, inferred_payload)
+        return inferred_payload
+
+    def _reusable_gfs_cache_dirs(self, month_key: str) -> list[Path]:
+        candidates = [
+            self.repo_root / "output" / "phase1_production_rerun" / "_scratch" / "forcing_months" / str(month_key),
+        ]
+        unique: list[Path] = []
+        seen: set[str] = set()
+        current_dir = (self.forcing_cache_root / str(month_key)).resolve()
+        for candidate in candidates:
+            try:
+                resolved = candidate.resolve()
+            except Exception:
+                resolved = candidate
+            key = str(resolved)
+            if key == str(current_dir) or key in seen:
+                continue
+            seen.add(key)
+            unique.append(candidate)
+        return unique
+
+    def _stage_reusable_gfs_cache(
+        self,
+        *,
+        month_key: str,
+        forcing_dir: Path,
+        required_start: pd.Timestamp,
+        required_end: pd.Timestamp,
+    ) -> dict[str, Any] | None:
+        output_path = forcing_dir / "gfs_wind.nc"
+        if output_path.exists():
+            return None
+
+        for source_dir in self._reusable_gfs_cache_dirs(month_key):
+            source_path = source_dir / "gfs_wind.nc"
+            if not source_path.exists():
+                continue
+            source_inspection = self._inspect_gfs_cache(
+                source_path,
+                required_start=required_start,
+                required_end=required_end,
+            )
+            if not bool(source_inspection.get("valid", False)):
+                continue
+
+            forcing_dir.mkdir(parents=True, exist_ok=True)
+            copy2(source_path, output_path)
+            source_provenance = self._read_gfs_provenance_payload(source_dir)
+            if source_provenance:
+                staged_provenance = dict(source_provenance)
+                staged_provenance["cache_path"] = _relative(self.repo_root, output_path)
+                staged_provenance["staged_from_cache_path"] = _relative(self.repo_root, source_path)
+                staged_provenance["staged_at_utc"] = _utcnow_isoformat()
+                self._write_gfs_provenance_payload(forcing_dir, staged_provenance)
+            else:
+                inferred_payload = self._default_gfs_provenance_payload(
+                    source_system="ncei_thredds_archive",
+                    source_tier="primary",
+                    source_inferred=True,
+                    output_path=output_path,
+                    required_start=required_start,
+                    required_end=required_end,
+                    cache_inspection=source_inspection,
+                )
+                inferred_payload["staged_from_cache_path"] = _relative(self.repo_root, source_path)
+                inferred_payload["staged_at_utc"] = _utcnow_isoformat()
+                self._write_gfs_provenance_payload(forcing_dir, inferred_payload)
+            return {
+                "status": "staged_existing_cache",
+                "staged_from_cache_path": _relative(self.repo_root, source_path),
+            }
+        return None
+
+    def _preflight_gfs_month_coverage(
+        self,
+        accepted_df: pd.DataFrame,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        rows: list[dict[str, Any]] = []
+        failures: list[dict[str, Any]] = []
+        for window in self._forcing_month_windows(accepted_df):
+            month_key = str(window["month_key"])
+            start_time = pd.Timestamp(window["start_time"]).tz_convert("UTC")
+            end_time = pd.Timestamp(window["end_time"]).tz_convert("UTC")
+            forcing_dir = self.forcing_cache_root / month_key
+            forcing_dir.mkdir(parents=True, exist_ok=True)
+            output_path = forcing_dir / "gfs_wind.nc"
+
+            staged_cache = self._stage_reusable_gfs_cache(
+                month_key=month_key,
+                forcing_dir=forcing_dir,
+                required_start=start_time,
+                required_end=end_time,
+            )
+
+            cache_before = self._inspect_gfs_cache(
+                output_path,
+                required_start=start_time,
+                required_end=end_time,
+            )
+            row = {
+                "month_key": month_key,
+                "required_start_utc": start_time.isoformat(),
+                "required_end_utc": end_time.isoformat(),
+                "cache_present_before": bool(cache_before.get("present", False)),
+                "coverage_start_utc_before": str(cache_before.get("coverage_start_utc") or ""),
+                "coverage_end_utc_before": str(cache_before.get("coverage_end_utc") or ""),
+                "reader_metadata_ok_before": bool(cache_before.get("reader_metadata_ok", False)),
+                "coverage_ok_before": bool(cache_before.get("coverage_ok", False)),
+                "status": (
+                    str(staged_cache.get("status"))
+                    if staged_cache is not None
+                    else ("already_present" if bool(cache_before.get("valid", False)) else "backfill_required")
+                ),
+                "gfs_source_system": "",
+                "gfs_source_tier": "",
+                "gfs_source_inferred": False,
+                "gfs_primary_failure": "",
+                "cache_path": _relative(self.repo_root, output_path),
+                "staged_from_cache_path": str(staged_cache.get("staged_from_cache_path") or "") if staged_cache else "",
+                "provenance_sidecar": _relative(
+                    self.repo_root,
+                    self._gfs_provenance_sidecar_path(forcing_dir),
+                ),
+            }
+
+            if not bool(cache_before.get("valid", False)):
+                try:
+                    download_record = self._download_gfs_winds(
+                        start_time,
+                        end_time,
+                        forcing_dir,
+                    )
+                except Exception as exc:
+                    row["status"] = "failed"
+                    row["error"] = f"{type(exc).__name__}: {exc}"
+                    rows.append(row)
+                    failures.append(dict(row))
+                    continue
+                row["status"] = str(download_record.get("status") or "downloaded")
+                row["gfs_source_system"] = str(download_record.get("source_system") or "")
+                row["gfs_source_tier"] = str(download_record.get("source_tier") or "")
+                row["gfs_source_inferred"] = bool(download_record.get("source_inferred", False))
+                row["gfs_primary_failure"] = str(download_record.get("primary_failure") or "")
+
+            cache_after = self._inspect_gfs_cache(
+                output_path,
+                required_start=start_time,
+                required_end=end_time,
+            )
+            provenance_payload = self._ensure_gfs_provenance_payload(
+                forcing_dir,
+                required_start=start_time,
+                required_end=end_time,
+            )
+            row["cache_present_after"] = bool(cache_after.get("present", False))
+            row["coverage_start_utc_after"] = str(cache_after.get("coverage_start_utc") or "")
+            row["coverage_end_utc_after"] = str(cache_after.get("coverage_end_utc") or "")
+            row["reader_metadata_ok_after"] = bool(cache_after.get("reader_metadata_ok", False))
+            row["coverage_ok_after"] = bool(cache_after.get("coverage_ok", False))
+            row["valid_after"] = bool(cache_after.get("valid", False))
+            row["gfs_source_system"] = str(
+                provenance_payload.get("source_system") or row.get("gfs_source_system") or ""
+            )
+            row["gfs_source_tier"] = str(
+                provenance_payload.get("source_tier") or row.get("gfs_source_tier") or ""
+            )
+            row["gfs_source_inferred"] = bool(
+                provenance_payload.get("source_inferred", row.get("gfs_source_inferred", False))
+            )
+            row["gfs_primary_failure"] = str(
+                provenance_payload.get("primary_failure") or row.get("gfs_primary_failure") or ""
+            )
+            rows.append(row)
+            if not bool(cache_after.get("valid", False)):
+                failures.append(dict(row))
+
+        pd.DataFrame(rows).to_csv(self.paths["gfs_preflight"], index=False)
+        return rows, failures
+
+    @staticmethod
+    def _official_selection_rule_for_recipe(recipe_name: str) -> str:
+        if str(recipe_name).endswith("_gfs"):
+            return (
+                "highest_ranked_non_gfs_recipe_adopted_for_official_b1_when_the_historical_"
+                "four_recipe_winner_requires_gfs"
+            )
+        return "historical_four_recipe_winner_used_directly_for_official_b1"
+
+    def _build_adoption_decision(
+        self,
+        recipe_ranking_df: pd.DataFrame,
+        *,
+        historical_winner: str,
+    ) -> dict[str, Any]:
+        if recipe_ranking_df.empty:
+            raise RuntimeError("Cannot build adoption decision without a non-empty recipe ranking.")
+
+        historical_winner = str(historical_winner)
+        if not historical_winner.endswith("_gfs"):
+            return {
+                "historical_four_recipe_winner": historical_winner,
+                "official_b1_recipe": historical_winner,
+                "official_b1_selection_rule": self._official_selection_rule_for_recipe(historical_winner),
+                "gfs_historical_winner_not_adopted": False,
+                "non_gfs_fallback_recipe": "",
+                "reason_for_non_adoption": "",
+            }
+
+        non_gfs_rows = recipe_ranking_df[
+            ~recipe_ranking_df["recipe"].astype(str).str.endswith("_gfs")
+        ].copy()
+        if non_gfs_rows.empty:
+            raise RuntimeError(
+                "The four-recipe historical winner requires GFS, but no non-GFS recipe remains available "
+                "for the official B1 spill-usable fallback."
+            )
+        fallback_recipe = str(non_gfs_rows.iloc[0]["recipe"])
+        return {
+            "historical_four_recipe_winner": historical_winner,
+            "official_b1_recipe": fallback_recipe,
+            "official_b1_selection_rule": self._official_selection_rule_for_recipe(historical_winner),
+            "gfs_historical_winner_not_adopted": True,
+            "non_gfs_fallback_recipe": fallback_recipe,
+            "reason_for_non_adoption": (
+                "A GFS-backed recipe won the completed four-recipe historical rerun, but the canonical "
+                "Mindoro March 13 -> March 14 event-scale workflow is not being promoted to an official GFS "
+                "forcing stack in this change. Official B1 therefore adopts the highest-ranked non-GFS recipe "
+                "from the same rerun while recording the historical GFS win transparently."
+            ),
+        }
+
     def run(self) -> dict[str, Any]:
         baseline_hash_before = _sha256(self.baseline_path)
 
@@ -510,6 +938,60 @@ class Phase1ProductionRerunService(BaseService):
                 f"See {self.paths['ranking_subset_report']} and {self.paths['manifest']}."
             )
 
+        gfs_preflight_rows: list[dict[str, Any]] = []
+        if self._gfs_recipes_requested() and self._require_full_accepted_gfs_preflight():
+            gfs_preflight_rows, gfs_preflight_failures = self._preflight_gfs_month_coverage(accepted_df)
+            if gfs_preflight_failures:
+                baseline_hash_after = _sha256(self.baseline_path)
+                _write_json(
+                    self.paths["manifest"],
+                    {
+                        "phase": "phase1_production_rerun",
+                        "workflow_mode": self.case.workflow_mode,
+                        "status": "failed_gfs_preflight",
+                        "time_window": {
+                            "start_utc": self.window_start.isoformat(),
+                            "end_utc": self.window_end.isoformat(),
+                        },
+                        "validation_box": self.validation_box,
+                        "accepted_segment_count": int(len(accepted_df)),
+                        "rejected_segment_count": int(len(rejected_df)),
+                        "ranking_subset": {
+                            "label": self.ranking_subset_label,
+                            "config": self.ranking_subset_config,
+                            "segment_count": int(len(ranking_subset_df)),
+                            "report": _relative(self.repo_root, ranking_subset_report),
+                        },
+                        "gfs_preflight": {
+                            "required": True,
+                            "rows": gfs_preflight_rows,
+                            "failure_count": int(len(gfs_preflight_failures)),
+                            "failed_month_keys": [
+                                str(row.get("month_key") or "")
+                                for row in gfs_preflight_failures
+                            ],
+                            "artifact": _relative(self.repo_root, self.paths["gfs_preflight"]),
+                        },
+                        "canonical_baseline_integrity": {
+                            "path": _relative(self.repo_root, self.baseline_path),
+                            "sha256_before": baseline_hash_before,
+                            "sha256_after": baseline_hash_after,
+                            "unchanged": baseline_hash_before == baseline_hash_after,
+                        },
+                        "artifacts": {
+                            key: _relative(self.repo_root, path)
+                            for key, path in self.paths.items()
+                        },
+                    },
+                )
+                failed_months = ", ".join(
+                    str(row.get("month_key") or "") for row in gfs_preflight_failures
+                )
+                raise RuntimeError(
+                    "Focused Mindoro Phase 1 GFS preflight failed. The rerun will not rank a four-recipe family "
+                    f"until every accepted focused month has a valid gfs_wind.nc cache. Failed months: {failed_months}."
+                )
+
         loading_audit_df, segment_metrics_df, forcing_status = self._evaluate_accepted_segments(
             ranking_subset_df,
             drifter_df,
@@ -524,16 +1006,53 @@ class Phase1ProductionRerunService(BaseService):
         recipe_summary_df.to_csv(self.paths["recipe_summary"], index=False)
         recipe_ranking_df.to_csv(self.paths["recipe_ranking"], index=False)
 
+        adoption_decision = self._build_adoption_decision(
+            recipe_ranking_df,
+            historical_winner=winning_recipe,
+        )
+
         candidate_payload = self._build_candidate_baseline_payload(
             winning_recipe=winning_recipe,
+            official_b1_recipe=str(adoption_decision["official_b1_recipe"]),
+            adoption_decision=adoption_decision,
             accepted_df=accepted_df,
             rejected_df=rejected_df,
             ranking_subset_df=ranking_subset_df,
         )
         _write_yaml(self.paths["baseline_candidate"], candidate_payload)
 
+        _write_json(self.paths["adoption_decision_json"], adoption_decision)
+        self.paths["adoption_decision_md"].write_text(
+            "\n".join(
+                [
+                    "# Phase 1 Official Adoption Decision",
+                    "",
+                    f"- Historical four-recipe winner: `{adoption_decision['historical_four_recipe_winner']}`",
+                    f"- Official B1 recipe: `{adoption_decision['official_b1_recipe']}`",
+                    f"- Official B1 selection rule: `{adoption_decision['official_b1_selection_rule']}`",
+                    f"- GFS historical winner not adopted: `{adoption_decision['gfs_historical_winner_not_adopted']}`",
+                    f"- Non-GFS fallback recipe: `{adoption_decision['non_gfs_fallback_recipe'] or 'not_needed'}`",
+                    f"- Reason for non-adoption: `{adoption_decision['reason_for_non_adoption'] or 'not_applicable'}`",
+                    "",
+                    "This artifact is machine-readable in the adjacent JSON file and exists so the staged historical "
+                    "winner can remain distinct from the spill-usable official B1 recipe policy.",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        if self._official_baseline_update_enabled():
+            official_payload = self._build_official_baseline_payload(
+                recipe_ranking_df=recipe_ranking_df,
+                adoption_decision=adoption_decision,
+                accepted_df=accepted_df,
+                rejected_df=rejected_df,
+                ranking_subset_df=ranking_subset_df,
+            )
+            _write_yaml(self.baseline_path, official_payload)
         baseline_hash_after = _sha256(self.baseline_path)
-        if baseline_hash_before != baseline_hash_after:
+        if not self._official_baseline_update_enabled() and baseline_hash_before != baseline_hash_after:
             raise RuntimeError(
                 "config/phase1_baseline_selection.yaml changed during the production rerun. "
                 "This workflow must only stage a candidate baseline artifact."
@@ -542,12 +1061,14 @@ class Phase1ProductionRerunService(BaseService):
         manifest_payload = self._build_manifest(
             drifter_chunk_status=drifter_chunk_status,
             forcing_status=forcing_status,
+            gfs_preflight_rows=gfs_preflight_rows,
             accepted_df=accepted_df,
             rejected_df=rejected_df,
             ranking_subset_df=ranking_subset_df,
             loading_audit_df=loading_audit_df,
             recipe_ranking_df=recipe_ranking_df,
             winning_recipe=winning_recipe,
+            adoption_decision=adoption_decision,
             candidate_payload=candidate_payload,
             baseline_hash_before=baseline_hash_before,
             baseline_hash_after=baseline_hash_after,
@@ -565,6 +1086,9 @@ class Phase1ProductionRerunService(BaseService):
             "rejected_segment_count": int(len(rejected_df)),
             "ranking_subset_segment_count": int(len(ranking_subset_df)),
             "winning_recipe": winning_recipe,
+            "historical_four_recipe_winner": str(adoption_decision["historical_four_recipe_winner"]),
+            "official_b1_recipe": str(adoption_decision["official_b1_recipe"]),
+            "gfs_historical_winner_not_adopted": bool(adoption_decision["gfs_historical_winner_not_adopted"]),
             "gfs_capable_recipes_ran": gfs_capable_recipes_ran,
             "forcing_outage_policy": self.forcing_outage_policy,
             "forcing_source_budget_seconds": resolve_forcing_source_budget_seconds(),
@@ -574,6 +1098,9 @@ class Phase1ProductionRerunService(BaseService):
             "skipped_recipe_ids": sorted(self.skipped_recipe_ids),
             "rerun_required": bool(candidate_payload.get("rerun_required", False)),
             "candidate_baseline_path": str(self.paths["baseline_candidate"]),
+            "gfs_preflight_csv": str(self.paths["gfs_preflight"]) if self.paths["gfs_preflight"].exists() else "",
+            "adoption_decision_json": str(self.paths["adoption_decision_json"]),
+            "adoption_decision_md": str(self.paths["adoption_decision_md"]),
             "drifter_registry_csv": str(self.paths["drifter_registry"]),
             "ranking_subset_registry_csv": str(self.paths["ranking_subset_registry"]),
             "ranking_subset_report_md": str(self.paths["ranking_subset_report"]),
@@ -1179,15 +1706,114 @@ class Phase1ProductionRerunService(BaseService):
         *,
         budget_seconds: int | float | None = None,
     ) -> dict[str, Any]:
+        output_path = forcing_dir / "gfs_wind.nc"
+        sidecar_path = self._gfs_provenance_sidecar_path(forcing_dir)
         if self._force_refresh_enabled():
-            (forcing_dir / "gfs_wind.nc").unlink(missing_ok=True)
-        return self.gfs_downloader.download(
+            output_path.unlink(missing_ok=True)
+            sidecar_path.unlink(missing_ok=True)
+
+        existing_cache = self._inspect_gfs_cache(
+            output_path,
+            required_start=start_time,
+            required_end=end_time,
+        )
+        if bool(existing_cache.get("valid", False)):
+            provenance_payload = self._ensure_gfs_provenance_payload(
+                forcing_dir,
+                required_start=start_time,
+                required_end=end_time,
+            )
+            return {
+                "status": "cached",
+                "path": _relative(self.repo_root, output_path),
+                "source_system": str(provenance_payload.get("source_system") or "ncei_thredds_archive"),
+                "source_tier": str(provenance_payload.get("source_tier") or "primary"),
+                "source_inferred": bool(provenance_payload.get("source_inferred", False)),
+                "provenance_sidecar": _relative(self.repo_root, sidecar_path),
+                "coverage_start_utc": str(existing_cache.get("coverage_start_utc") or ""),
+                "coverage_end_utc": str(existing_cache.get("coverage_end_utc") or ""),
+                "primary_failure": str(provenance_payload.get("primary_failure") or ""),
+            }
+        if output_path.exists():
+            output_path.unlink(missing_ok=True)
+            sidecar_path.unlink(missing_ok=True)
+
+        primary_error = ""
+        try:
+            record = self.gfs_downloader.download(
+                start_time=start_time,
+                end_time=end_time,
+                output_path=output_path,
+                scratch_dir=forcing_dir,
+                budget_seconds=budget_seconds,
+            )
+            cache_inspection = self._inspect_gfs_cache(
+                output_path,
+                required_start=start_time,
+                required_end=end_time,
+            )
+            provenance_payload = self._default_gfs_provenance_payload(
+                source_system="ncei_thredds_archive",
+                source_tier="primary",
+                source_inferred=False,
+                output_path=output_path,
+                required_start=start_time,
+                required_end=end_time,
+                cache_inspection=cache_inspection,
+                acquisition_record=record,
+            )
+            self._write_gfs_provenance_payload(forcing_dir, provenance_payload)
+            return {
+                **dict(record or {}),
+                "source_system": "ncei_thredds_archive",
+                "source_tier": "primary",
+                "source_inferred": False,
+                "provenance_sidecar": _relative(self.repo_root, sidecar_path),
+                "primary_failure": "",
+            }
+        except Exception as exc:
+            primary_error = f"{type(exc).__name__}: {exc}"
+            if not self._allow_secondary_gfs_source():
+                raise
+
+        secondary_source_id = self._secondary_gfs_source_id()
+        if secondary_source_id != "ucar_gdex_d084001":
+            raise RuntimeError(
+                f"Unsupported secondary GFS source '{secondary_source_id}' configured for the Phase 1 rerun."
+            )
+
+        record = self.gfs_downloader.download_secondary_historical(
             start_time=start_time,
             end_time=end_time,
-            output_path=forcing_dir / "gfs_wind.nc",
+            output_path=output_path,
             scratch_dir=forcing_dir,
             budget_seconds=budget_seconds,
         )
+        cache_inspection = self._inspect_gfs_cache(
+            output_path,
+            required_start=start_time,
+            required_end=end_time,
+        )
+        provenance_payload = self._default_gfs_provenance_payload(
+            source_system="ucar_gdex_d084001",
+            source_tier="secondary",
+            source_inferred=False,
+            output_path=output_path,
+            required_start=start_time,
+            required_end=end_time,
+            cache_inspection=cache_inspection,
+            acquisition_record=record,
+            primary_failure=primary_error,
+        )
+        self._write_gfs_provenance_payload(forcing_dir, provenance_payload)
+        return {
+            **dict(record or {}),
+            "source_system": "ucar_gdex_d084001",
+            "source_tier": "secondary",
+            "source_inferred": False,
+            "provenance_sidecar": _relative(self.repo_root, sidecar_path),
+            "primary_failure": primary_error,
+        }
 
     def _prepare_forcing_cache(
         self,
@@ -1213,6 +1839,16 @@ class Phase1ProductionRerunService(BaseService):
                 end_time=end_time,
                 forcing_dir=forcing_dir,
             )
+            if source_id == "gfs" and status[source_id].get("status") in {"downloaded", "cached"}:
+                status["gfs_source_system"] = str(status[source_id].get("source_system") or "")
+                status["gfs_source_tier"] = str(status[source_id].get("source_tier") or "")
+                status["gfs_source_inferred"] = bool(status[source_id].get("source_inferred", False))
+                status["gfs_provenance_sidecar"] = str(
+                    status[source_id].get("provenance_sidecar") or ""
+                )
+                status["gfs_primary_failure"] = str(
+                    status[source_id].get("primary_failure") or ""
+                )
         status["available_forcing_factors"] = sorted(
             item["forcing_factor"]
             for key, item in status.items()
@@ -1448,6 +2084,8 @@ class Phase1ProductionRerunService(BaseService):
         self,
         *,
         winning_recipe: str,
+        official_b1_recipe: str,
+        adoption_decision: dict[str, Any],
         accepted_df: pd.DataFrame,
         rejected_df: pd.DataFrame,
         ranking_subset_df: pd.DataFrame,
@@ -1490,6 +2128,14 @@ class Phase1ProductionRerunService(BaseService):
                 or "Staged candidate Phase 1 baseline from the completed 2016-2022 regional transport-validation rerun"
             ),
             "selected_recipe": winning_recipe,
+            "historical_four_recipe_winner": winning_recipe,
+            "official_b1_recipe": official_b1_recipe,
+            "official_b1_selection_rule": str(adoption_decision["official_b1_selection_rule"]),
+            "gfs_historical_winner_not_adopted": bool(
+                adoption_decision["gfs_historical_winner_not_adopted"]
+            ),
+            "non_gfs_fallback_recipe": str(adoption_decision["non_gfs_fallback_recipe"] or ""),
+            "reason_for_non_adoption": str(adoption_decision["reason_for_non_adoption"] or ""),
             "source_kind": str(candidate_cfg.get("source_kind") or "staged_production_candidate"),
             "status_flag": status_flag,
             "valid": valid,
@@ -1552,11 +2198,20 @@ class Phase1ProductionRerunService(BaseService):
                     "rejected_segment_registry": _relative(self.repo_root, self.paths["rejected_registry"]),
                     "ranking_subset_registry": _relative(self.repo_root, self.paths["ranking_subset_registry"]),
                     "ranking_subset_report": _relative(self.repo_root, self.paths["ranking_subset_report"]),
+                    "gfs_preflight": _relative(self.repo_root, self.paths["gfs_preflight"])
+                    if self.paths["gfs_preflight"].exists()
+                    else "",
                     "loading_audit": _relative(self.repo_root, self.paths["loading_audit"]),
                     "segment_metrics": _relative(self.repo_root, self.paths["segment_metrics"]),
                     "recipe_summary": _relative(self.repo_root, self.paths["recipe_summary"]),
                     "recipe_ranking": _relative(self.repo_root, self.paths["recipe_ranking"]),
                     "frozen_baseline_candidate": _relative(self.repo_root, self.paths["baseline_candidate"]),
+                    "adoption_decision_json": _relative(
+                        self.repo_root, self.paths["adoption_decision_json"]
+                    ),
+                    "adoption_decision_md": _relative(
+                        self.repo_root, self.paths["adoption_decision_md"]
+                    ),
                 },
                 "distance_audit": {
                     "enabled": bool(self.distance_audit_source is not None),
@@ -1583,17 +2238,144 @@ class Phase1ProductionRerunService(BaseService):
             },
         }
 
+    def _build_official_baseline_payload(
+        self,
+        *,
+        recipe_ranking_df: pd.DataFrame,
+        adoption_decision: dict[str, Any],
+        accepted_df: pd.DataFrame,
+        rejected_df: pd.DataFrame,
+        ranking_subset_df: pd.DataFrame,
+    ) -> dict[str, Any]:
+        baseline_cfg = self.official_baseline_update_config
+        official_recipe = str(adoption_decision["official_b1_recipe"])
+        historical_winner = str(adoption_decision["historical_four_recipe_winner"])
+        notes = [
+            str(value)
+            for value in (baseline_cfg.get("notes") or [])
+            if str(value).strip()
+        ]
+        if adoption_decision["gfs_historical_winner_not_adopted"]:
+            notes.append(
+                f"The completed four-recipe historical winner was `{historical_winner}`, but official B1 uses "
+                f"`{official_recipe}` under the spill-usable non-GFS fallback rule."
+            )
+        return {
+            "baseline_id": str(
+                baseline_cfg.get("baseline_id")
+                or "mindoro_phase1_focused_recipe_provenance_v2"
+            ),
+            "description": str(
+                baseline_cfg.get("description")
+                or "Current default Mindoro spill-case Phase 1 recipe provenance finalized from the separate focused pre-spill 2016-2023 Mindoro drifter rerun"
+            ),
+            "selected_recipe": official_recipe,
+            "historical_four_recipe_winner": historical_winner,
+            "official_b1_selection_rule": str(adoption_decision["official_b1_selection_rule"]),
+            "gfs_historical_winner_not_adopted": bool(
+                adoption_decision["gfs_historical_winner_not_adopted"]
+            ),
+            "non_gfs_fallback_recipe": str(adoption_decision["non_gfs_fallback_recipe"] or ""),
+            "reason_for_non_adoption": str(adoption_decision["reason_for_non_adoption"] or ""),
+            "source_kind": str(
+                baseline_cfg.get("source_kind")
+                or "focused_mindoro_phase1_provenance_artifact"
+            ),
+            "status_flag": "valid",
+            "valid": True,
+            "provisional": False,
+            "rerun_required": False,
+            "selection_basis": str(
+                baseline_cfg.get("selection_basis")
+                or "Focused Mindoro pre-spill 2016-2023 drogued-only non-overlapping 72 h transport-validation rerun with the full four-recipe family ranked on the February-April seasonal subset"
+            ),
+            "workflow_scope": [
+                str(value)
+                for value in (baseline_cfg.get("workflow_scope") or ["mindoro_retro_2023"])
+                if str(value).strip()
+            ],
+            "historical_validation_artifacts": [
+                _relative(self.repo_root, self.paths["baseline_candidate"]),
+                _relative(self.repo_root, self.paths["recipe_ranking"]),
+                _relative(self.repo_root, self.paths["accepted_registry"]),
+                _relative(self.repo_root, self.paths["manifest"]),
+                _relative(self.repo_root, self.paths["adoption_decision_json"]),
+                _relative(self.repo_root, self.paths["adoption_decision_md"]),
+            ],
+            "notes": notes,
+            "chapter3_finalization_audit": {
+                "target_historical_window": {
+                    "start_date": self.window_start.strftime("%Y-%m-%d"),
+                    "end_date": self.window_end.strftime("%Y-%m-%d"),
+                },
+                "phase1_validation_box": self.validation_box,
+                "core_pool_policy": "drogued_segments_only",
+                "segment_policy": {
+                    "horizon_hours": self.segment_horizon_hours,
+                    "overlap_policy": "non_overlapping",
+                },
+                "official_recipe_family": list(self.official_recipe_family),
+                "ranking_subset": {
+                    "label": self.ranking_subset_label,
+                    "config": self.ranking_subset_config,
+                    "accepted_segment_count": int(len(ranking_subset_df)),
+                },
+                "current_local_evidence_scope": str(
+                    baseline_cfg.get("current_local_evidence_scope")
+                    or "mindoro_focused_pre_spill_2016_2023_recipe_provenance"
+                ),
+                "current_local_evidence_dates": [
+                    str(value)
+                    for value in (
+                        baseline_cfg.get("current_local_evidence_dates")
+                        or ["2016-2019 and 2021 accepted drifter segments within the focused Mindoro box"]
+                    )
+                    if str(value).strip()
+                ],
+                "staged_candidate_baseline_artifact": _relative(
+                    self.repo_root, self.paths["baseline_candidate"]
+                ),
+                "regional_reference_baseline_artifact": "output/phase1_production_rerun/phase1_baseline_selection_candidate.yaml",
+                "expected_phase1_artifacts": {
+                    "accepted_segment_registry": _relative(self.repo_root, self.paths["accepted_registry"]),
+                    "rejected_segment_registry": _relative(self.repo_root, self.paths["rejected_registry"]),
+                    "segment_metrics": _relative(self.repo_root, self.paths["segment_metrics"]),
+                    "recipe_summary": _relative(self.repo_root, self.paths["recipe_summary"]),
+                    "recipe_ranking": _relative(self.repo_root, self.paths["recipe_ranking"]),
+                    "frozen_baseline_artifact": _relative(self.repo_root, self.baseline_path),
+                    "frozen_baseline_candidate": _relative(self.repo_root, self.paths["baseline_candidate"]),
+                    "adoption_decision_json": _relative(
+                        self.repo_root, self.paths["adoption_decision_json"]
+                    ),
+                    "adoption_decision_md": _relative(
+                        self.repo_root, self.paths["adoption_decision_md"]
+                    ),
+                },
+                "loading_audit_policy": {
+                    "hard_fail_on_missing_required_forcing": True,
+                    "hard_fail_on_empty_valid_recipe_set": True,
+                },
+                "audit_status": {
+                    "classification": "implemented_and_finalized_for_mindoro_recipe_provenance",
+                    "full_production_rerun_required": False,
+                    "blocker": "",
+                },
+            },
+        }
+
     def _build_manifest(
         self,
         *,
         drifter_chunk_status: list[dict[str, Any]],
         forcing_status: list[dict[str, Any]],
+        gfs_preflight_rows: list[dict[str, Any]],
         accepted_df: pd.DataFrame,
         rejected_df: pd.DataFrame,
         ranking_subset_df: pd.DataFrame,
         loading_audit_df: pd.DataFrame,
         recipe_ranking_df: pd.DataFrame,
         winning_recipe: str,
+        adoption_decision: dict[str, Any],
         candidate_payload: dict[str, Any],
         baseline_hash_before: str,
         baseline_hash_after: str,
@@ -1645,11 +2427,28 @@ class Phase1ProductionRerunService(BaseService):
             "rejected_segment_count": int(len(rejected_df)),
             "ranking_subset_segment_count": int(len(ranking_subset_df)),
             "winning_recipe": winning_recipe,
+            "historical_four_recipe_winner": str(
+                adoption_decision["historical_four_recipe_winner"]
+            ),
+            "official_b1_recipe": str(adoption_decision["official_b1_recipe"]),
+            "official_b1_selection_rule": str(
+                adoption_decision["official_b1_selection_rule"]
+            ),
+            "gfs_historical_winner_not_adopted": bool(
+                adoption_decision["gfs_historical_winner_not_adopted"]
+            ),
             "gfs_capable_recipes_ran": bool(
                 not gfs_rows.empty and (gfs_rows["valid_segment_count"] > 0).all()
             ),
             "loading_audit_invalid_count": int((loading_audit_df["validity_flag"] != "valid").sum()),
             "drifter_chunk_status": drifter_chunk_status,
+            "gfs_preflight": {
+                "required": bool(gfs_preflight_rows),
+                "rows": gfs_preflight_rows,
+                "artifact": _relative(self.repo_root, self.paths["gfs_preflight"])
+                if self.paths["gfs_preflight"].exists()
+                else "",
+            },
             "forcing_cache_status": forcing_status,
             "baseline_candidate": {
                 "path": _relative(self.repo_root, self.paths["baseline_candidate"]),
@@ -1665,6 +2464,7 @@ class Phase1ProductionRerunService(BaseService):
                 "sha256_before": baseline_hash_before,
                 "sha256_after": baseline_hash_after,
                 "unchanged": baseline_hash_before == baseline_hash_after,
+                "official_baseline_update_enabled": self._official_baseline_update_enabled(),
             },
             "artifacts": {
                 key: _relative(self.repo_root, path)

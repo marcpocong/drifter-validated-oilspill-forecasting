@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -14,8 +15,8 @@ from matplotlib import pyplot as plt
 
 from src.services.figure_package_publication import (
     STYLE_CONFIG_PATH,
-    apply_publication_typography,
     load_publication_style_config,
+    resolve_publication_typography,
 )
 from src.services.gnome_comparison import GNOME_AVAILABLE, GnomeComparisonService
 from src.utils.io import get_forcing_files, load_drifter_data, resolve_recipe_selection, select_drifter_of_record
@@ -91,7 +92,8 @@ class PrototypeLegacyPhase4PygnomeComparatorService:
         self.case_ids = list(case_ids or CASE_IDS)
         self.gnome_service = GnomeComparisonService()
         self.style = load_publication_style_config(self.repo_root / STYLE_CONFIG_PATH)
-        self.font_family = apply_publication_typography(self.style, self.repo_root)
+        self.font_audit = resolve_publication_typography(self.style, self.repo_root)
+        self.font_family = self.font_audit.actual_font_family
 
     def _case_output_dir(self, case_id: str) -> Path:
         return self.repo_root / "output" / case_id
@@ -160,6 +162,62 @@ class PrototypeLegacyPhase4PygnomeComparatorService:
         if merged.empty:
             raise RuntimeError("No overlapping hourly budget rows were available between OpenDrift/OpenOil and PyGNOME.")
         return merged.sort_values("hours_elapsed").reset_index(drop=True)
+
+    def _load_existing_pygnome_budget_outputs(
+        self,
+        *,
+        case_id: str,
+        scenario_key: str,
+    ) -> tuple[pd.DataFrame, Path, dict[str, Any]]:
+        output_dir = self._comparator_dir(case_id)
+        budget_csv = output_dir / f"pygnome_budget_{scenario_key}.csv"
+        nc_path = output_dir / f"pygnome_{scenario_key}.nc"
+        manifest_path = output_dir / "pygnome_phase4_run_manifest.json"
+        if not budget_csv.exists() or not nc_path.exists() or not manifest_path.exists():
+            missing = [str(path) for path in (budget_csv, nc_path, manifest_path) if not path.exists()]
+            raise FileNotFoundError(
+                "Read-only legacy Phase 4 board refresh requires existing stored PyGNOME comparator outputs. "
+                f"Missing: {', '.join(missing)}"
+            )
+        budget_df = pd.read_csv(budget_csv)
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8")) or {}
+        scenario_manifest = dict((manifest.get("scenarios") or {}).get(scenario_key) or {})
+        scenario_manifest.setdefault("status", "reused_existing")
+        scenario_manifest.setdefault("relative_nc_path", _relative_to_repo(self.repo_root, nc_path))
+        scenario_manifest.setdefault("relative_budget_csv_path", _relative_to_repo(self.repo_root, budget_csv))
+        return budget_df, nc_path, scenario_manifest
+
+    def _write_font_audit(self, output_dir: Path) -> None:
+        _write_csv(
+            output_dir / "font_audit.csv",
+            [self.font_audit.as_row()],
+            [
+                "requested_font_family",
+                "actual_font_family",
+                "actual_font_path",
+                "exact_requested_font_used",
+                "fallback_used",
+                "fallback_candidates",
+            ],
+        )
+
+    def _write_board_layout_audit(self, output_dir: Path, rows: list[dict[str, Any]]) -> None:
+        _write_csv(
+            output_dir / "board_layout_audit.csv",
+            rows,
+            [
+                "graphic_file",
+                "board_family",
+                "issue_types_found",
+                "layout_fix_applied",
+                "requested_font_family",
+                "actual_font_resolved",
+                "exact_arial_used",
+                "fallback_needed",
+                "text_shortened_or_wrapped",
+                "filenames_stayed_same",
+            ],
+        )
 
     def _snapshot_rows(self, *, case_id: str, scenario_key: str, merged: pd.DataFrame) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
@@ -285,8 +343,17 @@ class PrototypeLegacyPhase4PygnomeComparatorService:
             "dispersed_pct": "Dispersed",
             "beached_pct": "Beached",
         }
-
-        fig, axes = plt.subplots(2, 2, figsize=(14, 9), dpi=220, facecolor=figure_facecolor)
+        fig = plt.figure(figsize=(14.6, 9.2), dpi=220, facecolor=figure_facecolor)
+        outer = fig.add_gridspec(3, 2, height_ratios=[1.0, 1.0, 0.42], left=0.06, right=0.98, top=0.90, bottom=0.06, hspace=0.30, wspace=0.22)
+        axes = np.array(
+            [
+                [fig.add_subplot(outer[0, 0]), fig.add_subplot(outer[0, 1])],
+                [fig.add_subplot(outer[1, 0]), fig.add_subplot(outer[1, 1])],
+            ],
+            dtype=object,
+        )
+        guide_ax = fig.add_subplot(outer[2, 0])
+        metric_ax = fig.add_subplot(outer[2, 1])
         for ax in axes.flatten():
             ax.set_facecolor(axes_facecolor)
         hours_oo = pd.to_numeric(openoil_df["hours_elapsed"], errors="coerce")
@@ -319,37 +386,45 @@ class PrototypeLegacyPhase4PygnomeComparatorService:
             ax.legend(fontsize=body_size - 0.5, loc="best")
 
         comparable_metrics = metrics_df.loc[metrics_df["comparable"].astype(bool)].copy()
-        note_lines = [
+        guide_lines = [
+            "Read the four panels as mass-fraction trajectories for the same stored scenario.",
+            "OpenDrift/OpenOil is the stored baseline; PyGNOME stays comparator-only and support-only.",
+            "Use the 72 h marker to compare end-state separation before reading the MAE/RMSE summary.",
+            "The beached curve is shown for transparency only and is excluded from comparator metrics.",
+        ]
+        metric_lines = [
             f"Case: {case_id}",
             f"Scenario: {scenario_label}",
-            "Comparator role: support-only deterministic PyGNOME budget pilot",
-            "Metrics shown in summary tables: absolute percentage-point difference at 24/48/72 h plus MAE/RMSE across time series.",
-            "Shoreline comparison: unavailable in this pilot.",
-            "Beached curve is shown only for transparency and is excluded from comparator metrics.",
+            "Scope: stored deterministic PyGNOME budget pilot with no shoreline comparison claim.",
         ]
         if not comparable_metrics.empty:
-            formatted = [
-                f"{row['compartment']}: MAE {float(row['mae_pct_points']):.2f}, RMSE {float(row['rmse_pct_points']):.2f}"
-                for _, row in comparable_metrics.iterrows()
-            ]
-            note_lines.append("Metric summary: " + " | ".join(formatted))
-
-        fig.text(
-            0.02,
-            0.02,
-            "\n".join(note_lines),
-            ha="left",
-            va="bottom",
-            fontsize=note_size,
-        )
+            metric_lines.extend(
+                [
+                    f"{row['compartment'].title()}: MAE {float(row['mae_pct_points']):.2f}, RMSE {float(row['rmse_pct_points']):.2f}"
+                    for _, row in comparable_metrics.iterrows()
+                ]
+            )
+        for ax, title, lines in ((guide_ax, "How to read this figure", guide_lines), (metric_ax, "Comparator Scope", metric_lines)):
+            ax.axis("off")
+            ax.text(0.0, 0.98, title, ha="left", va="top", fontsize=panel_title_size, fontweight="bold", color="#0f172a", transform=ax.transAxes)
+            ax.text(
+                0.0,
+                0.72,
+                "\n".join(textwrap.fill(f"- {line}" if ax is guide_ax else line, width=52, subsequent_indent="  " if ax is guide_ax else "") for line in lines),
+                ha="left",
+                va="top",
+                fontsize=note_size,
+                color="#334155",
+                transform=ax.transAxes,
+                bbox={"boxstyle": "round,pad=0.42", "facecolor": "#ffffff", "edgecolor": "#cbd5e1"},
+            )
         fig.suptitle(
             f"{case_id.replace('CASE_', '')} Phase 4 budget comparator ({scenario_label})",
             fontsize=title_size,
             fontweight="bold",
         )
-        fig.tight_layout(rect=(0, 0.08, 1, 0.96))
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(output_path, bbox_inches="tight")
+        fig.savefig(output_path)
         plt.close(fig)
 
     def _plot_budget_board(
@@ -367,12 +442,14 @@ class PrototypeLegacyPhase4PygnomeComparatorService:
         panel_title_size = float((self.style.get("typography") or {}).get("panel_title_size") or 11)
         body_size = float((self.style.get("typography") or {}).get("body_size") or 9)
 
-        fig = plt.figure(figsize=(15, 9), dpi=220, facecolor=figure_facecolor)
-        grid = fig.add_gridspec(2, 2, height_ratios=[2.1, 1.0], hspace=0.28, wspace=0.22)
+        fig = plt.figure(figsize=(15.4, 9.2), dpi=220, facecolor=figure_facecolor)
+        grid = fig.add_gridspec(2, 3, height_ratios=[2.2, 0.95], width_ratios=[1.0, 1.0, 0.92], left=0.06, right=0.98, top=0.90, bottom=0.06, hspace=0.24, wspace=0.22)
         axes = {
             "light": fig.add_subplot(grid[0, 0]),
             "heavy": fig.add_subplot(grid[0, 1]),
-            "notes": fig.add_subplot(grid[1, :]),
+            "guide": fig.add_subplot(grid[1, 0]),
+            "scope": fig.add_subplot(grid[1, 1]),
+            "metrics": fig.add_subplot(grid[:, 2]),
         }
         for key in ("light", "heavy"):
             axes[key].set_facecolor(axes_facecolor)
@@ -409,24 +486,19 @@ class PrototypeLegacyPhase4PygnomeComparatorService:
             )
             ax.grid(True, axis="y", alpha=0.25)
 
-        notes_ax = axes["notes"]
-        notes_ax.axis("off")
-        note_lines = [
-            f"{case_id.replace('CASE_', '')} prototype_2016 Phase 4 PyGNOME comparator pilot",
-            "",
-            "Scope:",
-            "- deterministic PyGNOME weathering pilot with matched case-specific grid wind/current forcing",
-            "- comparator-only and support-only",
-            "- frozen light/heavy scenarios only; no base scenario exists in the stored prototype_2016 Phase 4 package",
-            "",
-            "Metrics:",
-            "- absolute percentage-point difference at 24/48/72 h",
-            "- MAE and RMSE across the normalized budget-fraction time series",
-            "- not observational skill metrics",
-            "",
-            "Unavailable:",
-            "- shoreline comparison is not packaged because the pilot does not emit matched shoreline-arrival or shoreline-segment products",
-            "- beached budget fraction is shown for transparency only and excluded from comparator metrics",
+        guide_lines = [
+            "Read left to right: light oil 72 h snapshot, heavy oil 72 h snapshot, then the metric summary card.",
+            "Bars show absolute percentage-point separation between stored OpenDrift/OpenOil and stored PyGNOME budgets.",
+            "Comparator-only support: descriptive budget separation rather than observational skill validation.",
+        ]
+        scope_lines = [
+            "Deterministic PyGNOME weathering pilot with matched case-specific grid wind/current forcing.",
+            "Frozen light/heavy scenarios only; no base scenario exists in the stored prototype_2016 Phase 4 package.",
+            "Shoreline comparison is unavailable in this pilot.",
+            "Beached mass stays visible for transparency but is excluded from comparator metrics.",
+        ]
+        metric_lines = [
+            "Metrics shown: absolute percentage-point difference at 24/48/72 h, plus MAE/RMSE across the normalized budget-fraction time series.",
         ]
         comparable_metrics = metrics_df.loc[metrics_df["comparable"].astype(bool)].copy()
         if not comparable_metrics.empty:
@@ -441,8 +513,29 @@ class PrototypeLegacyPhase4PygnomeComparatorService:
                 ]
                 by_scenario.append(f"{scenario_labels.get(scenario_key, scenario_key)} -> " + " | ".join(pieces))
             if by_scenario:
-                note_lines.extend(["", "Time-series summary:"] + [f"- {line}" for line in by_scenario])
-        notes_ax.text(0.0, 1.0, "\n".join(note_lines), ha="left", va="top", fontsize=body_size)
+                metric_lines.extend(by_scenario)
+        for key, title, lines, bullets in (
+            ("guide", "How to read this board", guide_lines, True),
+            ("scope", "Comparator Scope", scope_lines, True),
+            ("metrics", "Metric Summary", metric_lines, False),
+        ):
+            ax = axes[key]
+            ax.axis("off")
+            ax.text(0.0, 0.98, title, ha="left", va="top", fontsize=panel_title_size, fontweight="bold", color="#0f172a", transform=ax.transAxes)
+            ax.text(
+                0.0,
+                0.74,
+                "\n".join(
+                    textwrap.fill(f"- {line}" if bullets else line, width=50, subsequent_indent="  " if bullets else "")
+                    for line in lines
+                ),
+                ha="left",
+                va="top",
+                fontsize=body_size,
+                color="#334155",
+                transform=ax.transAxes,
+                bbox={"boxstyle": "round,pad=0.42", "facecolor": "#ffffff", "edgecolor": "#cbd5e1"},
+            )
 
         fig.suptitle(
             f"{case_id.replace('CASE_', '')} Phase 4 budget-only PyGNOME comparator board",
@@ -450,7 +543,7 @@ class PrototypeLegacyPhase4PygnomeComparatorService:
             fontweight="bold",
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(output_path, bbox_inches="tight")
+        fig.savefig(output_path)
         plt.close(fig)
 
     def _scenario_manifest_entry(
@@ -469,7 +562,7 @@ class PrototypeLegacyPhase4PygnomeComparatorService:
         payload["output_dir"] = _relative_to_repo(self.repo_root, output_dir)
         return payload
 
-    def _run_case(self, case_id: str) -> dict[str, Any]:
+    def _run_case(self, case_id: str, *, reuse_existing_outputs_only: bool = False) -> dict[str, Any]:
         output_dir = self._comparator_dir(case_id)
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -486,6 +579,7 @@ class PrototypeLegacyPhase4PygnomeComparatorService:
         scenario_labels: dict[str, str] = {}
         generated_pngs: list[str] = []
         generated_csvs: list[str] = []
+        layout_audit_rows: list[dict[str, Any]] = []
 
         for scenario_key in SUPPORTED_SCENARIOS:
             oil_cfg = self.gnome_service.oils_cfg.get(scenario_key)
@@ -494,21 +588,27 @@ class PrototypeLegacyPhase4PygnomeComparatorService:
             scenario_label = str(oil_cfg.get("display_name") or scenario_key)
             scenario_labels[scenario_key] = scenario_label
             openoil_df = self._load_opendrift_budget(case_id, scenario_key)
-            pygnome_df, nc_path, metadata = self.gnome_service.run_matched_phase4_weathering_scenario(
-                oil_key=scenario_key,
-                oil_cfg=oil_cfg,
-                start_lat=origin["start_lat"],
-                start_lon=origin["start_lon"],
-                start_time=origin["start_time"],
-                currents_file=forcing["currents"],
-                winds_file=forcing["wind"],
-                wave_file=forcing.get("wave"),
-                output_name=f"pygnome_{scenario_key}.nc",
-                duration_hours=int(forcing.get("duration_hours") or 72),
-                time_step_minutes=int(forcing.get("time_step_minutes") or 30),
-                output_timestep_minutes=60,
-                random_seed=20260314 + (0 if scenario_key == "light" else 1),
-            )
+            if reuse_existing_outputs_only:
+                pygnome_df, nc_path, metadata = self._load_existing_pygnome_budget_outputs(
+                    case_id=case_id,
+                    scenario_key=scenario_key,
+                )
+            else:
+                pygnome_df, nc_path, metadata = self.gnome_service.run_matched_phase4_weathering_scenario(
+                    oil_key=scenario_key,
+                    oil_cfg=oil_cfg,
+                    start_lat=origin["start_lat"],
+                    start_lon=origin["start_lon"],
+                    start_time=origin["start_time"],
+                    currents_file=forcing["currents"],
+                    winds_file=forcing["wind"],
+                    wave_file=forcing.get("wave"),
+                    output_name=f"pygnome_{scenario_key}.nc",
+                    duration_hours=int(forcing.get("duration_hours") or 72),
+                    time_step_minutes=int(forcing.get("time_step_minutes") or 30),
+                    output_timestep_minutes=60,
+                    random_seed=20260314 + (0 if scenario_key == "light" else 1),
+                )
             pygnome_budget_csv = output_dir / f"pygnome_budget_{scenario_key}.csv"
             merged = self._align_budget_frames(openoil_df, pygnome_df)
             case_snapshot_rows = self._snapshot_rows(case_id=case_id, scenario_key=scenario_key, merged=merged)
@@ -528,6 +628,20 @@ class PrototypeLegacyPhase4PygnomeComparatorService:
             )
             generated_pngs.append(_relative_to_repo(self.repo_root, scenario_png))
             generated_csvs.append(_relative_to_repo(self.repo_root, pygnome_budget_csv))
+            layout_audit_rows.append(
+                {
+                    "graphic_file": _relative_to_repo(self.repo_root, scenario_png),
+                    "board_family": "Legacy 2016 Phase 4 budget-comparator graphics",
+                    "issue_types_found": "overly dense note block | weak title hierarchy",
+                    "layout_fix_applied": "Moved the narrative into dedicated footer cards and kept the plot grid clear.",
+                    "requested_font_family": self.font_audit.requested_font_family,
+                    "actual_font_resolved": self.font_audit.actual_font_family,
+                    "exact_arial_used": bool(self.font_audit.exact_requested_font_used),
+                    "fallback_needed": bool(self.font_audit.fallback_used),
+                    "text_shortened_or_wrapped": True,
+                    "filenames_stayed_same": True,
+                }
+            )
             scenario_manifest[scenario_key] = self._scenario_manifest_entry(
                 output_dir=output_dir,
                 budget_csv=pygnome_budget_csv,
@@ -547,6 +661,20 @@ class PrototypeLegacyPhase4PygnomeComparatorService:
             output_path=board_png,
         )
         generated_pngs.append(_relative_to_repo(self.repo_root, board_png))
+        layout_audit_rows.append(
+            {
+                "graphic_file": _relative_to_repo(self.repo_root, board_png),
+                "board_family": "Legacy 2016 Phase 4 budget-comparator boards",
+                "issue_types_found": "uneven panel spacing | awkward reading-guide placement | overly dense note block",
+                "layout_fix_applied": "Used a balanced two-panel top row with separate guide, scope, and metric cards.",
+                "requested_font_family": self.font_audit.requested_font_family,
+                "actual_font_resolved": self.font_audit.actual_font_family,
+                "exact_arial_used": bool(self.font_audit.exact_requested_font_used),
+                "fallback_needed": bool(self.font_audit.fallback_used),
+                "text_shortened_or_wrapped": True,
+                "filenames_stayed_same": True,
+            }
+        )
 
         snapshot_columns = [
             "case_id",
@@ -583,6 +711,8 @@ class PrototypeLegacyPhase4PygnomeComparatorService:
                 _relative_to_repo(self.repo_root, metrics_csv),
             ]
         )
+        self._write_font_audit(output_dir)
+        self._write_board_layout_audit(output_dir, layout_audit_rows)
 
         manifest = {
             "phase": PHASE,
@@ -621,8 +751,12 @@ class PrototypeLegacyPhase4PygnomeComparatorService:
             ],
             "generated_pngs": generated_pngs,
             "generated_csvs": generated_csvs,
+            "font_audit_csv": _relative_to_repo(self.repo_root, output_dir / "font_audit.csv"),
+            "board_layout_audit_csv": _relative_to_repo(self.repo_root, output_dir / "board_layout_audit.csv"),
             "scenarios": scenario_manifest,
             "font_family": self.font_family,
+            "font_audit": self.font_audit.as_row(),
+            "reuse_existing_outputs_only": bool(reuse_existing_outputs_only),
         }
         manifest_path = output_dir / "pygnome_phase4_run_manifest.json"
         _write_json(manifest_path, manifest)
@@ -633,20 +767,22 @@ class PrototypeLegacyPhase4PygnomeComparatorService:
             "phase4_budget_comparison_csv": _relative_to_repo(self.repo_root, snapshot_csv),
             "phase4_budget_time_series_metrics_csv": _relative_to_repo(self.repo_root, metrics_csv),
             "budget_comparison_board_png": _relative_to_repo(self.repo_root, board_png),
+            "font_audit_csv": _relative_to_repo(self.repo_root, output_dir / "font_audit.csv"),
+            "board_layout_audit_csv": _relative_to_repo(self.repo_root, output_dir / "board_layout_audit.csv"),
             "generated_pngs": generated_pngs,
             "generated_csvs": generated_csvs,
             "budget_only_feasible": True,
             "shoreline_comparison_feasible": False,
         }
 
-    def run(self) -> dict[str, Any]:
-        if not GNOME_AVAILABLE:
+    def run(self, *, reuse_existing_outputs_only: bool = False) -> dict[str, Any]:
+        if not reuse_existing_outputs_only and not GNOME_AVAILABLE:
             raise RuntimeError("prototype_2016 Phase 4 PyGNOME comparator pilot requires the gnome container.")
 
         case_results: list[dict[str, Any]] = []
         for case_id in self.case_ids:
             logger.info("Running prototype_2016 Phase 4 PyGNOME comparator pilot for %s", case_id)
-            case_results.append(self._run_case(case_id))
+            case_results.append(self._run_case(case_id, reuse_existing_outputs_only=reuse_existing_outputs_only))
 
         return {
             "phase": PHASE,
@@ -657,6 +793,8 @@ class PrototypeLegacyPhase4PygnomeComparatorService:
             "budget_only_feasible": True,
             "shoreline_comparison_feasible": False,
             "font_family": self.font_family,
+            "font_audit": self.font_audit.as_row(),
+            "reuse_existing_outputs_only": bool(reuse_existing_outputs_only),
         }
 
 
@@ -664,6 +802,7 @@ def run_prototype_legacy_phase4_pygnome_comparator(
     repo_root: str | Path = ".",
     *,
     case_ids: list[str] | tuple[str, ...] | None = None,
+    reuse_existing_outputs_only: bool = False,
 ) -> dict[str, Any]:
     service = PrototypeLegacyPhase4PygnomeComparatorService(repo_root=repo_root, case_ids=case_ids)
-    return service.run()
+    return service.run(reuse_existing_outputs_only=reuse_existing_outputs_only)

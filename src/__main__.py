@@ -1996,7 +1996,8 @@ def run_phase1_production_rerun_phase():
     print("Starting dedicated Phase 1 regional production rerun...")
     print(
         f"This is an expensive scientific rerun for the {case.description.lower()}. "
-        "It stages a candidate baseline artifact only and will not overwrite config/phase1_baseline_selection.yaml."
+        "It always stages a candidate baseline artifact, and the focused Mindoro lane may also refresh "
+        "config/phase1_baseline_selection.yaml under the official spill-usable winner policy."
     )
 
     try:
@@ -2009,7 +2010,9 @@ def run_phase1_production_rerun_phase():
     print(f"Accepted segments: {results['accepted_segment_count']}")
     print(f"Rejected segments: {results['rejected_segment_count']}")
     print(f"Ranking-subset segments: {results['ranking_subset_segment_count']}")
-    print(f"Winning recipe: {results['winning_recipe']}")
+    print(f"Historical four-recipe winner: {results['historical_four_recipe_winner']}")
+    print(f"Official B1 recipe: {results['official_b1_recipe']}")
+    print(f"GFS historical winner not adopted: {results['gfs_historical_winner_not_adopted']}")
     print(f"GFS-capable recipes really ran: {results['gfs_capable_recipes_ran']}")
     print(f"Forcing outage policy: {results['forcing_outage_policy']}")
     print(f"Degraded continuation used: {results['degraded_continue_used']}")
@@ -2026,8 +2029,12 @@ def run_phase1_production_rerun_phase():
     print(f"Recipe summary: {results['recipe_summary_csv']}")
     print(f"Recipe ranking: {results['recipe_ranking_csv']}")
     print(f"Candidate baseline artifact: {results['candidate_baseline_path']}")
+    if results.get("gfs_preflight_csv"):
+        print(f"GFS preflight audit: {results['gfs_preflight_csv']}")
+    print(f"Adoption decision JSON: {results['adoption_decision_json']}")
+    print(f"Adoption decision note: {results['adoption_decision_md']}")
     print("Next manual follow-ups only:")
-    print("  - Trial downstream runs with BASELINE_SELECTION_PATH pointed at the candidate artifact")
+    print("  - Trial downstream runs with BASELINE_SELECTION_PATH pointed at the candidate artifact if you want the raw historical winner explicitly")
     print("  - Run phase1_audit manually if you want the read-only audit bundle refreshed")
     print("  - Run phase5_sync manually if you want launcher/docs/package outputs refreshed")
 

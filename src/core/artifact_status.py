@@ -39,7 +39,7 @@ STATUS_REGISTRY: dict[str, ArtifactStatus] = {
             "selecting the same cmems_era5 recipe."
         ),
         panel_text=(
-            "Use this as the main Mindoro B1 Phase 3B observation-based spatial validation view. Phase 3B itself does "
+            "Main Mindoro B1 Phase 3B observation-based spatial validation view. Phase 3B itself does "
             "not directly ingest drifters; it inherits the cmems_era5 recipe selected by the separate focused "
             "2016-2023 Mindoro drifter rerun, while the broader 2016-2022 regional rerun stays reference-only. "
             "Keep the shared March 12 imagery caveat explicit."
@@ -58,7 +58,7 @@ STATUS_REGISTRY: dict[str, ArtifactStatus] = {
         official_status="comparator_only_not_truth",
         frozen_status="not_frozen",
         provenance_label="Same March 14 target as B1; same-case comparator support track attached to B1 and PyGNOME remains comparator-only.",
-        panel_text="Use this only as the same-case comparator support track attached to B1 on the March 14 target; PyGNOME is a comparator, not truth, and A is not a co-primary validation row.",
+        panel_text="Same-case comparator support track attached to B1 on the March 14 target; PyGNOME is a comparator, not truth, and A is not a co-primary validation row.",
         dashboard_summary="Same-case comparator-only support track attached to B1 on the promoted March 14 target.",
     ),
     "mindoro_legacy_march6": ArtifactStatus(
@@ -82,7 +82,7 @@ STATUS_REGISTRY: dict[str, ArtifactStatus] = {
         official_status="legacy_support_not_primary",
         frozen_status="not_frozen",
         provenance_label="Broader-support event context preserved for narrative reference.",
-        panel_text="Use B3 as broader-support context only; do not present it as the promoted primary validation row.",
+        panel_text="B3 broader-support context only; do not present it as the promoted primary validation row.",
         dashboard_summary="B3 legacy broader-support context; not a primary row.",
     ),
     "mindoro_trajectory_context": ArtifactStatus(
@@ -94,7 +94,7 @@ STATUS_REGISTRY: dict[str, ArtifactStatus] = {
         official_status="official_transport_context_not_frozen",
         frozen_status="not_frozen",
         provenance_label="Phase 2 / Phase 3 transport context built from stored trajectory outputs.",
-        panel_text="Use this for transport context before score tables; the transport story is scientifically usable, but not yet frozen.",
+        panel_text="Transport context before score tables; the transport story is scientifically usable, but not yet frozen.",
         dashboard_summary="Transport-context layer from a scientifically usable but not frozen branch.",
     ),
     "mindoro_phase4_oil_budget": ArtifactStatus(
@@ -152,7 +152,7 @@ STATUS_REGISTRY: dict[str, ArtifactStatus] = {
             "CMEMS wave/Stokes stack."
         ),
         panel_text=(
-            "Use this as the clean baseline DWH transfer-validation view; it supports the external-case success "
+            "Clean baseline DWH transfer-validation view; it supports the external-case success "
             "story but does not replace the Mindoro main case."
         ),
         dashboard_summary="Frozen DWH deterministic transfer-validation baseline.",
@@ -170,7 +170,7 @@ STATUS_REGISTRY: dict[str, ArtifactStatus] = {
             "claiming exact sub-daily acquisition times."
         ),
         panel_text=(
-            "Use this to establish the DWH observation-derived truth masks before any deterministic, ensemble, or "
+            "Establishes the DWH observation-derived truth masks before any deterministic, ensemble, or "
             "PyGNOME comparison is shown."
         ),
         dashboard_summary="Frozen observation-derived truth context for the DWH external transfer-validation lane.",
@@ -188,7 +188,7 @@ STATUS_REGISTRY: dict[str, ArtifactStatus] = {
             "probabilistic extension and p90 remains support/comparison only."
         ),
         panel_text=(
-            "Use this to explain deterministic, p50, and p90 differences without overstating ensemble benefit as "
+            "Explains deterministic, p50, and p90 differences without overstating ensemble benefit as "
             "universal; p50 is the preferred probabilistic extension and p90 is support/comparison only."
         ),
         dashboard_summary="Frozen DWH ensemble extension on the same truth masks; p50 preferred, p90 support-only.",
@@ -202,7 +202,7 @@ STATUS_REGISTRY: dict[str, ArtifactStatus] = {
         official_status="comparator_only_not_truth",
         frozen_status="frozen",
         provenance_label="DWH observed masks remain truth; PyGNOME is a frozen comparator-only track and never truth.",
-        panel_text="Use this for cross-model comparison only; PyGNOME is not truth and does not replace the OpenDrift DWH story.",
+        panel_text="Cross-model comparison only; PyGNOME is not truth and does not replace the OpenDrift DWH story.",
         dashboard_summary="Frozen DWH cross-model comparator; PyGNOME not truth.",
     ),
     "dwh_trajectory_context": ArtifactStatus(
@@ -214,7 +214,7 @@ STATUS_REGISTRY: dict[str, ArtifactStatus] = {
         official_status="trajectory_context_only",
         frozen_status="not_frozen",
         provenance_label="Stored deterministic, ensemble, and comparator tracks shown as path context.",
-        panel_text="Use this when the panel wants path intuition before or after the score-based boards.",
+        panel_text="Path-intuition context before or after the score-based boards.",
         dashboard_summary="Trajectory appendix-support context.",
     ),
     "prototype_2021_support": ArtifactStatus(

@@ -2,20 +2,20 @@
 
 ## Purpose
 
-The local dashboard is a read-only exploration/support layer over the outputs that already exist in this repo. It does not rerun model branches, it does not modify scientific artifacts, and it does not pretend that missing comparisons already exist.
+The local Streamlit app is a read-only thesis presentation layer over the artifacts that already exist in this repo. It does not rerun science, does not mutate outputs, and does not expose write-back controls.
 
 ## Launch Command
 
-Start the pipeline container first if needed:
+Start the pipeline container if needed:
 
 ```bash
-docker-compose up -d pipeline
+docker compose up -d pipeline
 ```
 
-Then launch the UI:
+Launch the UI:
 
 ```bash
-docker-compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501
+docker compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501
 ```
 
 Open:
@@ -24,109 +24,33 @@ Open:
 http://localhost:8501
 ```
 
-## Print / Export Mode
+## Read-Only Guarantee
 
-The UI now has a dedicated export snapshot mode for browser-to-PDF saves.
+- The app reads current packaged outputs only.
+- No scientific rerun controls are exposed in the UI.
+- No edit, delete, or write-back controls are exposed in the UI.
+- Missing optional artifacts should fail softly and keep the rest of the dashboard available.
 
-Open any dashboard page with:
+## Panel Mode vs Advanced Mode
 
-```text
-http://localhost:8501/?export=1
-```
+Panel mode is the default presentation surface:
 
-If you are already on a page route, keep the route and add the query parameter:
+- publication figures first
+- plain-language page framing
+- main result and support lanes kept clearly separate
+- fewer technical controls
+- reference pages kept secondary
 
-```text
-http://localhost:8501/<page-path>?export=1
-```
+Advanced mode stays read-only, but opens lower-level inspection:
 
-Export mode is read-only and intentionally simplified:
-
-- the sidebar is hidden
-- navigation chrome is hidden
-- publication figures render in a wider, print-friendly layout
-- tabs are flattened into sequential static sections
-- download buttons and other interactive-only controls are hidden
-- the page stays in the publication-first layer
-
-Export mode is meant for panel snapshots and PDF handouts, not for deep artifact inspection.
-
-## What The UI Reads
-
-The UI reads existing artifacts only:
-
-- `output/Phase 3B March13-14 Final Output/`
-- `output/Phase 3C DWH Final Output/`
-- `output/2016 Legacy Runs FINAL Figures/`
-- `output/final_validation_package/`
-- `output/final_reproducibility_package/`
-- `output/figure_package_publication/`
-- `output/phase4/CASE_MINDORO_RETRO_2023/`
-- `output/phase4_crossmodel_comparability_audit/`
-- `output/trajectory_gallery_panel/`
-- `output/trajectory_gallery/`
-- raw `CASE_*` trees only as advanced fallback when a curated package or synced registry does not already provide the needed browse surface
-
-Missing optional files are tolerated. The UI shows a gentle notice instead of failing where practical.
-
-## Panel-Friendly Mode
-
-This is the default mode. It prioritizes:
-
-- publication-grade figures
-- plain-language study structure cards
-- curated final packages
-- recommended defense figures
-- simplified summary tables
-- soft-fail messaging instead of debug-style missing-file errors
-
-## What Export Mode Includes
-
-- page title and short framing note
-- main plain-language callouts
-- sequential sections instead of tabs
-- one or a few featured figures per section instead of large figure grids
-- concise summary tables and notes
-
-## What Export Mode Omits
-
-- sidebar controls
-- advanced/raw figure layers
-- download buttons
+- panel and raw figure layers
+- longer registries and source tables
 - artifact preview selectors
-- tab-only or expander-only navigation patterns
+- reproducibility notes and manifest browsing
 
-Recommended first stops:
+## Final Page Map
 
-- `Home / Overview`
-- `Phase 1 Recipe Selection`
-- `Mindoro B1 Primary Validation`
-- `DWH Phase 3C Transfer Validation`
-- `Legacy 2016 Support Package`
-- `Phase 4 Oil-Type and Shoreline Context`
-
-## Advanced Mode
-
-Advanced mode opens lower-level inspection without changing the scientific state:
-
-- panel-gallery and raw-gallery figure layers
-- manifest previews
-- log previews
-- output-catalog browsing
-- trajectory source artifact inspection
-
-This mode is still read-only.
-
-## Recommended PDF Workflow
-
-1. Launch the UI and open the page you want to export.
-2. Add `?export=1` to the URL.
-3. Wait for the page to re-render in export mode.
-4. In the browser, use `Print` or `Save as PDF`.
-5. Use portrait or landscape based on the page, but keep background graphics enabled so the title and note cards render correctly.
-6. Save one page at a time if you want stable panel-ready PDFs.
-
-## Pages
+Main pages in panel mode:
 
 - `Home / Overview`
 - `Phase 1 Recipe Selection`
@@ -135,35 +59,50 @@ This mode is still read-only.
 - `DWH Phase 3C Transfer Validation`
 - `Phase 4 Oil-Type and Shoreline Context`
 - `Legacy 2016 Support Package`
+
+Reference page in panel mode:
+
 - `Artifacts / Logs / Registries`
-- `Trajectory Explorer` in advanced mode
 
-## Honesty Rules Surfaced In The UI
+Advanced-only page:
 
-- Mindoro `B1` is the only primary validation row.
-- Mindoro `A` is comparator-only support attached to B1 and never truth.
-- Mindoro `B2` remains the legacy reference row.
-- Mindoro `B3` remains broader support / appendix context only.
-- `prototype_2016` is always support-only / legacy in the UI and has its own dedicated page.
-- The dedicated Mindoro-focused Phase 1 provenance rerun selects the recipe that B1 inherits.
-- `Phase 3B` and `Phase 3C` remain the main validation pages in the thesis-facing story.
-- Mindoro B1 inherits recipe provenance from the separate focused Phase 1 rerun; Phase 3B itself does not directly ingest drifters.
-- DWH stays separate from the Phase 1 drifter-baseline story and explicitly uses no drifter baseline.
-- Mindoro Phase 4 is presented in plain language as OpenDrift/OpenOil scenario context only.
-- No matched Mindoro Phase 4 PyGNOME package is currently shown.
-- The legacy 2016 page includes a budget-only deterministic PyGNOME Phase 4 pilot, but shoreline comparison is still unavailable there.
+- `Trajectory Explorer`
 
-## No Run Buttons Yet
+## Output Roots Behind The Main Pages
 
-The first dashboard version is intentionally read-only. It does not expose scientific rerun controls, write actions, or packaging rebuild buttons.
+- `Home / Overview`: curated package roots plus `output/figure_package_publication/`
+- `Phase 1 Recipe Selection`: `output/phase1_mindoro_focus_pre_spill_2016_2023/` and `output/phase1_production_rerun/`
+- `Mindoro B1 Primary Validation`: `output/Phase 3B March13-14 Final Output/`
+- `Mindoro Cross-Model Comparator`: `output/Phase 3B March13-14 Final Output/publication/comparator_pygnome/`
+- `DWH Phase 3C Transfer Validation`: `output/Phase 3C DWH Final Output/`
+- `Phase 4 Oil-Type and Shoreline Context`: `output/phase4/CASE_MINDORO_RETRO_2023/`
+- `Legacy 2016 Support Package`: `output/2016 Legacy Runs FINAL Figures/`
+- `Artifacts / Logs / Registries`: `output/final_reproducibility_package/` and `output/final_validation_package/`
+
+## Export / PDF Mode
+
+Add `?export=1` to any UI URL:
+
+```text
+http://localhost:8501/?export=1
+http://localhost:8501/home?export=1
+```
+
+Export mode is still read-only and intentionally simplified:
+
+- sidebar and navigation chrome are hidden
+- publication-first layout is kept
+- tabs flatten into sequential sections
+- interactive-only controls are hidden
+- featured figures are reduced to a smaller static subset where needed
 
 ## Branding
 
-- Preferred logo files:
-  - `ui/assets/logo.svg`
-  - `ui/assets/logo.png`
-- Optional icon files:
-  - `ui/assets/logo_icon.png`
-  - `ui/assets/logo_icon.svg`
-- If no logo is present, the UI falls back to text-only branding without breaking.
-- See `docs/UI_BRANDING.md` for the supported filenames, recommendations, and replacement steps.
+The app supports optional real logo assets and falls back cleanly when they are absent.
+
+- preferred main logo: `ui/assets/logo.svg` or `ui/assets/logo.png`
+- optional icon: `ui/assets/logo_icon.svg` or `ui/assets/logo_icon.png`
+- missing logo files do not break the app
+- text-only branding is shown when no logo is present
+
+See `docs/UI_BRANDING.md` or `ui/assets/README.md` for the exact filenames, size guidance, and replacement steps.

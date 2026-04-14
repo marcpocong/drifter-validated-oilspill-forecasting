@@ -1,7 +1,7 @@
 {
   "phase": "prototype_pygnome_similarity_summary",
   "workflow_mode": "prototype_2016",
-  "generated_at_utc": "2026-04-13T00:30:03.369981+00:00",
+  "generated_at_utc": "2026-04-14T01:44:26.773307+00:00",
   "output_root": "output/prototype_2016_pygnome_similarity",
   "configured_case_ids": [
     "CASE_2016-09-01",
@@ -14,6 +14,14 @@
     "CASE_2016-09-17"
   ],
   "comparison_scope": "deterministic_p50_p90_opendrift_vs_deterministic_pygnome_transport_benchmark",
+  "font_audit": {
+    "requested_font_family": "Arial",
+    "actual_font_family": "Arial",
+    "actual_font_path": "/app/output/_local_fonts/arial.ttf",
+    "exact_requested_font_used": true,
+    "fallback_used": false,
+    "fallback_candidates": "DejaVu Sans | Liberation Sans | sans-serif"
+  },
   "pygnome_role": "comparator_only",
   "legacy_debug_only": true,
   "final_chapter3_evidence": false,
@@ -98,7 +106,9 @@
     "figure_registry_csv": "output/prototype_2016_pygnome_similarity/prototype_pygnome_figure_registry.csv",
     "figure_captions_md": "output/prototype_2016_pygnome_similarity/prototype_pygnome_figure_captions.md",
     "figures_dir": "output/prototype_2016_pygnome_similarity/figures",
-    "skipped_cases_csv": "output/prototype_2016_pygnome_similarity/prototype_pygnome_skipped_cases.csv"
+    "skipped_cases_csv": "output/prototype_2016_pygnome_similarity/prototype_pygnome_skipped_cases.csv",
+    "font_audit_csv": "output/prototype_2016_pygnome_similarity/font_audit.csv",
+    "board_layout_audit_csv": "output/prototype_2016_pygnome_similarity/board_layout_audit.csv"
   },
   "figure_counts": {
     "single_forecast_figures": 36,

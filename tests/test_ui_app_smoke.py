@@ -4,6 +4,7 @@ import sys
 import textwrap
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 try:
     from streamlit.testing.v1 import AppTest
@@ -112,6 +113,23 @@ def _home_export_wrapper_for_test() -> None:
     state = build_dashboard_state()
     export_state = {"advanced": False, "mode_label": "Export", "visual_layer": "publication", "export_mode": True}
     home.render(state, export_state)
+
+
+def _app_main_missing_branding_for_test() -> None:
+    import ui.app as app
+    from ui.data_access import REPO_ROOT as repo_root
+    from unittest.mock import patch
+
+    empty_branding = {
+        "assets_root": repo_root / "ui" / "assets",
+        "logo_path": None,
+        "icon_path": None,
+        "page_icon_path": None,
+        "has_logo": False,
+        "has_icon": False,
+    }
+    with patch.object(app, "discover_branding_assets", return_value=empty_branding):
+        app.main()
 
 
 def _phase1_export_wrapper_for_test() -> None:
@@ -228,8 +246,16 @@ class UiAppSmokeTests(unittest.TestCase):
         self.assertFalse(at.exception)
         titles = [element.value for element in at.title]
         self.assertIn("Home / Overview", titles)
-        self.assertEqual(len(at.sidebar.selectbox), 1)
-        self.assertEqual(at.sidebar.selectbox[0].label, "Visual layer")
+        self.assertEqual(len(at.sidebar.radio), 1)
+        self.assertEqual(at.sidebar.radio[0].label, "Viewing mode")
+        self.assertEqual(len(at.sidebar.selectbox), 0)
+
+    def test_app_renders_without_logo_assets(self):
+        at = AppTest.from_function(_app_main_missing_branding_for_test, default_timeout=60)
+        at.run()
+        self.assertFalse(at.exception)
+        titles = [element.value for element in at.title]
+        self.assertIn("Home / Overview", titles)
 
     def test_pages_render_via_wrapper_functions(self):
         for wrapper, expected_title in (
@@ -257,6 +283,7 @@ class UiAppSmokeTests(unittest.TestCase):
         selectbox_labels = [element.label for element in at.selectbox]
         self.assertNotIn("Featured figure", selectbox_labels)
         button_labels = [element.label for element in at.button]
+        self.assertIn("Click to enlarge", button_labels)
         self.assertNotIn("Enlarge figure", button_labels)
         expected_count = len(build_dashboard_state(REPO_ROOT)["curated_recommended_figures"])
         self.assertEqual(self._gallery_tile_count(at), expected_count)
@@ -270,6 +297,7 @@ class UiAppSmokeTests(unittest.TestCase):
         selectbox_labels = [element.label for element in at.selectbox]
         self.assertNotIn("Featured figure", selectbox_labels)
         button_labels = [element.label for element in at.button]
+        self.assertIn("Click to enlarge", button_labels)
         self.assertNotIn("Enlarge figure", button_labels)
         expected_count = len(build_dashboard_state(REPO_ROOT)["curated_recommended_figures"])
         self.assertEqual(self._gallery_tile_count(at), expected_count)
@@ -278,7 +306,7 @@ class UiAppSmokeTests(unittest.TestCase):
         for wrapper, minimum_tiles in (
             (_mindoro_validation_wrapper_for_test, 4),
             (_cross_model_wrapper_for_test, 2),
-            (_dwh_wrapper_for_test, 4),
+            (_dwh_wrapper_for_test, 11),
             (_legacy_wrapper_for_test, 4),
             (_phase4_wrapper_for_test, 2),
         ):
@@ -287,8 +315,19 @@ class UiAppSmokeTests(unittest.TestCase):
                 at.run()
                 self.assertFalse(at.exception)
                 selectbox_labels = [element.label for element in at.selectbox]
-                self.assertNotIn("Featured figure", selectbox_labels)
+                self.assertEqual(selectbox_labels, [])
                 self.assertGreaterEqual(self._gallery_tile_count(at), minimum_tiles)
+
+    def test_gallery_click_to_enlarge_dialog_opens_without_crashing(self):
+        at = AppTest.from_function(_home_panel_wrapper_for_test, default_timeout=60)
+        at.run()
+        self.assertFalse(at.exception)
+        open_buttons = [element for element in at.button if element.label == "Click to enlarge"]
+        self.assertTrue(open_buttons)
+        open_buttons[0].click().run()
+        self.assertFalse(at.exception)
+        button_labels = [element.label for element in at.button]
+        self.assertIn("Close preview", button_labels)
 
     def test_export_mode_renders_note_cards_without_sidebar_controls(self):
         at = AppTest.from_function(_home_export_wrapper_for_test, default_timeout=60)
@@ -305,8 +344,8 @@ class UiAppSmokeTests(unittest.TestCase):
         at.run()
         self.assertFalse(at.exception)
         self.assertEqual(self._gallery_tile_count(at), 2)
-        markdown_text = " ".join(element.value for element in at.markdown)
-        self.assertIn("Missing gallery test figure", markdown_text)
+        text_blocks = " ".join(element.value for element in at.markdown)
+        self.assertIn("Missing gallery test figure", text_blocks)
 
     def test_phase1_page_degrades_gracefully_when_focused_artifacts_are_missing(self):
         at = AppTest.from_function(_phase1_wrapper_missing_focused_for_test, default_timeout=60)

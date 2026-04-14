@@ -20,12 +20,14 @@ Mindoro Phase 1 provenance:
 - Stored B1 run recipe source path: `config/phase1_baseline_selection.yaml`
 - Stored B1 run selected recipe: `cmems_era5`
 - Active focused drifter-based provenance workflow: `phase1_mindoro_focus_pre_spill_2016_2023`
-- Focused provenance artifact: `output/phase1_mindoro_focus_pre_spill_2016_2023/phase1_baseline_selection_candidate.yaml`
+- Focused provenance artifact: `config/phase1_baseline_selection.yaml`
 - Focused provenance selected recipe: `cmems_era5`
+- Focused historical four-recipe winner: `cmems_era5`
 - Same recipe confirmed: `Yes`
 - Interpretation: The separate phase1_mindoro_focus_pre_spill_2016_2023 Mindoro-focused drifter rerun selected the same recipe used by the stored B1 run (cmems_era5). It now serves as the active Mindoro-specific recipe-provenance lane for B1 without rewriting the original March 13 -> March 14 raw-generation history.
 - The focused rerun searched through early 2023, but its accepted registry does not include near-2023 accepted segments.
-- Archived NOAA/NCEI GFS access was unavailable during the focused rerun, so GFS-backed recipes were excluded rather than silently treated as if they passed.
+- Historical GFS winner not adopted for official B1: `False`
+- Non-GFS fallback recipe: `not_needed`
 - The broader `phase1_regional_2016_2022` lane remains preserved as a broader reference/governance lane and is not the active provenance for B1.
 - Phase 3B itself does not directly ingest drifters; it inherits a recipe selected by the separate focused Phase 1 rerun.
 

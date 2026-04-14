@@ -1,0 +1,3 @@
+# Phase 3C DWH Interpretation Note
+
+The stored DWH Phase 3C rows show a mixed but coherent story. On the `2010-05-21_to_2010-05-23` event corridor, deterministic OpenDrift remains strongest with mean FSS `0.5568`, ahead of `mask_p50` at `0.5389`, `mask_p90` at `0.4966`, and PyGNOME at `0.3612`. On the daily date-composite rows, `mask_p90` leads the `2010-05-21` row at `0.4930`, while `mask_p50` leads the `2010-05-22` and `2010-05-23` rows at `0.5408` and `0.4727`. That is the thesis-facing interpretation preserved here: deterministic remains the clean baseline transfer-validation result, `mask_p50` is the preferred probabilistic extension, `mask_p90` is support/comparison only, and PyGNOME remains comparator-only.

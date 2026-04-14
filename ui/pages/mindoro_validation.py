@@ -42,14 +42,13 @@ def _mindoro_final_subset(df, artifact_groups: set[str]) -> object:
 
 def render(state: dict, ui_state: dict) -> None:
     export_mode = bool(ui_state.get("export_mode"))
-    primary_status = get_artifact_status("mindoro_primary_validation")
     legacy_status = get_artifact_status("mindoro_legacy_march6")
     support_status = get_artifact_status("mindoro_legacy_support")
     trajectory_status = get_artifact_status("mindoro_trajectory_context")
 
     render_page_intro(
         "Mindoro B1 Primary Validation",
-        "This page leads with the promoted March 13 -> March 14 B1 family, keeps the shared-imagery caveat visible, and treats all other Mindoro rows as comparator or support material rather than co-primary evidence.",
+        "This page leads with the March 13 -> March 14 B1 family as the main Mindoro validation result. The shared-imagery caveat stays visible, while the comparator, B2, and B3 remain clearly labeled as support or legacy context rather than co-primary evidence.",
         badge="Mindoro B1 | primary validation row",
     )
 
@@ -61,9 +60,13 @@ def render(state: dict, ui_state: dict) -> None:
             ]
         )
 
-    render_status_callout("Primary validation", primary_status.panel_text, "info")
     render_status_callout(
-        "Shared-imagery caveat",
+        "Main thesis result",
+        "B1 is the only main Mindoro validation row. It carries the March 13 seed and March 14 target, and it stays distinct from the comparator and legacy rows.",
+        "info",
+    )
+    render_status_callout(
+        "Shared-imagery note",
         "The March 13 and March 14 public products share March 12 WorldView-3 imagery provenance, so this row is a reinitialization-based public-validation pair rather than an independent day-to-day validation claim.",
         "warning",
     )
@@ -101,7 +104,7 @@ def render(state: dict, ui_state: dict) -> None:
     def _primary_package() -> None:
         render_figure_gallery(
             primary_figures,
-            title="B1 curated primary-validation figures",
+            title="B1 publication figures",
             caption="These figures come from the curated Phase 3B March13-14 final package and should be used first for thesis-facing Mindoro discussion. Click any figure to enlarge it and read the fuller interpretation there.",
             limit=2 if export_mode else (None if ui_state["advanced"] else 5),
             columns_per_row=1 if export_mode else 2,
@@ -119,13 +122,13 @@ def render(state: dict, ui_state: dict) -> None:
 
     def _comparator_support() -> None:
         render_status_callout(
-            "Comparator-only rule",
+            "Support comparison",
             "Track A is attached to B1 as same-case comparator support. PyGNOME is comparator-only and never truth.",
             "warning",
         )
         render_figure_gallery(
             comparator_figures,
-            title="A comparator-only figures",
+            title="Comparator publication figures",
             caption="These figures come from the curated comparator subgroup under the final March13-14 package and remain separate from the primary B1 claim. Click any figure to enlarge it.",
             limit=2 if export_mode else (None if ui_state["advanced"] else 4),
             columns_per_row=1 if export_mode else 2,
@@ -142,10 +145,10 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     def _legacy_reference() -> None:
-        render_status_callout("Legacy reference rule", "B2 remains visible as a legacy reference and limitations row, but it is not the main Mindoro validation claim.", "warning")
+        render_status_callout("Legacy reference", "B2 remains visible as a legacy reference and limitations row, but it is not the main Mindoro validation claim.", "warning")
         render_figure_gallery(
             legacy_figures,
-            title=legacy_status.panel_label,
+            title="B2 legacy-reference figures",
             caption="B2 remains visible for legacy reference and limitations. It is not the promoted primary result, but the figures are still shown directly for quick comparison.",
             limit=2 if export_mode else (None if ui_state["advanced"] else 4),
             columns_per_row=1 if export_mode else 2,
@@ -154,10 +157,10 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     def _broader_support() -> None:
-        render_status_callout("Support-only rule", support_status.panel_text, "info")
+        render_status_callout("Support context", "B3 remains broader support and appendix context only. It should not be presented as the main validation row.", "info")
         render_figure_gallery(
             support_figures,
-            title=support_status.panel_label,
+            title="B3 support figures",
             caption="B3 remains broader support / appendix context only and should not be presented as the main validation row, but the gallery keeps the packaged figures visible without a selector.",
             limit=2 if export_mode else (None if ui_state["advanced"] else 4),
             columns_per_row=1 if export_mode else 2,
@@ -168,7 +171,7 @@ def render(state: dict, ui_state: dict) -> None:
     def _trajectory_context() -> None:
         render_figure_gallery(
             trajectory_figures,
-            title=trajectory_status.panel_label,
+            title="Transport-context figures",
             caption="These figures give transport context from stored outputs only. Panel mode now keeps them as a direct gallery while the surrounding notes stay concise.",
             limit=2 if export_mode else (None if ui_state["advanced"] else 4),
             columns_per_row=1 if export_mode else 2,
@@ -197,12 +200,13 @@ def render(state: dict, ui_state: dict) -> None:
 
     render_section_stack(
         [
-            ("B1 primary package", _primary_package),
-            ("A comparator support", _comparator_support),
+            ("B1 main result", _primary_package),
+            ("Comparator support", _comparator_support),
             ("B2 legacy reference", _legacy_reference),
-            ("B3 broader support", _broader_support),
+            ("B3 support context", _broader_support),
             ("Trajectory context", _trajectory_context),
             ("Tables and notes", _tables_and_notes),
         ],
         export_mode=export_mode,
+        use_tabs=ui_state["advanced"],
     )

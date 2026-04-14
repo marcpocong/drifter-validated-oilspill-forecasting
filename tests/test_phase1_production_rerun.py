@@ -183,6 +183,11 @@ def _build_test_repo(root: Path) -> None:
                 "hycom_era5",
                 "hycom_gfs",
             ],
+            "gfs_preflight": {
+                "require_full_accepted_month_coverage": True,
+                "allow_secondary_source": True,
+                "secondary_source_id": "ucar_gdex_d084001",
+            },
             "ranking_subset": {
                 "mode": "seasonal_start_months",
                 "months": [2, 3, 4],
@@ -209,6 +214,20 @@ def _build_test_repo(root: Path) -> None:
                 "notes": [
                     "This artifact is staged only and does not overwrite config/phase1_baseline_selection.yaml.",
                     "This experimental lane does not modify legacy 2016 prototype outputs or canonical B1 outputs.",
+                ],
+            },
+            "official_baseline_update": {
+                "enabled": True,
+                "baseline_id": "mindoro_phase1_focused_recipe_provenance_v2",
+                "description": "Current default Mindoro spill-case Phase 1 recipe provenance finalized from the separate focused pre-spill 2016-2023 Mindoro drifter rerun with the full four-recipe family",
+                "source_kind": "focused_mindoro_phase1_provenance_artifact",
+                "selection_basis": "Focused Mindoro pre-spill 2016-2023 drogued-only non-overlapping 72 h transport-validation rerun with the full four-recipe family ranked on the February-April seasonal subset",
+                "workflow_scope": ["mindoro_retro_2023"],
+                "current_local_evidence_scope": "mindoro_focused_pre_spill_2016_2023_recipe_provenance",
+                "current_local_evidence_dates": ["2016-2019 and 2021 accepted drifter segments within the focused Mindoro box"],
+                "notes": [
+                    "Official Mindoro spill-case workflows inherit recipe provenance from this separate focused Phase 1 drifter rerun.",
+                    "The focused rerun now evaluates the full four-recipe family.",
                 ],
             },
         },
@@ -464,6 +483,8 @@ class Phase1ProductionRerunTests(unittest.TestCase):
             results = service.run()
 
             self.assertEqual(results["winning_recipe"], "cmems_era5")
+            self.assertEqual(results["historical_four_recipe_winner"], "cmems_era5")
+            self.assertEqual(results["official_b1_recipe"], "cmems_era5")
             self.assertTrue((root / "output" / "phase1_production_rerun" / "phase1_baseline_selection_candidate.yaml").exists())
             self.assertTrue((root / "output" / "phase1_production_rerun" / "phase1_production_manifest.json").exists())
             self.assertEqual(
@@ -531,12 +552,33 @@ class Phase1ProductionRerunTests(unittest.TestCase):
                         "current_fallback_used": False,
                         "wind_fallback_used": False,
                         "wave_fallback_used": False,
+                    },
+                    {
+                        "segment_id": "MAR_SEGMENT",
+                        "drifter_id": "B",
+                        "start_time_utc": "2017-03-10T00:00:00+00:00",
+                        "end_time_utc": "2017-03-13T00:00:00+00:00",
+                        "month_key": "201703",
+                        "recipe": "cmems_era5",
+                        "validity_flag": "valid",
+                        "status_flag": "valid",
+                        "hard_fail": False,
+                        "hard_fail_reason": "",
+                        "invalidity_reason": "",
+                        "ncs_score": 0.2,
+                        "actual_current_reader": "",
+                        "actual_wind_reader": "",
+                        "actual_wave_reader": "",
+                        "wave_loading_status": "loaded",
+                        "current_fallback_used": False,
+                        "wind_fallback_used": False,
+                        "wave_fallback_used": False,
                     }
                 ]
             )
             segment_metrics_df = loading_audit_df.copy()
             segment_metrics_df["recipe_family"] = "mindoro_pre_spill_seasonal_subset_feb_apr"
-            segment_metrics_df["is_gfs_recipe"] = True
+            segment_metrics_df["is_gfs_recipe"] = segment_metrics_df["recipe"].astype(str).str.endswith("_gfs")
 
             experimental_case = _case_context_stub(
                 workflow_mode="phase1_mindoro_focus_pre_spill_2016_2023",
@@ -556,6 +598,9 @@ class Phase1ProductionRerunTests(unittest.TestCase):
                 return_value=(drifter_df, [{"month_key": "201703", "status": "cached", "row_count": 1}])
             )
             service._build_segment_registry = mock.Mock(return_value=registry_df)
+            service._preflight_gfs_month_coverage = mock.Mock(
+                return_value=([{"month_key": "201703", "status": "already_present"}], [])
+            )
             service._evaluate_accepted_segments = mock.Mock(
                 return_value=(loading_audit_df, segment_metrics_df, [{"month_key": "201703"}])
             )
@@ -575,6 +620,275 @@ class Phase1ProductionRerunTests(unittest.TestCase):
             self.assertFalse(candidate_payload["valid"])
             evaluated_subset = service._evaluate_accepted_segments.call_args.args[0]
             self.assertEqual(evaluated_subset["segment_id"].tolist(), ["MAR_SEGMENT"])
+
+    def test_focused_run_updates_official_baseline_and_adoption_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _build_test_repo(root)
+
+            registry_df = pd.DataFrame(
+                [
+                    {
+                        "segment_id": "MAR_SEGMENT",
+                        "segment_status": "accepted",
+                        "rejection_reason": "",
+                        "drifter_id": "B",
+                        "start_time_utc": "2017-03-10T00:00:00+00:00",
+                        "end_time_utc": "2017-03-13T00:00:00+00:00",
+                        "month_key": "201703",
+                        "start_lat": 13.2,
+                        "start_lon": 121.2,
+                        "end_lat": 13.3,
+                        "end_lon": 121.3,
+                    }
+                ]
+            )
+            drifter_df = pd.DataFrame(
+                [{"time": pd.Timestamp("2017-03-10T00:00:00Z"), "lat": 13.2, "lon": 121.2, "ID": "B"}]
+            )
+            loading_audit_df = pd.DataFrame(
+                [
+                    {
+                        "segment_id": "MAR_SEGMENT",
+                        "drifter_id": "B",
+                        "start_time_utc": "2017-03-10T00:00:00+00:00",
+                        "end_time_utc": "2017-03-13T00:00:00+00:00",
+                        "month_key": "201703",
+                        "recipe": "cmems_era5",
+                        "validity_flag": "valid",
+                        "status_flag": "valid",
+                        "hard_fail": False,
+                        "hard_fail_reason": "",
+                        "invalidity_reason": "",
+                        "ncs_score": 0.1,
+                        "actual_current_reader": "",
+                        "actual_wind_reader": "",
+                        "actual_wave_reader": "",
+                        "wave_loading_status": "loaded",
+                        "current_fallback_used": False,
+                        "wind_fallback_used": False,
+                        "wave_fallback_used": False,
+                    }
+                ]
+            )
+            segment_metrics_df = loading_audit_df.copy()
+            segment_metrics_df["recipe_family"] = "mindoro_pre_spill_seasonal_subset_feb_apr"
+            segment_metrics_df["is_gfs_recipe"] = False
+            recipe_summary_df = pd.DataFrame(
+                [
+                    {"recipe": "cmems_era5", "recipe_rank_pool": "mindoro_pre_spill_seasonal_subset_feb_apr", "segment_count": 1, "valid_segment_count": 1, "invalid_segment_count": 0, "mean_ncs_score": 0.1, "median_ncs_score": 0.1, "std_ncs_score": 0.0, "min_ncs_score": 0.1, "max_ncs_score": 0.1, "is_gfs_recipe": False, "status": "completed", "excluded_from_ranking": False, "missing_forcing_factors": ""},
+                    {"recipe": "cmems_gfs", "recipe_rank_pool": "mindoro_pre_spill_seasonal_subset_feb_apr", "segment_count": 1, "valid_segment_count": 1, "invalid_segment_count": 0, "mean_ncs_score": 0.2, "median_ncs_score": 0.2, "std_ncs_score": 0.0, "min_ncs_score": 0.2, "max_ncs_score": 0.2, "is_gfs_recipe": True, "status": "completed", "excluded_from_ranking": False, "missing_forcing_factors": ""},
+                ]
+            )
+            recipe_ranking_df = recipe_summary_df.copy()
+            recipe_ranking_df.insert(0, "rank", [1, 2])
+            experimental_case = _case_context_stub(
+                workflow_mode="phase1_mindoro_focus_pre_spill_2016_2023",
+                run_name="phase1_mindoro_focus_pre_spill_2016_2023",
+                validation_box=[118.751, 124.305, 10.620, 16.026],
+                description="experimental pre-spill 2016-2023 Mindoro-focused drifter-calibration rerun for trial recipe selection only",
+            )
+
+            with mock.patch(
+                "src.services.phase1_production_rerun.get_case_context",
+                return_value=experimental_case,
+            ):
+                service = Phase1ProductionRerunService(
+                    repo_root=root,
+                    config_path="config/phase1_mindoro_focus_pre_spill_2016_2023.yaml",
+                )
+
+            service._fetch_full_drifter_pool = mock.Mock(
+                return_value=(drifter_df, [{"month_key": "201703", "status": "cached", "row_count": 1}])
+            )
+            service._build_segment_registry = mock.Mock(return_value=registry_df)
+            service._preflight_gfs_month_coverage = mock.Mock(
+                return_value=([{"month_key": "201703", "status": "already_present"}], [])
+            )
+            service._evaluate_accepted_segments = mock.Mock(
+                return_value=(loading_audit_df, segment_metrics_df, [{"month_key": "201703"}])
+            )
+            service._build_recipe_tables = mock.Mock(
+                return_value=(recipe_summary_df, recipe_ranking_df, "cmems_era5")
+            )
+
+            results = service.run()
+
+            official_baseline = yaml.safe_load(
+                (root / "config" / "phase1_baseline_selection.yaml").read_text(encoding="utf-8")
+            )
+            candidate = yaml.safe_load(Path(results["candidate_baseline_path"]).read_text(encoding="utf-8"))
+            adoption = json.loads(Path(results["adoption_decision_json"]).read_text(encoding="utf-8"))
+
+            self.assertEqual(results["official_b1_recipe"], "cmems_era5")
+            self.assertEqual(official_baseline["selected_recipe"], "cmems_era5")
+            self.assertEqual(official_baseline["historical_four_recipe_winner"], "cmems_era5")
+            self.assertEqual(candidate["selected_recipe"], "cmems_era5")
+            self.assertFalse(adoption["gfs_historical_winner_not_adopted"])
+
+    def test_focused_run_records_gfs_historical_winner_but_adopts_non_gfs_official_recipe(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _build_test_repo(root)
+
+            registry_df = pd.DataFrame(
+                [
+                    {
+                        "segment_id": "MAR_SEGMENT",
+                        "segment_status": "accepted",
+                        "rejection_reason": "",
+                        "drifter_id": "B",
+                        "start_time_utc": "2017-03-10T00:00:00+00:00",
+                        "end_time_utc": "2017-03-13T00:00:00+00:00",
+                        "month_key": "201703",
+                        "start_lat": 13.2,
+                        "start_lon": 121.2,
+                        "end_lat": 13.3,
+                        "end_lon": 121.3,
+                    }
+                ]
+            )
+            drifter_df = pd.DataFrame(
+                [{"time": pd.Timestamp("2017-03-10T00:00:00Z"), "lat": 13.2, "lon": 121.2, "ID": "B"}]
+            )
+            loading_audit_df = pd.DataFrame(
+                [
+                    {
+                        "segment_id": "MAR_SEGMENT",
+                        "drifter_id": "B",
+                        "start_time_utc": "2017-03-10T00:00:00+00:00",
+                        "end_time_utc": "2017-03-13T00:00:00+00:00",
+                        "month_key": "201703",
+                        "recipe": "cmems_gfs",
+                        "validity_flag": "valid",
+                        "status_flag": "valid",
+                        "hard_fail": False,
+                        "hard_fail_reason": "",
+                        "invalidity_reason": "",
+                        "ncs_score": 0.1,
+                        "actual_current_reader": "",
+                        "actual_wind_reader": "",
+                        "actual_wave_reader": "",
+                        "wave_loading_status": "loaded",
+                        "current_fallback_used": False,
+                        "wind_fallback_used": False,
+                        "wave_fallback_used": False,
+                    }
+                ]
+            )
+            segment_metrics_df = loading_audit_df.copy()
+            segment_metrics_df["recipe_family"] = "mindoro_pre_spill_seasonal_subset_feb_apr"
+            segment_metrics_df["is_gfs_recipe"] = True
+            recipe_summary_df = pd.DataFrame(
+                [
+                    {"recipe": "cmems_gfs", "recipe_rank_pool": "mindoro_pre_spill_seasonal_subset_feb_apr", "segment_count": 1, "valid_segment_count": 1, "invalid_segment_count": 0, "mean_ncs_score": 0.1, "median_ncs_score": 0.1, "std_ncs_score": 0.0, "min_ncs_score": 0.1, "max_ncs_score": 0.1, "is_gfs_recipe": True, "status": "completed", "excluded_from_ranking": False, "missing_forcing_factors": ""},
+                    {"recipe": "cmems_era5", "recipe_rank_pool": "mindoro_pre_spill_seasonal_subset_feb_apr", "segment_count": 1, "valid_segment_count": 1, "invalid_segment_count": 0, "mean_ncs_score": 0.2, "median_ncs_score": 0.2, "std_ncs_score": 0.0, "min_ncs_score": 0.2, "max_ncs_score": 0.2, "is_gfs_recipe": False, "status": "completed", "excluded_from_ranking": False, "missing_forcing_factors": ""},
+                ]
+            )
+            recipe_ranking_df = recipe_summary_df.copy()
+            recipe_ranking_df.insert(0, "rank", [1, 2])
+            experimental_case = _case_context_stub(
+                workflow_mode="phase1_mindoro_focus_pre_spill_2016_2023",
+                run_name="phase1_mindoro_focus_pre_spill_2016_2023",
+                validation_box=[118.751, 124.305, 10.620, 16.026],
+                description="experimental pre-spill 2016-2023 Mindoro-focused drifter-calibration rerun for trial recipe selection only",
+            )
+
+            with mock.patch(
+                "src.services.phase1_production_rerun.get_case_context",
+                return_value=experimental_case,
+            ):
+                service = Phase1ProductionRerunService(
+                    repo_root=root,
+                    config_path="config/phase1_mindoro_focus_pre_spill_2016_2023.yaml",
+                )
+
+            service._fetch_full_drifter_pool = mock.Mock(
+                return_value=(drifter_df, [{"month_key": "201703", "status": "cached", "row_count": 1}])
+            )
+            service._build_segment_registry = mock.Mock(return_value=registry_df)
+            service._preflight_gfs_month_coverage = mock.Mock(
+                return_value=([{"month_key": "201703", "status": "already_present"}], [])
+            )
+            service._evaluate_accepted_segments = mock.Mock(
+                return_value=(loading_audit_df, segment_metrics_df, [{"month_key": "201703"}])
+            )
+            service._build_recipe_tables = mock.Mock(
+                return_value=(recipe_summary_df, recipe_ranking_df, "cmems_gfs")
+            )
+
+            results = service.run()
+
+            official_baseline = yaml.safe_load(
+                (root / "config" / "phase1_baseline_selection.yaml").read_text(encoding="utf-8")
+            )
+            candidate = yaml.safe_load(Path(results["candidate_baseline_path"]).read_text(encoding="utf-8"))
+            adoption = json.loads(Path(results["adoption_decision_json"]).read_text(encoding="utf-8"))
+
+            self.assertEqual(results["historical_four_recipe_winner"], "cmems_gfs")
+            self.assertEqual(results["official_b1_recipe"], "cmems_era5")
+            self.assertEqual(official_baseline["selected_recipe"], "cmems_era5")
+            self.assertEqual(candidate["selected_recipe"], "cmems_gfs")
+            self.assertTrue(adoption["gfs_historical_winner_not_adopted"])
+            self.assertEqual(adoption["non_gfs_fallback_recipe"], "cmems_era5")
+
+    def test_focused_run_hard_fails_when_gfs_preflight_still_has_missing_months(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            _build_test_repo(root)
+
+            registry_df = pd.DataFrame(
+                [
+                    {
+                        "segment_id": "MAR_SEGMENT",
+                        "segment_status": "accepted",
+                        "rejection_reason": "",
+                        "drifter_id": "B",
+                        "start_time_utc": "2017-03-10T00:00:00+00:00",
+                        "end_time_utc": "2017-03-13T00:00:00+00:00",
+                        "month_key": "201703",
+                        "start_lat": 13.2,
+                        "start_lon": 121.2,
+                        "end_lat": 13.3,
+                        "end_lon": 121.3,
+                    }
+                ]
+            )
+            drifter_df = pd.DataFrame(
+                [{"time": pd.Timestamp("2017-03-10T00:00:00Z"), "lat": 13.2, "lon": 121.2, "ID": "B"}]
+            )
+            experimental_case = _case_context_stub(
+                workflow_mode="phase1_mindoro_focus_pre_spill_2016_2023",
+                run_name="phase1_mindoro_focus_pre_spill_2016_2023",
+                validation_box=[118.751, 124.305, 10.620, 16.026],
+                description="experimental pre-spill 2016-2023 Mindoro-focused drifter-calibration rerun for trial recipe selection only",
+            )
+
+            with mock.patch(
+                "src.services.phase1_production_rerun.get_case_context",
+                return_value=experimental_case,
+            ):
+                service = Phase1ProductionRerunService(
+                    repo_root=root,
+                    config_path="config/phase1_mindoro_focus_pre_spill_2016_2023.yaml",
+                )
+
+            service._fetch_full_drifter_pool = mock.Mock(
+                return_value=(drifter_df, [{"month_key": "201703", "status": "cached", "row_count": 1}])
+            )
+            service._build_segment_registry = mock.Mock(return_value=registry_df)
+            service._preflight_gfs_month_coverage = mock.Mock(
+                return_value=(
+                    [{"month_key": "201703", "status": "failed"}],
+                    [{"month_key": "201703", "status": "failed"}],
+                )
+            )
+            service._evaluate_accepted_segments = mock.Mock()
+
+            with self.assertRaisesRegex(RuntimeError, "GFS preflight failed"):
+                service.run()
+
+            service._evaluate_accepted_segments.assert_not_called()
 
     def test_strict_lane_fails_hard_when_outage_removes_part_of_recipe_family(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -708,8 +1022,14 @@ class Phase1ProductionRerunTests(unittest.TestCase):
                 segment_metrics_df,
                 recipe_rank_pool=service.ranking_subset_label,
             )
+            adoption_decision = service._build_adoption_decision(
+                recipe_summary_df[recipe_summary_df["status"] == "completed"].copy().assign(rank=[1, 2]),
+                historical_winner=winning_recipe,
+            )
             candidate_payload = service._build_candidate_baseline_payload(
                 winning_recipe=winning_recipe,
+                official_b1_recipe=str(adoption_decision["official_b1_recipe"]),
+                adoption_decision=adoption_decision,
                 accepted_df=accepted_df,
                 rejected_df=pd.DataFrame(),
                 ranking_subset_df=accepted_df,

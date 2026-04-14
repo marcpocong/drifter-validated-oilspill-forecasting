@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 from pathlib import Path
 
 try:
@@ -25,7 +26,6 @@ from ui.pages.common import (
     render_markdown_block,
     render_package_cards,
     render_page_intro,
-    render_status_callout,
     render_study_structure_cards,
 )
 
@@ -34,8 +34,8 @@ def render(state: dict, ui_state: dict) -> None:
     export_mode = bool(ui_state.get("export_mode"))
     render_page_intro(
         "Home / Overview",
-        "This dashboard is a read-only thesis launch surface over the current curated outputs. It leads with Mindoro B1 primary validation, keeps comparator and support lanes explicit, and surfaces packaged evidence before raw case folders.",
-        badge="Read-only dashboard | curated final packages first",
+        "This is a polished read-only launch surface over the current curated outputs. Start with Phase 1 for recipe provenance, move to Mindoro B1 for the main thesis result, then use the comparator, DWH, Phase 4, and legacy pages as clearly labeled support lanes.",
+        badge="Read-only thesis dashboard | curated packages first",
     )
 
     if export_mode:
@@ -46,25 +46,43 @@ def render(state: dict, ui_state: dict) -> None:
             ]
         )
 
-    render_status_callout(
-        "Primary claim",
-        "Mindoro B1 is the only primary Mindoro validation row. Track A is comparator-only, B2 is the legacy reference row, B3 is broader support, DWH is a separate transfer-validation lane, and prototype_2016 is support-only legacy material.",
-        "info",
-    )
-    render_status_callout(
-        "Phase 1 provenance note",
-        "Mindoro B1 inherits the recipe selected by the separate focused Phase 1 drifter-based provenance rerun. The Phase 3B B1 case itself does not directly ingest drifters.",
-        "info",
-    )
-    render_status_callout(
-        "Phase 4 note",
-        "Mindoro Phase 4 is currently an OpenDrift/OpenOil scenario layer only. The only packaged Phase 4 PyGNOME comparator pilot is the budget-only support pilot inside the legacy 2016 package.",
-        "warning",
-    )
-
     recommended = state["curated_recommended_figures"]
-    st.subheader("Study Structure")
-    st.caption("These cards explain the study in thesis language first. Each one links to the page that presents the current curated evidence for that part of the workflow.")
+    guide_cards = [
+        {
+            "title": "Start with provenance",
+            "body": "Phase 1 shows the focused drifter-based recipe check and explains how Mindoro B1 inherits that recipe without directly ingesting drifters inside Phase 3B.",
+        },
+        {
+            "title": "Treat B1 as the main result",
+            "body": "Mindoro B1 is the only main Mindoro validation claim. The Mindoro comparator, B2, and B3 stay clearly labeled as support or legacy context.",
+        },
+        {
+            "title": "Keep the lanes separate",
+            "body": "DWH is a separate Phase 3C transfer-validation lane, Mindoro Phase 4 is context only, and the Legacy 2016 package remains support-only.",
+        },
+    ]
+
+    st.subheader("How to read this dashboard")
+    st.caption("Use the pages in this order for the shortest defense-ready story.")
+    guide_columns_per_row = 1 if export_mode else 3
+    for start in range(0, len(guide_cards), guide_columns_per_row):
+        visible_columns = min(guide_columns_per_row, len(guide_cards) - start)
+        columns = st.columns(visible_columns)
+        for column, card in zip(columns, guide_cards[start : start + guide_columns_per_row]):
+            with column:
+                with st.container(border=not export_mode):
+                    st.markdown(
+                        (
+                            "<div class='home-guide-card'>"
+                            f"<div class='home-guide-card__title'>{html.escape(card['title'])}</div>"
+                            f"<div class='home-guide-card__body'>{html.escape(card['body'])}</div>"
+                            "</div>"
+                        ),
+                        unsafe_allow_html=True,
+                    )
+
+    st.subheader("Study structure")
+    st.caption("Each card introduces one thesis lane in plain language and links straight to the page that presents the current packaged evidence.")
     render_study_structure_cards(
         [
             {
@@ -114,18 +132,32 @@ def render(state: dict, ui_state: dict) -> None:
         export_mode=export_mode,
     )
 
-    st.subheader("Quick Links")
-    st.caption("These cards open the current curated package roots rather than raw case folders.")
+    quick_link_ids = {
+        "mindoro_b1_final",
+        "mindoro_comparator",
+        "dwh_phase3c_final",
+        "phase4_context_status",
+        "legacy_2016_final",
+    }
+    quick_links = []
+    for package in state.get("curated_package_roots", []):
+        if package.get("package_id") not in quick_link_ids:
+            continue
+        quick_links.append({**package, "button_label": "Open page"})
+
+    st.subheader("Quick links")
+    st.caption("These shortcuts point to the main curated packages and pages rather than raw case folders.")
     render_package_cards(
-        state.get("curated_package_roots", []),
-        columns_per_row=1 if export_mode else 2,
+        quick_links,
+        columns_per_row=1 if export_mode else 3,
         export_mode=export_mode,
     )
+    st.caption("For manifests, logs, and synced registries, use the Artifacts / Logs / Registries page.")
 
     render_figure_gallery(
         recommended,
         title="Featured publication figures",
-        caption="Home shows the full curated featured set in both Panel-friendly and Advanced browsing. Click any figure to open a larger preview; export mode stays smaller and static for cleaner PDF snapshots.",
+        caption="Home keeps the full curated featured set visible in live browsing so the main story can be scanned at a glance. Click any figure to open a larger preview; export mode stays smaller and static for cleaner PDF snapshots.",
         limit=2 if export_mode else None,
         columns_per_row=1 if export_mode else 2,
         export_mode=export_mode,
@@ -133,11 +165,8 @@ def render(state: dict, ui_state: dict) -> None:
     )
 
     if ui_state["advanced"] and not export_mode:
-        render_status_callout(
-            "Advanced note",
-            "Advanced mode keeps the lower-level reproducibility notes available, but panel mode deliberately avoids internal governance counters and status jargon.",
-            "info",
-        )
+        st.subheader("Advanced notes")
+        st.caption("Panel mode stops here. Advanced mode keeps the lower-level reproducibility notes available in read-only form.")
         render_markdown_block("Final reproducibility summary", state["final_reproducibility_summary"], collapsed=True, export_mode=export_mode)
         render_markdown_block("Publication talking points", state["publication_talking_points"], collapsed=True, export_mode=export_mode)
         render_markdown_block("Publication captions", state["publication_captions"], collapsed=True, export_mode=export_mode)

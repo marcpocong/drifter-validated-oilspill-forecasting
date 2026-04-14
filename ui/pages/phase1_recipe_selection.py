@@ -63,9 +63,11 @@ def render(state: dict, ui_state: dict) -> None:
 
     time_window = manifest.get("time_window") or {}
     subset_info = manifest.get("ranking_subset") or {}
-    selected_recipe = str(manifest.get("winning_recipe") or "").strip() or (
+    selected_recipe = str(manifest.get("official_b1_recipe") or "").strip() or (
         str(ranking.iloc[0]["recipe"]).strip() if not ranking.empty and "recipe" in ranking.columns else "Not available"
     )
+    historical_winner = str(manifest.get("historical_four_recipe_winner") or manifest.get("winning_recipe") or "").strip() or selected_recipe
+    gfs_historical_winner_not_adopted = bool(manifest.get("gfs_historical_winner_not_adopted", False))
     recipe_family = _format_recipe_family(manifest.get("official_recipe_family") or [])
     reference_recipe = (
         str(reference_manifest.get("winning_recipe") or "").strip()
@@ -74,7 +76,7 @@ def render(state: dict, ui_state: dict) -> None:
 
     render_page_intro(
         "Phase 1 Recipe Selection",
-        "This page explains how the Mindoro forcing recipe was chosen before the main validation step. It keeps the focused drifter-based provenance lane separate from the broader regional reference lane and shows how B1 inherits the selected recipe without directly ingesting drifters in Phase 3B.",
+        "This page explains how the Mindoro transport recipe was chosen before the main validation step. It keeps the focused Mindoro provenance lane separate from the broader regional reference lane and shows how B1 inherits the selected recipe without directly ingesting drifters inside Phase 3B.",
         badge="Phase 1 provenance | recipe selection before B1",
     )
 
@@ -87,25 +89,31 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     render_status_callout(
-        "What Phase 1 does",
-        "Phase 1 uses historical drifter segments to compare forcing recipes and select a transport recipe before the main Mindoro validation case is discussed.",
+        "What this page establishes",
+        "Historical drifter segments were used to compare candidate recipes before the main Mindoro validation case was discussed.",
         "info",
     )
     render_status_callout(
         "Focused Mindoro result",
-        f"The focused Mindoro provenance lane selected `{selected_recipe}` from the outage-constrained family `{recipe_family}`.",
+        f"The focused Mindoro provenance lane now evaluates `{recipe_family}`. Official B1 currently inherits `{selected_recipe}` from that focused lane.",
         "info",
     )
     render_status_callout(
         "How B1 uses it",
-        "Mindoro B1 uses the recipe selected by this separate Phase 1 drifter-based provenance rerun. Phase 3B itself does not directly ingest drifters.",
+        "Mindoro B1 inherits the recipe selected by this separate Phase 1 provenance lane. Phase 3B itself does not directly ingest drifters.",
         "info",
     )
     render_status_callout(
-        "GFS honesty note",
-        "GFS-backed recipes were not part of the focused Mindoro provenance lane while archived access was unavailable, so the focused comparison stayed limited to the recipes that could be run cleanly.",
-        "warning",
+        "Recipe-scope note",
+        "The focused Mindoro provenance lane now evaluates the four-recipe family. If a GFS-backed recipe wins historically, the official B1 baseline still keeps the highest-ranked non-GFS fallback until a separate event-scale GFS adoption workflow is completed.",
+        "info",
     )
+    if gfs_historical_winner_not_adopted:
+        render_status_callout(
+            "Historical-vs-official split",
+            f"The raw historical four-recipe winner was `{historical_winner}`, but official B1 uses `{selected_recipe}` under the spill-usable non-GFS fallback rule.",
+            "warning",
+        )
     if focused_missing:
         render_status_callout(
             "Focused-lane fallback",
@@ -127,7 +135,7 @@ def render(state: dict, ui_state: dict) -> None:
     def _focused_lane() -> None:
         render_status_callout(
             "Focused lane role",
-            "This is the active Mindoro-specific provenance lane used to justify the B1 recipe choice.",
+            "This is the active Mindoro-specific provenance lane used to support the B1 recipe choice.",
             "info",
         )
         render_table(
@@ -167,7 +175,7 @@ def render(state: dict, ui_state: dict) -> None:
     def _inheritance_story() -> None:
         render_status_callout(
             "Provenance chain",
-            f"Focused Phase 1 selected `{selected_recipe}`. The active Mindoro B1 package then inherits that recipe choice through the repo baseline-selection layer.",
+            f"Focused Phase 1 recorded `{historical_winner}` as the historical winner and `{selected_recipe}` as the official B1 recipe. The active Mindoro B1 package inherits the official recipe through the repo baseline-selection layer.",
             "info",
         )
         st.markdown(
@@ -176,8 +184,8 @@ def render(state: dict, ui_state: dict) -> None:
                     "### Plain-language study chain",
                     "1. Historical drifter segments were screened in the focused Mindoro window.",
                     f"2. The focused ranking subset compared `{recipe_family}` on accepted February-April starts.",
-                    f"3. `{selected_recipe}` ranked best in the stored focused lane.",
-                    "4. B1 inherited that recipe for the March 13 -> March 14 primary validation row.",
+                    f"3. `{historical_winner}` ranked best in the stored focused lane.",
+                    f"4. `{selected_recipe}` is the official B1 recipe that the March 13 -> March 14 primary validation row inherits.",
                 ]
             )
         )
@@ -264,11 +272,12 @@ def render(state: dict, ui_state: dict) -> None:
 
     render_section_stack(
         [
-            ("Focused Mindoro provenance lane", _focused_lane),
+            ("Focused provenance lane", _focused_lane),
             ("How B1 inherits the recipe", _inheritance_story),
             ("Regional reference lane", _regional_reference),
-            ("Legacy 2016 support lane", _legacy_support_lane),
+            ("Legacy 2016 support note", _legacy_support_lane),
             ("Source tables", _source_tables),
         ],
         export_mode=export_mode,
+        use_tabs=ui_state["advanced"],
     )

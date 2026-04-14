@@ -342,6 +342,7 @@ Expected files:
 - `summary/deterministic/*`
 - `summary/ensemble/*`
 - `summary/comparator_pygnome/*`
+- `summary/comparison/*`
 - `manifests/phase3c_final_output_manifest.json`
 - `manifests/phase3c_final_output_registry.csv`
 - `manifests/phase3c_final_output_registry.json`
@@ -349,12 +350,14 @@ Expected files:
 Interpretation:
 
 - this directory is an alias/export layer, not the canonical scientific directory
-- it packages the DWH observation-context figures, deterministic baseline figures, ensemble extension figures, PyGNOME comparator figures, canonical scientific source PNGs, and stored summary artifacts in one thesis-facing location
+- it packages the DWH observation truth-context figures, deterministic footprint overlays, daily `mask_p50` / `mask_p90` / exact dual-threshold overview boards, daily OpenDrift-vs-PyGNOME overview boards including the three-row `mask_p50` / `mask_p90` / PyGNOME board, PyGNOME comparator figures, canonical scientific source PNGs, and stored summary artifacts in one thesis-facing location
 - the `C1/C2/C3` families exported here are frozen reportable tracks, not deferred placeholders
 - DWH remains a separate Phase 3C external transfer-validation lane; do not read this folder as a second local Phase 1 or drifter-calibration study
 - the authoritative forcing stack remains `HYCOM GOFS 3.1 currents + ERA5 winds + CMEMS wave/Stokes`
-- deterministic remains the clean baseline transfer-validation result, p50 is the preferred probabilistic extension, p90 is support/comparison only, and PyGNOME is comparator-only
-- the public DWH masks remain truth and the folder keeps date-composite honesty rather than implying exact sub-daily observation acquisition times
+- the frozen time labels are `24 h = 2010-05-21`, `48 h = 2010-05-22`, `72 h = 2010-05-23`, and `event corridor = 2010-05-21_to_2010-05-23`
+- deterministic remains the clean baseline transfer-validation result, `mask_p50` is the preferred probabilistic extension, `mask_p90` is support/comparison only, and PyGNOME is comparator-only
+- the thesis-facing order is truth context first, then `C1`, then `C2 mask_p50`, then the daily `mask_p50` / `mask_p90` / exact dual-threshold overview boards, then deterministic-vs-`mask_p50`-vs-`mask_p90`, then `C3`, then the daily OpenDrift-vs-PyGNOME overview boards including the three-row `mask_p50` / `mask_p90` / PyGNOME board, then the OpenDrift-vs-PyGNOME support boards
+- the public DWH masks remain truth, remain the scoring reference for all displayed DWH FSS values, and the folder keeps date-composite honesty rather than implying exact sub-daily observation acquisition times
 
 ## Final Reproducibility Package
 

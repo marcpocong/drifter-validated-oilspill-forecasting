@@ -40,6 +40,11 @@ from src.helpers.plotting import (
     prototype_2016_rendering_metadata,
 )
 from src.helpers.metrics import calculate_fss, calculate_kl_divergence
+from src.services.figure_package_publication import (
+    STYLE_CONFIG_PATH,
+    load_publication_style_config,
+    resolve_publication_typography,
+)
 from src.utils.io import load_drifter_data, select_drifter_of_record
 
 PHASE = "prototype_pygnome_similarity_summary"
@@ -217,10 +222,13 @@ class PrototypePygnomeSimilaritySummaryService:
             str(case_id): dict(payload or {})
             for case_id, payload in (workflow_config.get("case_metadata_by_id") or {}).items()
         }
+        self.style = load_publication_style_config(self.repo_root / STYLE_CONFIG_PATH)
+        self.font_audit = resolve_publication_typography(self.style, self.repo_root)
         self._raster_cache: dict[Path, dict[str, Any]] = {}
         self._vector_cache: dict[tuple[Path, str], gpd.GeoDataFrame | None] = {}
         self._prototype_map_context: dict[str, Any] | None = None
         self._sea_mask_cache: np.ndarray | None = None
+        self.board_layout_audit_rows: list[dict[str, Any]] = []
         self.extent_mode = (
             PROTOTYPE_2016_EXTENT_MODE_DYNAMIC_FORECAST
             if self.workflow_mode == "prototype_2016"
@@ -1665,12 +1673,45 @@ class PrototypePygnomeSimilaritySummaryService:
             bbox={"boxstyle": "round,pad=0.42", "facecolor": "#ffffff", "edgecolor": "#cbd5e1"},
         )
 
-    def _draw_footer_note(self, ax: plt.Axes, title: str, lines: list[str], *, width: int = 140) -> None:
+    def _axis_wrap_width(
+        self,
+        ax: plt.Axes,
+        *,
+        fontsize: float,
+        min_chars: int = 18,
+        max_chars: int = 60,
+    ) -> int:
+        width_px = ax.get_position().width * ax.figure.get_figwidth() * ax.figure.dpi
+        approx = int(width_px / max(fontsize * 0.82, 1.0))
+        return max(min_chars, min(max_chars, approx))
+
+    def _draw_footer_note(
+        self,
+        ax: plt.Axes,
+        title: str,
+        lines: list[str],
+        *,
+        width: int | None = None,
+        bullet_lines: bool = False,
+        title_y: float = 0.94,
+        body_y: float = 0.86,
+        box_pad: float = 0.34,
+    ) -> tuple[Any, Any]:
         ax.axis("off")
-        wrapped_lines = [textwrap.fill(str(line), width=width) for line in lines if str(line).strip()]
-        ax.text(
+        if width is None:
+            width = self._axis_wrap_width(ax, fontsize=8.6)
+        wrapped_lines = [
+            textwrap.fill(
+                f"- {str(line).strip()}" if bullet_lines else str(line).strip(),
+                width=width,
+                subsequent_indent="  " if bullet_lines else "",
+            )
+            for line in lines
+            if str(line).strip()
+        ]
+        title_artist = ax.text(
             0.0,
-            0.94,
+            title_y,
             title,
             fontsize=10.2,
             fontweight="bold",
@@ -1679,16 +1720,57 @@ class PrototypePygnomeSimilaritySummaryService:
             color="#0f172a",
             transform=ax.transAxes,
         )
-        ax.text(
+        body_artist = ax.text(
             0.0,
-            0.76,
+            body_y,
             "\n".join(wrapped_lines),
             fontsize=8.6,
             ha="left",
             va="top",
             color="#334155",
             transform=ax.transAxes,
+            bbox={"boxstyle": f"round,pad={box_pad:.2f}", "facecolor": "#ffffff", "edgecolor": "#cbd5e1"},
         )
+        return title_artist, body_artist
+
+    def _pygnome_forcing_note(self, item: dict[str, Any]) -> str:
+        metadata = dict(item.get("metadata") or {})
+        if _coerce_bool(metadata.get("degraded_forcing")):
+            reason = str(metadata.get("degraded_reason") or "degraded transport forcing").replace("_", " ")
+            return f"Forcing: comparator-only PyGNOME used degraded forcing ({reason})."
+        if _coerce_bool(metadata.get("current_mover_used")):
+            return "Forcing: comparator-only PyGNOME used matched prepared grid wind plus grid current forcing."
+        return "Forcing: PyGNOME stayed comparator-only; no matched current mover was available."
+
+    def _artist_within_bbox(self, artist: Any, bbox: Any, *, pad_px: float = 2.0) -> bool:
+        renderer = artist.figure.canvas.get_renderer()
+        artist_bbox = artist.get_window_extent(renderer=renderer)
+        return (
+            artist_bbox.x0 >= (bbox.x0 - pad_px)
+            and artist_bbox.y0 >= (bbox.y0 - pad_px)
+            and artist_bbox.x1 <= (bbox.x1 + pad_px)
+            and artist_bbox.y1 <= (bbox.y1 + pad_px)
+        )
+
+    def _board_guide_payload(self, item: dict[str, Any]) -> dict[str, Any]:
+        if self.workflow_mode == "prototype_2016":
+            guide_bullets = [
+                "Read columns left to right for 24 h, 48 h, and 72 h snapshots on the same benchmark grid.",
+                "Read rows top to bottom as OpenDrift deterministic, p50, p90, then deterministic PyGNOME.",
+                "Each panel uses exact stored raster cells and stored footprint outlines only.",
+                "Use the FSS/KL chip in each panel before comparing footprint shape.",
+            ]
+        else:
+            guide_bullets = [
+                "Read columns left to right for the stored benchmark hours on the same grid.",
+                "The upper row is OpenDrift deterministic and the lower row is deterministic PyGNOME.",
+                "Each panel uses exact stored raster cells and stored footprint outlines only.",
+            ]
+        return {
+            "guide_bullets": guide_bullets,
+            "caveat_line": self._pygnome_forcing_note(item),
+            "provenance_line": f"{self._support_status_phrase().capitalize()}; not final Chapter 3 evidence.",
+        }
 
     def _render_model_footprint(
         self,
@@ -2108,19 +2190,28 @@ class PrototypePygnomeSimilaritySummaryService:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         source_point = self._resolve_case_source_point(item["case_id"])
         board_models = self._single_model_sequence()
-        board_size = (15.2, 12.4) if len(board_models) > 2 else BOARD_FIGURE_SIZE
+        board_size = (15.8, 12.0) if len(board_models) > 2 else (14.2, 10.2)
         fig = plt.figure(figsize=board_size, dpi=FIGURE_DPI, facecolor="#ffffff")
-        grid = fig.add_gridspec(
-            len(board_models) + 1,
-            len(REQUIRED_HOURS),
-            height_ratios=[1.0] * len(board_models) + [0.36],
+        outer = fig.add_gridspec(
+            1,
+            2,
+            width_ratios=[5.0, 1.9],
             left=0.05,
             right=0.98,
             top=0.91,
             bottom=0.06,
-            wspace=0.16,
+            wspace=0.06,
+        )
+        grid = outer[0, 0].subgridspec(
+            len(board_models),
+            len(REQUIRED_HOURS),
+            wspace=0.14,
             hspace=0.20,
         )
+        side_grid = outer[0, 1].subgridspec(3, 1, height_ratios=[0.88, 1.18, 1.02], hspace=0.12)
+        locator_ax = fig.add_subplot(side_grid[0, 0])
+        guide_ax = fig.add_subplot(side_grid[1, 0])
+        note_ax = fig.add_subplot(side_grid[2, 0])
 
         source_paths: list[str] = []
         for row_idx, model_name in enumerate(board_models):
@@ -2189,25 +2280,40 @@ class PrototypePygnomeSimilaritySummaryService:
                     color="#334155",
                     bbox={"boxstyle": "round,pad=0.18", "facecolor": (1, 1, 1, 0.92), "edgecolor": "#cbd5e1"},
                 )
-                if row_idx == 0 and col_idx == len(REQUIRED_HOURS) - 1:
-                    if self.workflow_mode == "prototype_2016":
-                        locator_ax = add_prototype_2016_geoaxes(
-                            fig,
-                            figure_relative_inset_rect(ax, [0.62, 0.60, 0.34, 0.34]),
-                            self._load_prototype_map_context()["full_bounds_wgs84"],
-                            show_grid_labels=False,
-                            add_scale_bar=False,
-                            add_north_arrow=False,
-                        )
-                    else:
-                        locator_ax = ax.inset_axes([0.62, 0.60, 0.34, 0.34])
-                    self._draw_locator(locator_ax, item["crop_bounds"], item.get("display_bounds"))
-
-        note_ax = fig.add_subplot(grid[len(board_models), :])
-        self._draw_footer_note(note_ax, "Board reading guide", self._board_note_lines(item), width=190)
+        if self.workflow_mode == "prototype_2016":
+            locator = add_prototype_2016_geoaxes(
+                fig,
+                locator_ax.get_position().bounds,
+                self._load_prototype_map_context()["full_bounds_wgs84"],
+                show_grid_labels=False,
+                add_scale_bar=False,
+                add_north_arrow=False,
+            )
+            locator_ax.remove()
+            locator_ax = locator
+        self._draw_locator(locator_ax, item["crop_bounds"], item.get("display_bounds"))
+        guide_payload = self._board_guide_payload(item)
+        _, guide_body_artist = self._draw_footer_note(
+            guide_ax,
+            "How to read this board",
+            guide_payload["guide_bullets"],
+            bullet_lines=True,
+            title_y=0.96,
+            body_y=0.79,
+            box_pad=0.32,
+        )
+        note_lines = [guide_payload["caveat_line"], guide_payload["provenance_line"]]
+        _, note_body_artist = self._draw_footer_note(
+            note_ax,
+            "Comparator Role and Provenance",
+            note_lines,
+            title_y=0.96,
+            body_y=0.79,
+            box_pad=0.32,
+        )
         figure_title = f"{item['case_id']} | 24/48/72 h legacy Phase 3A comparator board"
-        fig.suptitle(figure_title, x=0.05, y=0.965, ha="left", fontsize=18, fontweight="bold")
-        fig.text(
+        title_artist = fig.suptitle(figure_title, x=0.05, y=0.965, ha="left", fontsize=18, fontweight="bold")
+        subtitle_artist = fig.text(
             0.05,
             0.932,
             f"{self.workflow_mode} | exact stored raster cells and footprint outlines | PyGNOME comparator-only",
@@ -2216,9 +2322,35 @@ class PrototypePygnomeSimilaritySummaryService:
             fontsize=10,
             color="#475569",
         )
+        fig.canvas.draw()
+        title_within_bounds = self._artist_within_bbox(title_artist, fig.bbox)
+        subtitle_within_bounds = self._artist_within_bbox(subtitle_artist, fig.bbox)
+        guide_within_bounds = self._artist_within_bbox(guide_body_artist, guide_ax.bbox) and self._artist_within_bbox(
+            note_body_artist,
+            note_ax.bbox,
+        )
         pixel_width, pixel_height = self._figure_pixel_size(fig)
         fig.savefig(output_path, dpi=FIGURE_DPI)
         plt.close(fig)
+        self.board_layout_audit_rows.append(
+            {
+                "board_file": str(output_path.relative_to(self.repo_root)),
+                "board_family": "Legacy 2016 Phase 3A comparator boards",
+                "panel_count": len(board_models) * len(REQUIRED_HOURS),
+                "grid_structure": f"{len(board_models)}x{len(REQUIRED_HOURS)}",
+                "issue_types_found": "awkward reading-guide placement | overly dense note block | weak title hierarchy",
+                "layout_fix_applied": "Moved the reading guide into a dedicated sidecar, kept a single locator, and preserved aligned 24/48/72 h columns.",
+                "requested_font_family": self.font_audit.requested_font_family,
+                "actual_font_resolved": self.font_audit.actual_font_family,
+                "exact_arial_used": bool(self.font_audit.exact_requested_font_used),
+                "fallback_needed": bool(self.font_audit.fallback_used),
+                "text_shortened_or_wrapped": True,
+                "filenames_stayed_same": True,
+                "title_within_bounds": bool(title_within_bounds),
+                "subtitle_within_bounds": bool(subtitle_within_bounds),
+                "guide_within_bounds": bool(guide_within_bounds),
+            }
+        )
 
         timestamps = [str(item["pairings_by_hour"]["deterministic"][hour]["timestamp_utc"]) for hour in REQUIRED_HOURS]
         interpretation = (
@@ -2550,6 +2682,43 @@ class PrototypePygnomeSimilaritySummaryService:
             lines.append("")
         return "\n".join(lines)
 
+    def _write_font_audit(self, path: Path) -> None:
+        _write_csv(
+            path,
+            [self.font_audit.as_row()],
+            columns=[
+                "requested_font_family",
+                "actual_font_family",
+                "actual_font_path",
+                "exact_requested_font_used",
+                "fallback_used",
+                "fallback_candidates",
+            ],
+        )
+
+    def _write_board_layout_audit(self, path: Path) -> None:
+        _write_csv(
+            path,
+            sorted(self.board_layout_audit_rows, key=lambda item: item["board_file"]),
+            columns=[
+                "board_file",
+                "board_family",
+                "panel_count",
+                "grid_structure",
+                "issue_types_found",
+                "layout_fix_applied",
+                "requested_font_family",
+                "actual_font_resolved",
+                "exact_arial_used",
+                "fallback_needed",
+                "text_shortened_or_wrapped",
+                "filenames_stayed_same",
+                "title_within_bounds",
+                "subtitle_within_bounds",
+                "guide_within_bounds",
+            ],
+        )
+
     def run(self) -> dict[str, Any]:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.figures_dir.mkdir(parents=True, exist_ok=True)
@@ -2580,6 +2749,8 @@ class PrototypePygnomeSimilaritySummaryService:
         manifest_json = self.output_dir / "prototype_pygnome_similarity_manifest.json"
         summary_md = self.output_dir / "prototype_pygnome_similarity_summary.md"
         figure_captions_md = self.output_dir / "prototype_pygnome_figure_captions.md"
+        font_audit_csv = self.output_dir / "font_audit.csv"
+        board_layout_audit_csv = self.output_dir / "board_layout_audit.csv"
 
         _write_csv(case_registry_csv, case_registry_rows)
         _write_csv(similarity_by_case_csv, similarity_rows)
@@ -2646,6 +2817,8 @@ class PrototypePygnomeSimilaritySummaryService:
                 skipped_cases=skipped_cases,
             ),
         )
+        self._write_font_audit(font_audit_csv)
+        self._write_board_layout_audit(board_layout_audit_csv)
 
         deterministic_rows = [
             row for row in similarity_rows
@@ -2669,6 +2842,7 @@ class PrototypePygnomeSimilaritySummaryService:
                 if self.workflow_mode == "prototype_2016"
                 else "deterministic_opendrift_control_vs_deterministic_pygnome_transport_benchmark"
             ),
+            "font_audit": self.font_audit.as_row(),
             "pygnome_role": "comparator_only",
             "legacy_debug_only": self.workflow_mode == "prototype_2016",
             "final_chapter3_evidence": False,
@@ -2700,6 +2874,8 @@ class PrototypePygnomeSimilaritySummaryService:
                 "figure_captions_md": str(figure_captions_md.relative_to(self.repo_root)),
                 "figures_dir": str(self.figures_dir.relative_to(self.repo_root)),
                 "skipped_cases_csv": str(skipped_cases_csv.relative_to(self.repo_root)),
+                "font_audit_csv": str(font_audit_csv.relative_to(self.repo_root)),
+                "board_layout_audit_csv": str(board_layout_audit_csv.relative_to(self.repo_root)),
             },
             "figure_counts": {
                 "single_forecast_figures": int(sum(1 for row in figure_rows if row["view_type"] == "single")),
@@ -2724,6 +2900,8 @@ class PrototypePygnomeSimilaritySummaryService:
             "figure_registry_csv": str(figure_registry_csv),
             "figure_captions_md": str(figure_captions_md),
             "skipped_cases_csv": str(skipped_cases_csv),
+            "font_audit_csv": str(font_audit_csv),
+            "board_layout_audit_csv": str(board_layout_audit_csv),
             "manifest_json": str(manifest_json),
             "summary_md": str(summary_md),
             "qa_figures": [str(fss_figure), str(kl_figure), str(scorecard_figure)],

@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 GFS_OLD_BASE = "https://www.ncei.noaa.gov/thredds/dodsC/model-gfs-g4-anl-files-old"
 GFS_CURRENT_BASE = "https://www.ncei.noaa.gov/thredds/dodsC/model-gfs-g4-anl-files"
+GFS_SECONDARY_GDEX_FILESERVER_BASE = "https://thredds.rda.ucar.edu/thredds/fileServer/files/g/d084001"
 GFS_FILE_PATTERNS = (
     re.compile(r"gfsanl_4_(\d{8})_(\d{4})_(\d{3})\.grb2$"),
     re.compile(r"gfs_4_(\d{8})_(\d{4})_(\d{3})\.grb2$"),
@@ -664,6 +665,98 @@ class GFSWindDownloader:
             f"GFS data for {_analysis_label(timestamp)} could not be opened. Tried: {tried_modes}.",
             failure_stage="transport_modes",
         )
+
+    def secondary_historical_analysis_urls(
+        self,
+        start_time: pd.Timestamp | str,
+        end_time: pd.Timestamp | str,
+    ) -> list[tuple[pd.Timestamp, str]]:
+        start_utc = _normalize_utc_timestamp(start_time)
+        end_utc = _normalize_utc_timestamp(end_time)
+        freq_hours = max(int(round(self.expected_delta.total_seconds() / 3600.0)), 1)
+        freq_label = f"{freq_hours}h"
+        timestamps = pd.date_range(
+            start=start_utc.floor(freq_label),
+            end=end_utc.ceil(freq_label),
+            freq=freq_label,
+            tz="UTC",
+        )
+        urls: list[tuple[pd.Timestamp, str]] = []
+        for timestamp in timestamps:
+            day = timestamp.strftime("%Y%m%d")
+            url = (
+                f"{GFS_SECONDARY_GDEX_FILESERVER_BASE}/"
+                f"{timestamp.strftime('%Y')}/{day}/"
+                f"gfs.0p25.{timestamp.strftime('%Y%m%d%H')}.f000.grib2"
+            )
+            urls.append((timestamp, url))
+        return urls
+
+    def download_secondary_historical(
+        self,
+        *,
+        start_time: pd.Timestamp | str,
+        end_time: pd.Timestamp | str,
+        output_path: str | Path,
+        scratch_dir: str | Path | None = None,
+        budget_seconds: int | float | None = None,
+    ) -> dict[str, Any]:
+        start_utc = _normalize_utc_timestamp(start_time)
+        end_utc = _normalize_utc_timestamp(end_time)
+        deadline_monotonic = (
+            None if budget_seconds in (None, 0) else time.monotonic() + float(budget_seconds)
+        )
+        target_path = Path(output_path)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        if target_path.exists():
+            self.ensure_reader_metadata(target_path)
+            return {"status": "cached", "path": _relative(self.repo_root, target_path)}
+
+        working_dir = Path(scratch_dir or target_path.parent)
+        source_urls: list[str] = []
+        frames: list[xr.Dataset] = []
+        for timestamp, url in self.secondary_historical_analysis_urls(start_utc, end_utc):
+            _require_remaining_budget(
+                deadline_monotonic,
+                minimum_seconds=GFS_MIN_ATTEMPT_SECONDS,
+                failure_stage="secondary_historical_analysis_selection",
+                stage_label="the next secondary historical GFS analysis",
+            )
+            try:
+                subset = self.download_gfs_subset_via_http_cfgrib(
+                    url=url,
+                    timestamp=timestamp,
+                    scratch_dir=working_dir,
+                    deadline_monotonic=deadline_monotonic,
+                )
+            except Exception as exc:
+                raise GFSAcquisitionError(
+                    f"Secondary historical GFS data for {_analysis_label(timestamp)} could not be opened. {exc}",
+                    failure_stage=getattr(exc, "failure_stage", "secondary_http_cfgrib"),
+                ) from exc
+            frames.append(subset)
+            source_urls.append(url)
+
+        if not frames:
+            raise GFSAcquisitionError(
+                "No secondary historical GFS analysis files were opened for the requested forcing window.",
+                failure_stage="secondary_http_cfgrib",
+            )
+
+        combined = xr.concat(frames, dim="time").sortby("time")
+        combined.to_netcdf(target_path)
+        return {
+            "status": "downloaded",
+            "analysis_count": len(source_urls),
+            "opened_analysis_count": len(source_urls),
+            "analysis_time_start_utc": start_utc.isoformat(),
+            "analysis_time_end_utc": end_utc.isoformat(),
+            "source_url_count": len(source_urls),
+            "sample_source_url": source_urls[0] if source_urls else "",
+            "source_modes_used": ["http_cfgrib_fallback"],
+            "skipped_urls": [],
+            "path": _relative(self.repo_root, target_path),
+        }
 
     def download(
         self,

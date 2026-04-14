@@ -189,15 +189,73 @@ class PrototypeLegacyPhase4PygnomeComparatorTests(unittest.TestCase):
             self.assertTrue((output_dir / "budget_comparison_board.png").exists())
             self.assertTrue((output_dir / "phase4_budget_comparison.csv").exists())
             self.assertTrue((output_dir / "phase4_budget_time_series_metrics.csv").exists())
+            self.assertTrue((output_dir / "font_audit.csv").exists())
+            self.assertTrue((output_dir / "board_layout_audit.csv").exists())
             manifest = json.loads((output_dir / "pygnome_phase4_run_manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["selected_recipe"], "cmems_era5")
             self.assertTrue(manifest["budget_only_feasible"])
             self.assertFalse(manifest["shoreline_comparison_feasible"])
             self.assertIn("absolute percentage-point difference at 24/48/72 h", manifest["budget_metrics_description"])
+            self.assertFalse(manifest["reuse_existing_outputs_only"])
+            self.assertEqual(manifest["font_audit"]["requested_font_family"], "Arial")
+            self.assertEqual(case_result["font_audit_csv"], f"output/{self.case_id}/phase4_pygnome_comparator/font_audit.csv")
+            self.assertEqual(case_result["board_layout_audit_csv"], f"output/{self.case_id}/phase4_pygnome_comparator/board_layout_audit.csv")
 
             metrics = pd.read_csv(output_dir / "phase4_budget_time_series_metrics.csv")
             self.assertIn("mae_pct_points", metrics.columns)
             self.assertTrue((metrics["compartment"].astype(str) == "beached").any())
+
+            layout_audit_df = pd.read_csv(output_dir / "board_layout_audit.csv")
+            self.assertEqual(len(layout_audit_df), 3)
+            self.assertTrue((layout_audit_df["filenames_stayed_same"] == True).all())
+
+    def test_run_can_refresh_layouts_from_existing_outputs_only(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            self._build_fixture(root)
+            output_dir = root / "output" / self.case_id / "phase4_pygnome_comparator"
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            manifest_payload = {"scenarios": {}}
+            for scenario_key, surface_series in {
+                "light": [100.0, 88.0, 73.0, 58.0],
+                "heavy": [100.0, 78.0, 62.0, 48.0],
+            }.items():
+                pd.DataFrame(
+                    {
+                        "hours_elapsed": [0, 24, 48, 72],
+                        "surface_pct": surface_series,
+                        "evaporated_pct": [0.0, 8.0, 14.0, 20.0] if scenario_key == "light" else [0.0, 7.0, 12.0, 16.0],
+                        "dispersed_pct": [0.0, 4.0, 13.0, 22.0] if scenario_key == "light" else [0.0, 15.0, 26.0, 36.0],
+                        "beached_pct": [0.0, 0.0, 0.0, 0.0],
+                    }
+                ).to_csv(output_dir / f"pygnome_budget_{scenario_key}.csv", index=False)
+                (output_dir / f"pygnome_{scenario_key}.nc").write_bytes(b"nc")
+                manifest_payload["scenarios"][scenario_key] = {
+                    "transport_forcing_mode": "matched_grid_wind_plus_grid_current",
+                    "shoreline_comparison_available": False,
+                }
+            (output_dir / "pygnome_phase4_run_manifest.json").write_text(json.dumps(manifest_payload), encoding="utf-8")
+
+            service = PrototypeLegacyPhase4PygnomeComparatorService(repo_root=root, case_ids=[self.case_id])
+            with mock.patch(
+                "src.services.prototype_legacy_phase4_pygnome_comparator.GNOME_AVAILABLE",
+                False,
+            ), mock.patch.object(
+                service.gnome_service,
+                "run_matched_phase4_weathering_scenario",
+                side_effect=AssertionError("GNOME rerun should not happen during layout-only refresh."),
+            ):
+                results = service.run(reuse_existing_outputs_only=True)
+
+            case_result = results["case_results"][0]
+            refreshed_manifest = json.loads((root / case_result["run_manifest_json"]).read_text(encoding="utf-8"))
+            self.assertTrue(refreshed_manifest["reuse_existing_outputs_only"])
+            self.assertEqual(refreshed_manifest["scenarios"]["light"]["status"], "reused_existing")
+            self.assertEqual(refreshed_manifest["scenarios"]["heavy"]["status"], "reused_existing")
+            self.assertTrue((root / case_result["budget_comparison_board_png"]).exists())
+            self.assertTrue((root / case_result["font_audit_csv"]).exists())
+            self.assertTrue((root / case_result["board_layout_audit_csv"]).exists())
 
 
 if __name__ == "__main__":

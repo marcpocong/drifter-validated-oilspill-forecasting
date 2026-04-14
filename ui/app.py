@@ -26,7 +26,7 @@ from ui.data_access import build_dashboard_state
 from ui.pages import PageDefinition, visible_page_definitions
 
 
-APP_TITLE = "Drifter-Validated Oil Spill Forecasting Dashboard"
+APP_TITLE = "Drifter-Validated Oil Spill Forecasting"
 APP_SUBTITLE = "Read-only thesis dashboard over the curated final packages, publication figures, and synced registries."
 SIDEBAR_SUBTITLE = "Read-only thesis dashboard"
 
@@ -60,6 +60,21 @@ def _load_css() -> None:
     if css_path.exists():
         font_css = _inline_font_face_css()
         st.markdown(f"<style>{font_css}\n{css_path.read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
+
+
+def _apply_streamlit_branding(branding: dict) -> None:
+    logo_path = branding.get("logo_path")
+    if not logo_path:
+        return
+    logo_args = {"link": "/"}
+    icon_path = branding.get("icon_path")
+    if icon_path:
+        logo_args["icon_image"] = str(icon_path)
+    try:
+        st.logo(str(logo_path), **logo_args)
+    except Exception:
+        # Branding should never be able to break the read-only dashboard shell.
+        return
 
 
 def _asset_mime_type(path: Path) -> str:
@@ -116,27 +131,22 @@ def _inline_font_face_css() -> str:
 
 
 def _render_sidebar_branding(branding: dict) -> None:
-    if branding.get("has_logo") and branding.get("logo_path"):
-        logo_uri = _asset_data_uri(str(branding["logo_path"]))
-        st.markdown(
-            (
-                "<div class='sidebar-brand'>"
-                f"<img class='sidebar-brand__logo' src='{logo_uri}' alt='Drifter Validated Oil Spill Tracker' />"
-                f"<div class='sidebar-brand__subtitle'>{SIDEBAR_SUBTITLE}</div>"
-                "</div>"
-            ),
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown(
-            (
-                "<div class='sidebar-brand sidebar-brand--fallback'>"
-                "<div class='sidebar-brand__title'>Drifter-Validated Dashboard</div>"
-                f"<div class='sidebar-brand__subtitle'>{SIDEBAR_SUBTITLE}</div>"
-                "</div>"
-            ),
-            unsafe_allow_html=True,
-        )
+    title = APP_TITLE if branding.get("has_logo") else "Drifter-Validated Oil Spill Forecasting"
+    subtitle = (
+        "Panel mode keeps the main result, support lanes, and packaged figures first."
+        if branding.get("has_logo")
+        else SIDEBAR_SUBTITLE
+    )
+    st.markdown(
+        (
+            "<div class='sidebar-brand'>"
+            "<div class='sidebar-brand__eyebrow'>Read-only thesis dashboard</div>"
+            f"<div class='sidebar-brand__title'>{title}</div>"
+            f"<div class='sidebar-brand__subtitle'>{subtitle}</div>"
+            "</div>"
+        ),
+        unsafe_allow_html=True,
+    )
 
 
 def _truthy_query_param(value: object) -> bool:
@@ -212,6 +222,7 @@ def _load_export_css() -> None:
 def _render_sidebar_controls(state: dict, branding: dict) -> dict:
     with st.sidebar:
         _render_sidebar_branding(branding)
+        st.markdown("<div class='sidebar-note'>Curated outputs only. This UI never reruns science, edits artifacts, or writes back to the repo.</div>", unsafe_allow_html=True)
         st.markdown("---")
 
         mode_label = st.radio(
@@ -221,56 +232,51 @@ def _render_sidebar_controls(state: dict, branding: dict) -> dict:
             key="view_mode_selector",
         )
         advanced = mode_label == "Advanced"
-        layer_options = ["publication"] if not advanced else ["publication", "panel", "raw"]
-        visual_layer = st.selectbox(
-            "Visual layer",
-            options=layer_options,
-            format_func=lambda value: LAYER_LABELS[value],
-            index=0,
-            key="visual_layer_selector",
-        )
-
-        st.markdown("---")
-        st.caption("Read-only scope")
-        st.markdown(
-            "\n".join(
-                [
-                    "- Read-only only; no scientific rerun controls are exposed here",
-                    "- Curated final packages are the primary browse surfaces",
-                    "- Publication figures stay the default layer",
-                    "- Raw CASE_* folders remain advanced-only fallback context",
-                    "- Support and comparator lanes stay labeled as support and comparator lanes",
-                ]
+        if advanced:
+            visual_layer = st.selectbox(
+                "Visual layer",
+                options=["publication", "panel", "raw"],
+                format_func=lambda value: LAYER_LABELS[value],
+                index=0,
+                key="visual_layer_selector",
             )
-        )
-
-        curated_packages = state.get("curated_package_roots", [])
-        st.metric("Curated package roots", len(curated_packages))
-        st.metric("Publication figures indexed", len(state["publication_registry"]))
-        st.metric("Focused Phase 1 recipes tested", len(state["phase1_focused_recipe_summary"]))
-
-        with st.expander("Read paths", expanded=False):
-            read_paths = [
-                "output/phase1_mindoro_focus_pre_spill_2016_2023/",
-                "output/Phase 3B March13-14 Final Output/",
-                "output/Phase 3C DWH Final Output/",
-                "output/2016 Legacy Runs FINAL Figures/",
-                "output/final_validation_package/",
-                "output/final_reproducibility_package/",
-                "output/figure_package_publication/",
-                "output/phase4/CASE_MINDORO_RETRO_2023/",
-                "output/phase4_crossmodel_comparability_audit/",
-            ]
-            if advanced:
-                read_paths.extend(
+            st.markdown("---")
+            st.caption("Advanced scope")
+            st.markdown(
+                "\n".join(
                     [
-                        "output/trajectory_gallery_panel/",
-                        "output/trajectory_gallery/",
-                        "output/CASE_MINDORO_RETRO_2023/",
-                        "output/CASE_DWH_RETRO_2010_72H/",
+                        "- Publication figures stay the default layer",
+                        "- Panel and raw galleries remain secondary read-only inspection layers",
+                        "- Comparator and support lanes stay clearly labeled",
                     ]
                 )
-            st.code("\n".join(read_paths), language="text")
+            )
+
+            curated_packages = state.get("curated_package_roots", [])
+            st.metric("Curated package roots", len(curated_packages))
+            st.metric("Publication figures indexed", len(state["publication_registry"]))
+            st.metric("Focused Phase 1 recipes tested", len(state["phase1_focused_recipe_summary"]))
+
+            with st.expander("Repo read paths", expanded=False):
+                read_paths = [
+                    "output/phase1_mindoro_focus_pre_spill_2016_2023/",
+                    "output/Phase 3B March13-14 Final Output/",
+                    "output/Phase 3C DWH Final Output/",
+                    "output/2016 Legacy Runs FINAL Figures/",
+                    "output/final_validation_package/",
+                    "output/final_reproducibility_package/",
+                    "output/figure_package_publication/",
+                    "output/phase4/CASE_MINDORO_RETRO_2023/",
+                    "output/phase4_crossmodel_comparability_audit/",
+                    "output/trajectory_gallery_panel/",
+                    "output/trajectory_gallery/",
+                    "output/CASE_MINDORO_RETRO_2023/",
+                    "output/CASE_DWH_RETRO_2010_72H/",
+                ]
+                st.code("\n".join(read_paths), language="text")
+        else:
+            visual_layer = "publication"
+            st.caption("Publication layer active in panel mode.")
 
     return {
         "advanced": advanced,
@@ -288,7 +294,7 @@ def _render_sidebar_navigation(ui_state: dict) -> None:
         return
     with st.sidebar:
         st.markdown("---")
-        st.caption("Pages")
+        st.caption("Presentation map" if not ui_state["advanced"] else "Page map")
         for section, page_entries in page_sections.items():
             st.markdown(f"**{section}**")
             for entry in page_entries:
@@ -304,13 +310,15 @@ def _render_page_wrapper(page_definition: PageDefinition, state: dict, ui_state:
     def _run() -> None:
         try:
             page_definition.renderer(state, ui_state)
-        except Exception as exc:
+        except Exception:
             if ui_state["advanced"]:
                 raise
             st.warning(
-                "This page could not load one of its optional packaged artifacts. The dashboard is staying in read-only mode and the other pages remain available."
+                f"{page_definition.label} could not load one of its optional packaged artifacts. The dashboard stays read-only and the other pages remain available."
             )
-            st.caption(f"Panel-mode detail: {exc}")
+            st.caption(
+                "Open the Artifacts / Logs / Registries page for the synced file indexes, or switch to Advanced mode if you need lower-level inspection."
+            )
 
     return _run
 
@@ -352,6 +360,7 @@ def main() -> None:
         initial_sidebar_state="expanded",
     )
     _load_css()
+    _apply_streamlit_branding(branding)
     export_mode = _export_mode_from_query_params(st.query_params)
     if export_mode:
         _load_export_css()
@@ -365,16 +374,6 @@ def main() -> None:
     navigation = _build_navigation(state, ui_state)
     _render_sidebar_navigation(ui_state)
 
-    st.markdown(
-        """
-        <div class="hero-card">
-          <div class="hero-kicker">Read-only thesis dashboard</div>
-          <div class="hero-title">Study structure first, curated packages first, science reruns never</div>
-          <div class="hero-text">The dashboard leads with Phase 1 recipe selection, Mindoro B1 primary validation, the Mindoro comparator package, the frozen DWH Phase 3C package, the Mindoro Phase 4 context layer, and the curated legacy 2016 support package. Advanced mode opens registries, manifests, and lower-level figure layers without changing stored outputs.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
     if export_mode:
         st.info(
             "Print / export mode is active. Navigation chrome, sidebar controls, and interactive-only elements are hidden so this page can be saved cleanly as a PDF."

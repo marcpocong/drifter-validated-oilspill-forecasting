@@ -1,0 +1,2 @@
+requested_font_family,actual_font_family,actual_font_path,exact_requested_font_used,fallback_used,fallback_candidates
+Arial,Arial,/app/output/_local_fonts/arial.ttf,True,False,DejaVu Sans | Liberation Sans | sans-serif

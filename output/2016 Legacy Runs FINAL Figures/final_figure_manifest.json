@@ -1,7 +1,7 @@
 {
   "phase": "prototype_legacy_final_figures",
   "workflow_mode": "prototype_2016",
-  "generated_at_utc": "2026-04-13T18:38:54Z",
+  "generated_at_utc": "2026-04-14T01:57:25Z",
   "output_dir": "output/2016 Legacy Runs FINAL Figures",
   "configured_case_ids": [
     "CASE_2016-09-01",

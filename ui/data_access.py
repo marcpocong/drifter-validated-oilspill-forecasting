@@ -369,6 +369,18 @@ def dwh_all_results_final(repo_root: str | Path | None = None) -> pd.DataFrame:
     )
 
 
+def dwh_main_scorecard_final(repo_root: str | Path | None = None) -> pd.DataFrame:
+    return read_csv(DWH_FINAL_DIR / "summary" / "comparison" / "phase3c_main_scorecard.csv", repo_root)
+
+
+def dwh_interpretation_note_final(repo_root: str | Path | None = None) -> str:
+    return read_text(DWH_FINAL_DIR / "summary" / "comparison" / "phase3c_interpretation_note.md", repo_root)
+
+
+def dwh_output_matrix_decision_note_final(repo_root: str | Path | None = None) -> str:
+    return read_text(DWH_FINAL_DIR / "summary" / "comparison" / "phase3c_output_matrix_decision_note.md", repo_root)
+
+
 def legacy_2016_final_manifest(repo_root: str | Path | None = None) -> dict[str, Any]:
     return read_json(LEGACY_2016_FINAL_DIR / "manifests" / "legacy_final_output_manifest.json", repo_root)
 
@@ -818,6 +830,9 @@ def build_dashboard_state(repo_root: str | Path | None = None) -> dict[str, Any]
         "dwh_ensemble_summary_final": dwh_ensemble_summary_final(root),
         "dwh_comparator_summary_final": dwh_comparator_summary_final(root),
         "dwh_all_results_final": dwh_all_results_final(root),
+        "dwh_main_scorecard_final": dwh_main_scorecard_final(root),
+        "dwh_interpretation_note_final": dwh_interpretation_note_final(root),
+        "dwh_output_matrix_decision_note_final": dwh_output_matrix_decision_note_final(root),
         "dwh_summary": dwh_summary(root),
         "dwh_all_results": dwh_all_results(root),
         "legacy_2016_final_manifest": legacy_2016_final_manifest(root),

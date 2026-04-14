@@ -1,0 +1,9 @@
+# Phase 3C DWH Output Matrix Decision Note
+
+- This curated matrix copies publication PNGs or summary tables derived from stored DWH outputs only; no scientific rerun is performed here.
+- The thesis-facing order is observation truth context, C1 deterministic baseline, C2 `mask_p50`, the daily `mask_p50` / `mask_p90` / exact dual-threshold overview boards, C2 deterministic-vs-`mask_p50`-vs-`mask_p90`, C3 PyGNOME-vs-observed, the daily OpenDrift-vs-PyGNOME overview boards including the three-row `mask_p50` / `mask_p90` / PyGNOME daily board, then OpenDrift-vs-PyGNOME support boards.
+- The official public observation-derived DWH date-composite masks remain the scoring reference for all displayed FSS values, including the daily overview-board expansion.
+- Exact product semantics are preserved in filenames and captions: `deterministic_footprint_overlay`, `mask_p50_overlay`, `mask_p90_overlay`, `mask_p50_footprint_overview_board`, `mask_p90_footprint_overview_board`, `mask_p50_mask_p90_dual_threshold_overview_board`, `mask_p50_mask_p90_vs_pygnome_three_row_overview_board`, `pygnome_footprint_overlay`, and `observation_truth_context`.
+- Separate single-focus daily and corridor requests are satisfied with richer multi-panel boards where that avoids redundant near-duplicate files.
+- The daily OpenDrift-vs-PyGNOME expansion uses both 2 x 3 overview boards and one 3 x 3 overview board: the 2 x 3 boards keep the requested OpenDrift ensemble view on the top row and PyGNOME on the bottom row, while the 3 x 3 board stacks `mask_p50` on top, `mask_p90` in the middle, and PyGNOME on the bottom.
+- `prob_presence` was not promoted into the curated thesis-facing matrix because the current frozen DWH publication grammar is footprint/mask based rather than a dedicated continuous-probability rendering lane.

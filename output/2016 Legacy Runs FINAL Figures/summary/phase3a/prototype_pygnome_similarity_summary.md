@@ -6,7 +6,7 @@ Guardrails:
 
 - legacy/debug support only
 - status label: Prototype 2016 legacy debug support
-- provenance: Legacy/debug regression lane preserved for reproducibility only.
+- provenance: Legacy/debug regression lane preserved as a support-only Phase 1/2/3A/4/5 package for reproducibility and thesis context only, including a budget-only deterministic Phase 4 PyGNOME comparator pilot when stored outputs are present.
 - transport benchmark only
 - PyGNOME is a comparator, not truth
 - not final Chapter 3 evidence

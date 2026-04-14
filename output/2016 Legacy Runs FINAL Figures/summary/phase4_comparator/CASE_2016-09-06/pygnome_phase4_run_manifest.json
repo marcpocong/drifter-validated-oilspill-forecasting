@@ -2,7 +2,7 @@
   "phase": "prototype_legacy_phase4_pygnome_comparator",
   "case_id": "CASE_2016-09-06",
   "workflow_mode": "prototype_2016",
-  "generated_at_utc": "2026-04-13T18:29:15Z",
+  "generated_at_utc": "2026-04-14T01:44:35Z",
   "support_only": true,
   "comparator_only": true,
   "full_phase4_comparator_feasible": false,
@@ -47,6 +47,8 @@
     "output/CASE_2016-09-06/phase4_pygnome_comparator/phase4_budget_comparison.csv",
     "output/CASE_2016-09-06/phase4_pygnome_comparator/phase4_budget_time_series_metrics.csv"
   ],
+  "font_audit_csv": "output/CASE_2016-09-06/phase4_pygnome_comparator/font_audit.csv",
+  "board_layout_audit_csv": "output/CASE_2016-09-06/phase4_pygnome_comparator/board_layout_audit.csv",
   "scenarios": {
     "light": {
       "oil_key": "light",
@@ -81,7 +83,8 @@
       "relative_nc_path": "output/CASE_2016-09-06/phase4_pygnome_comparator/pygnome_light.nc",
       "relative_budget_csv_path": "output/CASE_2016-09-06/phase4_pygnome_comparator/pygnome_budget_light.csv",
       "relative_plot_path": "output/CASE_2016-09-06/phase4_pygnome_comparator/budget_time_series_light.png",
-      "output_dir": "output/CASE_2016-09-06/phase4_pygnome_comparator"
+      "output_dir": "output/CASE_2016-09-06/phase4_pygnome_comparator",
+      "status": "reused_existing"
     },
     "heavy": {
       "oil_key": "heavy",
@@ -116,8 +119,18 @@
       "relative_nc_path": "output/CASE_2016-09-06/phase4_pygnome_comparator/pygnome_heavy.nc",
       "relative_budget_csv_path": "output/CASE_2016-09-06/phase4_pygnome_comparator/pygnome_budget_heavy.csv",
       "relative_plot_path": "output/CASE_2016-09-06/phase4_pygnome_comparator/budget_time_series_heavy.png",
-      "output_dir": "output/CASE_2016-09-06/phase4_pygnome_comparator"
+      "output_dir": "output/CASE_2016-09-06/phase4_pygnome_comparator",
+      "status": "reused_existing"
     }
   },
-  "font_family": "Arial"
+  "font_family": "Arial",
+  "font_audit": {
+    "requested_font_family": "Arial",
+    "actual_font_family": "Arial",
+    "actual_font_path": "/app/output/_local_fonts/arial.ttf",
+    "exact_requested_font_used": true,
+    "fallback_used": false,
+    "fallback_candidates": "DejaVu Sans | Liberation Sans | sans-serif"
+  },
+  "reuse_existing_outputs_only": true
 }

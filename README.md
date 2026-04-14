@@ -10,7 +10,9 @@ Thesis workflow for transport validation, machine-readable forecast generation, 
 - DWH Phase 3C: frozen validation-only external rich-data transfer case under the current case definition, kept separate from Phase 1 drifter calibration.
 - DWH forcing rule: readiness-gated historical stack, not the Phase 1 drifter-selected baseline; current stack is HYCOM GOFS 3.1 currents + ERA5 winds + CMEMS wave/Stokes.
 - DWH thesis-facing C-track semantics: `C1` deterministic external transfer validation, `C2` ensemble extension and deterministic-vs-ensemble comparison, `C3` PyGNOME comparator-only.
-- DWH thesis-facing recommendation: deterministic remains the clean baseline transfer-validation result, p50 is the preferred probabilistic extension, p90 is support/comparison only, and PyGNOME remains comparator-only.
+- DWH thesis-facing recommendation: deterministic remains the clean baseline transfer-validation result, `mask_p50` is the preferred probabilistic extension, `mask_p90` is support/comparison only, and PyGNOME remains comparator-only.
+- DWH output matrix: the thesis-facing DWH package is now organized as a daily plus event-corridor matrix with observation truth context first, then deterministic footprint overlays, daily `mask_p50` / `mask_p90` / exact dual-threshold overview boards, deterministic-vs-`mask_p50`-vs-`mask_p90`, daily OpenDrift-vs-PyGNOME overview boards including a three-row `mask_p50` / `mask_p90` / PyGNOME daily board, and finally PyGNOME support boards built from stored outputs only.
+- DWH score reference: the official public observation-derived DWH date-composite masks remain the scoring reference for every displayed DWH FSS value, including the new daily overview boards.
 - Forcing-outage policy: strict/reportable lanes fail hard by default, while appendix/legacy/experimental lanes may continue in explicit degraded mode for forcing-only outages; drifter and ArcGIS/observation truth inputs remain hard requirements.
 - Mindoro `phase4_oiltype_and_shoreline`: implemented as a support/context oil-type and shoreline bundle outside the main thesis phase count; thesis-facing `Phase 4` labeling is reserved for `prototype_2016` legacy runs.
 - Phase 4 cross-model comparison: no matched Mindoro Phase 4 PyGNOME package is stored yet; current PyGNOME branches remain transport comparators rather than matched Phase 4 fate-and-shoreline outputs.
@@ -74,7 +76,7 @@ The local UI is intentionally read-only in this first version. It reads the exis
 Launch command:
 
 ```bash
-docker-compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501
+docker compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501
 ```
 
 Then open `http://localhost:8501`.
@@ -85,10 +87,11 @@ What it shows first:
 - publication-grade recommended defense figures and a plain-language study structure overview
 - a dedicated Phase 1 page that explains the focused Mindoro provenance rerun and how B1 inherits the selected recipe
 - a dedicated Mindoro B1 page that keeps B1 primary, A comparator-only, B2 legacy reference, and B3 broader support explicit
-- a dedicated DWH Phase 3C page that keeps C1 deterministic, C2 ensemble extension, C3 comparator-only, and no-drifter-baseline wording explicit
+- a dedicated DWH Phase 3C page that keeps observation truth context first, then C1 deterministic, C2 `mask_p50`, C2 daily overview boards, C2 deterministic-vs-`mask_p50`-vs-`mask_p90`, C3 comparator-only, daily OpenDrift-vs-PyGNOME overview boards including the three-row `mask_p50` / `mask_p90` / PyGNOME board, and no-drifter-baseline wording explicit
 - a dedicated legacy 2016 support page for the curated `output/2016 Legacy Runs FINAL Figures` package
 - a plain-language Mindoro Phase 4 context page that states no matched PyGNOME Phase 4 package is packaged yet
-- advanced read-only access to registries, manifests, logs, panel figures, and raw gallery figures
+- a secondary reference page for registries, manifests, and logs
+- advanced read-only access to panel figures, raw galleries, and lower-level artifact inspection
 
 Page map:
 
@@ -99,7 +102,7 @@ Page map:
 - `DWH Phase 3C Transfer Validation`
 - `Phase 4 Oil-Type and Shoreline Context`
 - `Legacy 2016 Support Package`
-- `Artifacts / Logs / Registries`
+- `Artifacts / Logs / Registries` as a secondary reference page
 - `Trajectory Explorer` in advanced mode
 
 Branding:
@@ -107,7 +110,7 @@ Branding:
 - drop a real logo into `ui/assets/logo.svg` or `ui/assets/logo.png`
 - optional sidebar/browser icon: `ui/assets/logo_icon.png` or `ui/assets/logo_icon.svg`
 - if no logo is present, the UI falls back to text-only branding without breaking
-- see [docs/UI_BRANDING.md](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/docs/UI_BRANDING.md)
+- see [docs/UI_BRANDING.md](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/docs/UI_BRANDING.md) or [ui/assets/README.md](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/ui/assets/README.md)
 
 ## Safe Phase Commands
 
@@ -195,7 +198,7 @@ The launcher command and the direct `docker-compose exec` form without `-T` are 
 - [output/phase4_crossmodel_comparability_audit](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/output/phase4_crossmodel_comparability_audit): read-only verdict on whether current Phase 4 OpenDrift outputs can be compared honestly to the repo's existing PyGNOME artifacts.
 - [output/final_validation_package](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/output/final_validation_package): frozen thesis validation package reused by later packaging work.
 - [output/Phase 3B March13-14 Final Output](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/output/Phase%203B%20March13-14%20Final%20Output): read-only curated export of the promoted B1 family, including publication figures, canonical scientific source PNGs, summary artifacts, and a local export manifest.
-- [output/Phase 3C DWH Final Output](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/output/Phase%203C%20DWH%20Final%20Output): read-only curated export of the frozen DWH Phase 3C family, including observation-context figures, deterministic baseline figures, ensemble extension figures, PyGNOME comparator figures, canonical scientific source PNGs, summary artifacts, and local registries/manifests.
+- [output/Phase 3C DWH Final Output](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/output/Phase%203C%20DWH%20Final%20Output): read-only curated export of the frozen DWH Phase 3C family, including daily and event-corridor observation truth-context figures, deterministic footprint overlays, daily `mask_p50` / `mask_p90` / exact dual-threshold overview boards, daily OpenDrift-vs-PyGNOME overview boards including the three-row `mask_p50` / `mask_p90` / PyGNOME board, PyGNOME comparator figures, comparison scorecards/notes, canonical scientific source PNGs, and local registries/manifests.
 - [output/final_reproducibility_package](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/output/final_reproducibility_package): read-only reproducibility, manifest, output, log, status, and launcher/package support indexes.
 - [output/trajectory_gallery](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/output/trajectory_gallery): static technical gallery of trajectories, overlays, comparison maps, and Mindoro Phase 4 support figures.
 - [output/trajectory_gallery_panel](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/output/trajectory_gallery_panel): polished panel-ready figure boards with captions, locator insets, and talking points.

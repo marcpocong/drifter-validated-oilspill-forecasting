@@ -37,7 +37,7 @@ PAGE_DEFINITIONS = [
     PageDefinition("dwh_transfer_validation", "DWH Phase 3C Transfer Validation", dwh_transfer_validation.render, navigation_section="Study", url_path="dwh-phase3c-transfer-validation"),
     PageDefinition("phase4_oiltype_and_shoreline", "Phase 4 Oil-Type and Shoreline Context", phase4_oiltype_and_shoreline.render, navigation_section="Study", url_path="phase4-oiltype-and-shoreline-context"),
     PageDefinition("legacy_2016_support", "Legacy 2016 Support Package", legacy_2016_support.render, navigation_section="Study", url_path="legacy-2016-support-package"),
-    PageDefinition("artifacts_logs", "Artifacts / Logs / Registries", artifacts_logs.render, navigation_section="Study", url_path="artifacts-logs-registries"),
+    PageDefinition("artifacts_logs", "Artifacts / Logs / Registries", artifacts_logs.render, navigation_section="Reference", url_path="artifacts-logs-registries"),
     PageDefinition("phase4_crossmodel_status", "Phase 4 Cross-Model Status", phase4_crossmodel_status.render, advanced_only=True, navigation_section="Advanced", url_path="phase4-crossmodel-status"),
     PageDefinition("trajectory_explorer", "Trajectory Explorer", trajectory_explorer.render, advanced_only=True, navigation_section="Advanced", url_path="trajectory-explorer"),
 ]

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import textwrap
+import os
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
@@ -92,8 +93,9 @@ FIGURE_FAMILIES: dict[str, str] = {
     "D": "Mindoro trajectory publication package",
     "E": "Mindoro Phase 4 OpenDrift-only publication package",
     "F": "Mindoro Phase 4 no-matched-PyGNOME note package",
+    "F1": "DWH observation truth-context publication package",
     "G": "DWH deterministic publication package",
-    "H": "DWH deterministic vs ensemble publication package",
+    "H": "DWH ensemble extension publication package",
     "I": "DWH OpenDrift vs PyGNOME publication package",
     "J": "DWH trajectory publication package",
     "K": "Prototype accepted-segment OpenDrift vs PyGNOME support package",
@@ -163,6 +165,26 @@ class PublicationFigureRecord:
             "status_provenance": self.status_provenance,
             "status_panel_text": self.status_panel_text,
             "status_dashboard_summary": self.status_dashboard_summary,
+        }
+
+
+@dataclass
+class PublicationFontAudit:
+    requested_font_family: str
+    actual_font_family: str
+    actual_font_path: str
+    exact_requested_font_used: bool
+    fallback_used: bool
+    fallback_candidates: list[str]
+
+    def as_row(self) -> dict[str, Any]:
+        return {
+            "requested_font_family": self.requested_font_family,
+            "actual_font_family": self.actual_font_family,
+            "actual_font_path": self.actual_font_path,
+            "exact_requested_font_used": self.exact_requested_font_used,
+            "fallback_used": self.fallback_used,
+            "fallback_candidates": " | ".join(self.fallback_candidates),
         }
 
 
@@ -266,7 +288,11 @@ def load_publication_style_config(path: str | Path = STYLE_CONFIG_PATH) -> dict[
     return payload
 
 
-def apply_publication_typography(style: dict[str, Any], repo_root: str | Path) -> str:
+def _normalized_font_name(value: str) -> str:
+    return "".join(char for char in str(value or "").strip().lower() if char.isalnum())
+
+
+def resolve_publication_typography(style: dict[str, Any], repo_root: str | Path) -> PublicationFontAudit:
     repo_root_path = Path(repo_root).resolve()
     typography = style.get("typography") or {}
     font_family = str(typography.get("font_family") or "Arial").strip() or "Arial"
@@ -281,6 +307,10 @@ def apply_publication_typography(style: dict[str, Any], repo_root: str | Path) -
         if not path.is_absolute():
             path = repo_root_path / path
         candidate_paths.append(path.resolve())
+    windows_font_dir = Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts"
+    if _normalized_font_name(font_family) == "arial" and windows_font_dir.exists():
+        for pattern in ("arial*.ttf", "arial*.otf", "ARIAL*.TTF", "ARIAL*.OTF"):
+            candidate_paths.extend(sorted(windows_font_dir.glob(pattern)))
     local_font_dir = repo_root_path / LOCAL_FONT_DIR
     if local_font_dir.exists():
         candidate_paths.extend(sorted(local_font_dir.glob("*.ttf")))
@@ -297,18 +327,49 @@ def apply_publication_typography(style: dict[str, Any], repo_root: str | Path) -
             matplotlib.font_manager.fontManager.addfont(str(resolved))
         except Exception:
             continue
+    requested_norm = _normalized_font_name(font_family)
     resolved_family = font_family
-    try:
-        matplotlib.font_manager.findfont(font_family, fallback_to_default=False)
-    except Exception:
-        resolved_family = fallbacks[0] if fallbacks else "sans-serif"
+    resolved_path = ""
+    exact_requested_font_used = False
+    for candidate_family, allow_fallback in [(font_family, False), *[(fallback, False) for fallback in fallbacks], ("sans-serif", True)]:
+        try:
+            candidate_path = matplotlib.font_manager.findfont(candidate_family, fallback_to_default=allow_fallback)
+        except Exception:
+            continue
+        resolved_path = str(candidate_path)
+        try:
+            resolved_family = matplotlib.font_manager.FontProperties(fname=candidate_path).get_name() or candidate_family
+        except Exception:
+            resolved_family = candidate_family
+        exact_requested_font_used = _normalized_font_name(resolved_family) == requested_norm or (
+            requested_norm == "arial" and Path(candidate_path).name.lower().startswith("arial")
+        )
+        if candidate_family == font_family or resolved_path:
+            break
+    if not resolved_path:
+        resolved_path = str(matplotlib.font_manager.findfont("sans-serif"))
+        try:
+            resolved_family = matplotlib.font_manager.FontProperties(fname=resolved_path).get_name() or "sans-serif"
+        except Exception:
+            resolved_family = "sans-serif"
     sans_serif = [resolved_family]
     for candidate in [font_family, *fallbacks]:
         if candidate and candidate not in sans_serif:
             sans_serif.append(candidate)
     matplotlib.rcParams["font.family"] = [resolved_family]
     matplotlib.rcParams["font.sans-serif"] = sans_serif
-    return resolved_family
+    return PublicationFontAudit(
+        requested_font_family=font_family,
+        actual_font_family=resolved_family,
+        actual_font_path=resolved_path,
+        exact_requested_font_used=exact_requested_font_used,
+        fallback_used=not exact_requested_font_used,
+        fallback_candidates=fallbacks,
+    )
+
+
+def apply_publication_typography(style: dict[str, Any], repo_root: str | Path) -> str:
+    return resolve_publication_typography(style, repo_root).actual_font_family
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -336,7 +397,7 @@ class FigurePackagePublicationService:
         self.repo_root = Path(repo_root).resolve()
         self.output_dir = Path(output_dir) if output_dir else self.repo_root / OUTPUT_DIR
         self.style = load_publication_style_config(self.repo_root / STYLE_CONFIG_PATH)
-        self._configure_typography()
+        self.font_audit = self._configure_typography()
         self.mindoro_labels = _read_csv(self.repo_root / MINDORO_LABELS_PATH)
         self.dwh_labels = _read_csv(self.repo_root / DWH_LABELS_PATH)
         self.mindoro_forecast_manifest = _read_json(self.repo_root / MINDORO_FORECAST_MANIFEST)
@@ -357,8 +418,10 @@ class FigurePackagePublicationService:
         self.final_phase_status = _read_csv(self.repo_root / FINAL_PHASE_STATUS_CSV)
         self.figure_records: list[PublicationFigureRecord] = []
         self.missing_optional_artifacts: list[dict[str, str]] = []
+        self.board_layout_audit_rows: list[dict[str, Any]] = []
         self._raster_cache: dict[Path, dict[str, Any]] = {}
         self._vector_cache: dict[tuple[Path, str], gpd.GeoDataFrame] = {}
+        self._spec_lookup: dict[str, dict[str, Any]] = {}
 
     def _resolve_prototype_support_dir(self) -> tuple[Path, Path]:
         preferred_dir = self.repo_root / PREFERRED_PROTOTYPE_SIMILARITY_DIR
@@ -369,8 +432,8 @@ class FigurePackagePublicationService:
         legacy_registry = legacy_dir / "prototype_pygnome_figure_registry.csv"
         return legacy_dir, legacy_registry
 
-    def _configure_typography(self) -> None:
-        apply_publication_typography(self.style, self.repo_root)
+    def _configure_typography(self) -> PublicationFontAudit:
+        return resolve_publication_typography(self.style, self.repo_root)
 
     def _record_missing(self, path: Path, notes: str) -> None:
         entry = {"relative_path": _relative_to_repo(self.repo_root, path), "notes": notes}
@@ -584,7 +647,7 @@ class FigurePackagePublicationService:
                 handles.append(Patch(facecolor=color, edgecolor=color, alpha=0.7, label=label))
         return handles
 
-    def _add_legend(self, ax: plt.Axes, legend_keys: list[str]) -> None:
+    def _add_legend(self, ax: plt.Axes, legend_keys: list[str], *, compact: bool = False) -> Any:
         ax.axis("off")
         handles = self._legend_handles(legend_keys)
         legend = ax.legend(
@@ -593,18 +656,66 @@ class FigurePackagePublicationService:
             frameon=True,
             fontsize=float((self.style.get("typography") or {}).get("note_size") or 8),
             title="Legend",
+            ncol=2 if compact and len(handles) > 4 else 1,
         )
         legend.get_frame().set_facecolor((1, 1, 1, 0.98))
         legend.get_frame().set_edgecolor((self.style.get("layout") or {}).get("legend_edgecolor") or "#94a3b8")
         if legend.get_title():
             legend.get_title().set_fontsize(float((self.style.get("typography") or {}).get("legend_title_size") or 9))
+        return legend
 
-    def _add_note_box(self, ax: plt.Axes, title: str, lines: list[str]) -> None:
+    def _axis_wrap_width(
+        self,
+        ax: plt.Axes,
+        *,
+        fontsize: float,
+        min_chars: int = 18,
+        max_chars: int = 56,
+    ) -> int:
+        width_px = ax.get_position().width * ax.figure.get_figwidth() * ax.figure.dpi
+        approx = int(width_px / max(fontsize * 0.82, 1.0))
+        return max(min_chars, min(max_chars, approx))
+
+    def _wrap_card_lines(
+        self,
+        lines: list[str],
+        *,
+        width: int,
+        bullet_lines: bool = False,
+    ) -> str:
+        wrapped_lines: list[str] = []
+        for line in lines:
+            raw = str(line).strip()
+            if not raw:
+                continue
+            if bullet_lines:
+                wrapped_lines.append(textwrap.fill(f"- {raw}", width=width, subsequent_indent="  "))
+            else:
+                wrapped_lines.append(textwrap.fill(raw, width=width))
+        return "\n".join(wrapped_lines)
+
+    def _add_note_box(
+        self,
+        ax: plt.Axes,
+        title: str,
+        lines: list[str],
+        *,
+        wrap_width: int | None = None,
+        bullet_lines: bool = False,
+        title_y: float = 1.0,
+        body_y: float = 0.92,
+        box_pad: float = 0.36,
+    ) -> tuple[Any, Any]:
         ax.axis("off")
-        wrapped = "\n".join(textwrap.fill(line, width=40) for line in lines if str(line).strip())
-        ax.text(
+        if wrap_width is None:
+            wrap_width = self._axis_wrap_width(
+                ax,
+                fontsize=float((self.style.get("typography") or {}).get("note_size") or 8),
+            )
+        wrapped = self._wrap_card_lines(lines, width=wrap_width, bullet_lines=bullet_lines)
+        title_artist = ax.text(
             0.0,
-            1.0,
+            title_y,
             title,
             ha="left",
             va="top",
@@ -613,17 +724,72 @@ class FigurePackagePublicationService:
             color="#0f172a",
             transform=ax.transAxes,
         )
-        ax.text(
+        body_artist = ax.text(
             0.0,
-            0.92,
+            body_y,
             wrapped,
             ha="left",
             va="top",
             fontsize=float((self.style.get("typography") or {}).get("note_size") or 8),
             color="#334155",
             transform=ax.transAxes,
-            bbox={"boxstyle": "round,pad=0.45", "facecolor": "#ffffff", "edgecolor": "#cbd5e1"},
+            bbox={"boxstyle": f"round,pad={box_pad:.2f}", "facecolor": "#ffffff", "edgecolor": "#cbd5e1"},
         )
+        return title_artist, body_artist
+
+    def _artist_within_bbox(self, artist: Any, bbox: Any, *, pad_px: float = 2.0) -> bool:
+        renderer = artist.figure.canvas.get_renderer()
+        artist_bbox = artist.get_window_extent(renderer=renderer)
+        return (
+            artist_bbox.x0 >= (bbox.x0 - pad_px)
+            and artist_bbox.y0 >= (bbox.y0 - pad_px)
+            and artist_bbox.x1 <= (bbox.x1 + pad_px)
+            and artist_bbox.y1 <= (bbox.y1 + pad_px)
+        )
+
+    def _board_panel_legend_keys(self, panel_spec: dict[str, Any]) -> list[str]:
+        keys = [str(item) for item in panel_spec.get("legend_keys", []) if str(item).strip()]
+        legend_key = str(panel_spec.get("legend_key") or "").strip()
+        if legend_key and legend_key not in keys:
+            keys.append(legend_key)
+        return keys
+
+    def _board_text_blocks(self, spec: dict[str, Any]) -> dict[str, Any]:
+        guide_bullets = [str(item).strip() for item in spec.get("guide_bullets", []) if str(item).strip()]
+        note_lines = [str(item).strip() for item in spec.get("note_lines", []) if str(item).strip()]
+        has_explicit_board_text = bool(guide_bullets) or bool(str(spec.get("caveat_line") or "").strip()) or bool(
+            str(spec.get("provenance_line") or "").strip()
+        )
+        if not guide_bullets:
+            guide_bullets = note_lines[:4]
+        caveat_line = str(spec.get("caveat_line") or "").strip()
+        provenance_line = str(spec.get("provenance_line") or "").strip()
+        if not caveat_line:
+            caveat_line = next(
+                (
+                    line
+                    for line in note_lines
+                    if any(token in line.lower() for token in ("caveat", "shared-imagery", "truth", "comparator-only"))
+                ),
+                "",
+            )
+        if not provenance_line:
+            provenance_line = next(
+                (
+                    line
+                    for line in note_lines
+                    if any(token in line.lower() for token in ("provenance", "recipe", "forcing stack", "stored"))
+                ),
+                "",
+            )
+        extra_lines = [] if has_explicit_board_text else [line for line in note_lines if line not in guide_bullets and line not in {caveat_line, provenance_line}]
+        return {
+            "guide_heading": str(spec.get("guide_heading") or "How to read this board"),
+            "guide_bullets": guide_bullets[:5],
+            "caveat_line": caveat_line,
+            "provenance_line": provenance_line,
+            "extra_lines": extra_lines,
+        }
 
     def _add_geographic_labels(self, ax: plt.Axes, case_id: str, target_crs: str) -> None:
         labels_df = self._case_context(case_id).get("labels_df", pd.DataFrame())
@@ -856,7 +1022,15 @@ class FigurePackagePublicationService:
         width, height = fig.canvas.get_width_height()
         return int(width), int(height)
 
-    def _add_locator(self, ax: plt.Axes, case_id: str, crop_bounds: tuple[float, float, float, float] | None, target_crs: str) -> None:
+    def _add_locator(
+        self,
+        ax: plt.Axes,
+        case_id: str,
+        crop_bounds: tuple[float, float, float, float] | None,
+        target_crs: str,
+        *,
+        compact: bool = False,
+    ) -> None:
         context = self._case_context(case_id)
         locator_outline = self._load_vector(context["shoreline_path"], "EPSG:4326")
         if locator_outline is not None and not locator_outline.empty:
@@ -879,9 +1053,14 @@ class FigurePackagePublicationService:
         center_lat = ((full_bounds[2] - (lat_span * pad_fraction)) + (full_bounds[3] + (lat_span * pad_fraction))) / 2.0
         ax.set_aspect(self._geographic_aspect(center_lat), adjustable="box")
         ax.set_title("Locator", fontsize=10, loc="left")
-        ax.set_xlabel("Longitude", fontsize=7)
-        ax.set_ylabel("Latitude", fontsize=7)
-        ax.tick_params(labelsize=6)
+        if compact:
+            ax.set_xlabel("")
+            ax.set_ylabel("")
+            ax.tick_params(labelsize=5)
+        else:
+            ax.set_xlabel("Longitude", fontsize=7)
+            ax.set_ylabel("Latitude", fontsize=7)
+            ax.tick_params(labelsize=6)
         ax.annotate("N", xy=(0.92, 0.86), xytext=(0.92, 0.68), xycoords="axes fraction", textcoords="axes fraction", arrowprops={"arrowstyle": "-|>", "color": "#111827", "lw": 1.1}, ha="center", va="center", fontsize=8, color="#111827", fontweight="bold")
 
     def _add_scale_bar(self, ax: plt.Axes, bounds: tuple[float, float, float, float], case_id: str) -> None:
@@ -1471,59 +1650,248 @@ class FigurePackagePublicationService:
             pixel_height=pixel_height,
         )
 
+    def _board_grid_shape(self, panel_count: int) -> tuple[int, int]:
+        if panel_count <= 3:
+            return 1, panel_count
+        if panel_count == 4:
+            return 2, 2
+        return int(np.ceil(panel_count / 3.0)), min(3, panel_count)
+
+    def _render_board_panel(
+        self,
+        ax: plt.Axes,
+        panel: dict[str, Any],
+        saved_figures: dict[str, PublicationFigureRecord],
+    ) -> tuple[dict[str, Any], list[str], bool]:
+        source_spec_id = str(panel.get("source_spec_id") or "").strip()
+        source_spec = self._spec_lookup.get(source_spec_id)
+        panel_title = str(panel.get("panel_title") or (source_spec or {}).get("figure_title") or "").strip()
+        if source_spec is not None and str(source_spec.get("renderer") or "") != "external_image":
+            render_info = self._render_panel(ax, dict(source_spec, panel_title=panel_title))
+            return render_info, self._board_panel_legend_keys(source_spec), True
+        ax.axis("off")
+        if source_spec_id:
+            source_record = saved_figures.get(source_spec_id)
+            if source_record is None:
+                ax.text(0.5, 0.5, f"Missing figure\n{source_spec_id}", ha="center", va="center", fontsize=11)
+                return {"source_paths": [], "crop_bounds": None, "target_crs": None}, [], False
+            image = plt.imread(source_record.file_path)
+            ax.imshow(image)
+            ax.set_title(panel_title, loc="left", fontsize=float((self.style.get("typography") or {}).get("panel_title_size") or 11), fontweight="bold", pad=10)
+            return {"source_paths": [source_record.relative_path], "crop_bounds": None, "target_crs": None}, [], False
+        self._add_note_box(
+            ax,
+            panel_title or "Context",
+            [str(panel.get("text") or "")],
+            wrap_width=46,
+        )
+        return {"source_paths": [], "crop_bounds": None, "target_crs": None}, [], False
+
+    def _append_board_layout_audit(
+        self,
+        spec: dict[str, Any],
+        *,
+        output_path: Path,
+        layout_mode: str,
+        rows: int,
+        cols: int,
+        panel_count: int,
+        title_within_bounds: bool,
+        subtitle_within_bounds: bool,
+        guide_within_bounds: bool,
+        filenames_stayed_same: bool,
+    ) -> None:
+        issue_types = [str(item) for item in spec.get("board_issue_types", []) if str(item).strip()]
+        if not issue_types:
+            issue_types = ["mixed issue"]
+        self.board_layout_audit_rows.append(
+            {
+                "board_file": _relative_to_repo(self.repo_root, output_path),
+                "board_family": FIGURE_FAMILIES[str(spec["figure_family_code"])],
+                "panel_count": int(panel_count),
+                "grid_structure": f"{rows}x{cols}",
+                "layout_mode": layout_mode,
+                "issue_types_found": " | ".join(issue_types),
+                "layout_fix_applied": (
+                    "Direct panel rerender from stored figure specs, standardized gutters/margins, one shared board guide, "
+                    "and a separate locator/legend/provenance region."
+                ),
+                "requested_font_family": self.font_audit.requested_font_family,
+                "actual_font_resolved": self.font_audit.actual_font_family,
+                "exact_arial_used": bool(self.font_audit.exact_requested_font_used),
+                "fallback_needed": bool(self.font_audit.fallback_used),
+                "text_shortened_or_wrapped": bool(spec.get("guide_bullets")) or bool(spec.get("caveat_line")) or bool(spec.get("provenance_line")),
+                "filenames_stayed_same": bool(filenames_stayed_same),
+                "title_within_bounds": bool(title_within_bounds),
+                "subtitle_within_bounds": bool(subtitle_within_bounds),
+                "guide_within_bounds": bool(guide_within_bounds),
+            }
+        )
+
     def _save_board_figure(self, spec: dict[str, Any], saved_figures: dict[str, PublicationFigureRecord]) -> PublicationFigureRecord:
         output_path = self._figure_path(spec)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         panels = list(spec.get("panels", []))
         panel_count = max(1, len(panels))
-        if panel_count <= 3:
-            cols = panel_count
-        elif panel_count == 4:
-            cols = 2
-        else:
-            cols = 3
-        rows = int(np.ceil(panel_count / cols))
+        rows, cols = self._board_grid_shape(panel_count)
         fig = plt.figure(figsize=self._board_size(), dpi=self._dpi(), facecolor=(self.style.get("layout") or {}).get("figure_facecolor") or "#ffffff")
-        grid = fig.add_gridspec(rows + 1, cols, height_ratios=([1.0] * rows) + [0.55], left=0.04, right=0.98, top=0.90, bottom=0.06, wspace=0.10, hspace=0.14)
         source_paths: list[str] = []
+        legend_keys: list[str] = []
+        crop_candidates: list[tuple[float, float, float, float] | None] = []
+        target_crs = ""
+        layout_mode = "bottom_strip" if panel_count <= 3 else "sidecar"
+        if layout_mode == "bottom_strip":
+            outer_grid = fig.add_gridspec(
+                2,
+                1,
+                height_ratios=[1.0, 0.32],
+                left=0.04,
+                right=0.98,
+                top=0.89,
+                bottom=0.06,
+                hspace=0.12,
+            )
+            panel_grid = outer_grid[0, 0].subgridspec(rows, cols, wspace=0.10, hspace=0.12)
+            info_grid = outer_grid[1, 0].subgridspec(1, 3, width_ratios=[0.95, 1.55, 1.15], wspace=0.12)
+            locator_stack = info_grid[0, 0].subgridspec(2, 1, height_ratios=[1.0, 0.88], hspace=0.10)
+            locator_ax = fig.add_subplot(locator_stack[0, 0])
+            legend_ax = fig.add_subplot(locator_stack[1, 0])
+            guide_ax = fig.add_subplot(info_grid[0, 1])
+            note_ax = fig.add_subplot(info_grid[0, 2])
+        else:
+            outer_grid = fig.add_gridspec(
+                1,
+                2,
+                width_ratios=[4.65, 1.85],
+                left=0.04,
+                right=0.98,
+                top=0.89,
+                bottom=0.06,
+                wspace=0.06,
+            )
+            panel_grid = outer_grid[0, 0].subgridspec(rows, cols, wspace=0.10, hspace=0.14)
+            side_grid = outer_grid[0, 1].subgridspec(4, 1, height_ratios=[0.96, 0.82, 1.34, 1.18], hspace=0.12)
+            locator_ax = fig.add_subplot(side_grid[0, 0])
+            legend_ax = fig.add_subplot(side_grid[1, 0])
+            guide_ax = fig.add_subplot(side_grid[2, 0])
+            note_ax = fig.add_subplot(side_grid[3, 0])
+
         for idx, panel in enumerate(panels):
             row_idx = idx // cols
             col_idx = idx % cols
-            ax = fig.add_subplot(grid[row_idx, col_idx])
-            ax.axis("off")
-            source_spec_id = str(panel.get("source_spec_id") or "")
-            if source_spec_id:
-                source_record = saved_figures.get(source_spec_id)
-                if source_record is None:
-                    ax.text(0.5, 0.5, f"Missing figure\n{source_spec_id}", ha="center", va="center", fontsize=11)
-                else:
-                    image = plt.imread(source_record.file_path)
-                    ax.imshow(image)
-                    source_paths.append(source_record.relative_path)
-            else:
-                ax.text(
-                    0.03,
-                    0.96,
-                    textwrap.fill(str(panel.get("text") or ""), width=46),
-                    ha="left",
-                    va="top",
-                    fontsize=11,
-                    color="#334155",
-                    transform=ax.transAxes,
-                    bbox={"boxstyle": "round,pad=0.45", "facecolor": "#ffffff", "edgecolor": "#cbd5e1"},
-                )
-            ax.set_title(str(panel.get("panel_title") or ""), loc="left", fontsize=float((self.style.get("typography") or {}).get("panel_title_size") or 11), fontweight="bold")
-        note_ax = fig.add_subplot(grid[rows, :])
-        self._add_note_box(note_ax, str(spec.get("note_box_title") or "Board reading guide"), [str(item) for item in spec.get("note_lines", [])])
-        fig.suptitle(str(spec["figure_title"]), x=0.04, y=0.965, ha="left", fontsize=float((self.style.get("typography") or {}).get("title_size") or 19), fontweight="bold")
-        fig.text(0.04, 0.932, str(spec["subtitle"]), ha="left", va="top", fontsize=float((self.style.get("typography") or {}).get("subtitle_size") or 10), color="#475569")
+            ax = fig.add_subplot(panel_grid[row_idx, col_idx])
+            render_info, panel_legend_keys, rendered_directly = self._render_board_panel(ax, panel, saved_figures)
+            source_paths.extend(str(item) for item in render_info.get("source_paths", []) if str(item).strip())
+            legend_keys.extend(panel_legend_keys)
+            crop_candidates.append(render_info.get("crop_bounds"))
+            target_crs = target_crs or str(render_info.get("target_crs") or "")
+            if rendered_directly and rows > 1 and row_idx < rows - 1:
+                ax.set_xlabel("")
+                ax.tick_params(labelbottom=False)
+            if rendered_directly and cols > 1 and col_idx > 0:
+                ax.set_ylabel("")
+                ax.tick_params(labelleft=False)
+
+        text_blocks = self._board_text_blocks(spec)
+        locator_bounds = self._union_bounds(crop_candidates)
+        if target_crs:
+            self._add_locator(locator_ax, str(spec["case_id"]), locator_bounds, target_crs, compact=True)
+        else:
+            locator_ax.axis("off")
+        legend_artist = None
+        legend_keys = list(dict.fromkeys(key for key in legend_keys if key))
+        if legend_keys:
+            legend_artist = self._add_legend(legend_ax, legend_keys, compact=True)
+        else:
+            legend_ax.axis("off")
+        _, guide_body_artist = self._add_note_box(
+            guide_ax,
+            str(text_blocks["guide_heading"]),
+            list(text_blocks["guide_bullets"]),
+            wrap_width=self._axis_wrap_width(
+                guide_ax,
+                fontsize=float((self.style.get("typography") or {}).get("note_size") or 8),
+                max_chars=52,
+            ),
+            bullet_lines=True,
+            title_y=0.98,
+            body_y=0.84,
+            box_pad=0.34,
+        )
+        note_lines = [
+            line
+            for line in [
+                str(text_blocks.get("caveat_line") or "").strip(),
+                str(text_blocks.get("provenance_line") or "").strip(),
+                *[str(item).strip() for item in text_blocks.get("extra_lines", [])[:2]],
+            ]
+            if line
+        ]
+        if note_lines:
+            _, note_body_artist = self._add_note_box(
+                note_ax,
+                "Caveat and Provenance",
+                note_lines,
+                wrap_width=self._axis_wrap_width(
+                    note_ax,
+                    fontsize=float((self.style.get("typography") or {}).get("note_size") or 8),
+                    max_chars=50,
+                ),
+                title_y=0.98,
+                body_y=0.84,
+                box_pad=0.34,
+            )
+        else:
+            note_ax.axis("off")
+            note_body_artist = None
+        title_artist = fig.suptitle(
+            str(spec["figure_title"]),
+            x=0.04,
+            y=0.965,
+            ha="left",
+            fontsize=float((self.style.get("typography") or {}).get("title_size") or 19),
+            fontweight="bold",
+        )
+        subtitle_text = textwrap.fill(
+            str(spec["subtitle"]),
+            width=116,
+            break_long_words=False,
+            break_on_hyphens=False,
+        )
+        subtitle_artist = fig.text(
+            0.04,
+            0.935,
+            subtitle_text,
+            ha="left",
+            va="top",
+            fontsize=float((self.style.get("typography") or {}).get("subtitle_size") or 10),
+            color="#475569",
+        )
+        fig.canvas.draw()
+        title_within_bounds = self._artist_within_bbox(title_artist, fig.bbox)
+        subtitle_within_bounds = self._artist_within_bbox(subtitle_artist, fig.bbox)
+        guide_within_bounds = self._artist_within_bbox(guide_body_artist, guide_ax.bbox)
+        if note_body_artist is not None:
+            guide_within_bounds = guide_within_bounds and self._artist_within_bbox(note_body_artist, note_ax.bbox)
         pixel_width, pixel_height = self._figure_pixel_size(fig)
         fig.savefig(output_path, dpi=self._dpi())
         plt.close(fig)
+        self._append_board_layout_audit(
+            spec,
+            output_path=output_path,
+            layout_mode=layout_mode,
+            rows=rows,
+            cols=cols,
+            panel_count=panel_count,
+            title_within_bounds=title_within_bounds,
+            subtitle_within_bounds=subtitle_within_bounds,
+            guide_within_bounds=guide_within_bounds,
+            filenames_stayed_same=True,
+        )
         return self._register_figure(
             spec,
             output_path,
-            source_paths,
+            list(dict.fromkeys(source_paths)),
             pixel_width=pixel_width,
             pixel_height=pixel_height,
         )
@@ -1816,6 +2184,11 @@ class FigurePackagePublicationService:
         notes: str,
         note_lines: list[str],
         panels: list[dict[str, Any]],
+        guide_heading: str = "How to read this board",
+        guide_bullets: list[str] | None = None,
+        caveat_line: str = "",
+        provenance_line: str = "",
+        board_issue_types: list[str] | None = None,
         scenario_id: str = "",
         recommended_for_main_defense: bool = True,
         recommended_for_paper: bool = False,
@@ -1836,6 +2209,11 @@ class FigurePackagePublicationService:
             "figure_title": figure_title,
             "subtitle": subtitle,
             "note_lines": note_lines,
+            "guide_heading": guide_heading,
+            "guide_bullets": list(guide_bullets or []),
+            "caveat_line": caveat_line,
+            "provenance_line": provenance_line,
+            "board_issue_types": list(board_issue_types or []),
             "note_box_title": "Board reading guide",
             "short_plain_language_interpretation": interpretation,
             "recommended_for_main_defense": recommended_for_main_defense,
@@ -1891,6 +2269,14 @@ class FigurePackagePublicationService:
         mean_value = self._row_mean_fss(row)
         formatted_values = "/".join(self._format_score_value(value) for value in values)
         return f"{prefix}FSS(1/3/5/10 km): {formatted_values}; mean: {self._format_score_value(mean_value)}."
+
+    def _format_fss_summary(self, row: pd.Series | dict[str, Any] | None, label: str) -> str:
+        if row is None:
+            return f"{label}: stored mean FSS unavailable."
+        mean_value = self._row_mean_fss(row)
+        if mean_value is None:
+            return f"{label}: stored mean FSS unavailable."
+        return f"{label}: stored mean FSS {self._format_score_value(mean_value)}."
 
     def _mindoro_primary_row(self) -> pd.Series | None:
         summary = self.mindoro_reinit_summary
@@ -1972,13 +2358,17 @@ class FigurePackagePublicationService:
                 return fallback.iloc[0]
         return summary.iloc[0]
 
-    def _dwh_event_model_row(self, model_key: str) -> pd.Series | None:
+    def _dwh_model_row(self, model_key: str, date_token: str) -> pd.Series | None:
         summary = self.dwh_all_results
         if summary.empty:
             return None
+        normalized_date = self._normalize_date_token(date_token)
+        pair_role = "event_corridor" if "/" in normalized_date else "per_date"
         filters = pd.Series(True, index=summary.index)
         if "pair_role" in summary.columns:
-            filters &= summary["pair_role"].astype(str) == "event_corridor"
+            filters &= summary["pair_role"].astype(str) == pair_role
+        if "pairing_date_utc" in summary.columns:
+            filters &= summary["pairing_date_utc"].map(self._normalize_date_token) == normalized_date
         model_map = {
             "deterministic": "OpenDrift deterministic",
             "p50": "OpenDrift ensemble p50",
@@ -1993,7 +2383,14 @@ class FigurePackagePublicationService:
         row = summary.loc[filters]
         if not row.empty:
             return row.iloc[0]
+        if "pair_role" in summary.columns:
+            fallback = summary.loc[summary["pair_role"].astype(str) == pair_role]
+            if not fallback.empty:
+                return fallback.iloc[0]
         return summary.iloc[0]
+
+    def _dwh_event_model_row(self, model_key: str) -> pd.Series | None:
+        return self._dwh_model_row(model_key, "2010-05-21_to_2010-05-23")
 
     def _mindoro_primary_context_lines(self) -> list[str]:
         row = self._mindoro_primary_row()
@@ -2018,7 +2415,7 @@ class FigurePackagePublicationService:
         return [
             f"March 6 remains the legacy sparse-reference honesty figure: the observed footprint is only {int(row.get('obs_nonzero_cells', 0))} non-zero cells.",
             f"The official p50 product is intentionally sparse here, with {int(row.get('forecast_nonzero_cells', 0))} forecast cells in this strict slice.",
-            "Use this family to explain why March 6 remains visible for methods honesty even though it is no longer the promoted primary validation row.",
+            "March 6 stays in the package as methods-honesty context rather than the promoted primary validation row.",
         ]
 
     def _mindoro_crossmodel_context_lines(self) -> list[str]:
@@ -2047,22 +2444,35 @@ class FigurePackagePublicationService:
             MINDORO_SHARED_IMAGERY_CAVEAT,
         ]
 
+    def _dwh_observation_context_lines(self) -> list[str]:
+        return [
+            "These figures isolate the public observation-derived DWH daily masks and the event-corridor union before any model panel is introduced.",
+            "Read every DWH truth panel as date-composite context only: no exact sub-daily acquisition time is implied.",
+        ]
+
     def _dwh_deterministic_context_lines(self) -> list[str]:
         return [
             "DWH is a separate external transfer-validation/support case; Mindoro remains the main Philippine thesis case.",
             "The DWH forcing rule is readiness-gated rather than Phase 1 drifter-selected baseline logic, and the current stack is HYCOM GOFS 3.1 currents + ERA5 winds + CMEMS wave/Stokes.",
         ]
 
+    def _dwh_ensemble_context_lines(self) -> list[str]:
+        return [
+            "The ensemble lane reuses the same frozen DWH truth masks and forcing stack as the deterministic baseline.",
+            "The official public observation-derived DWH date-composite masks remain the scoring reference for every C2 panel.",
+            "Within C2, mask_p50 is the preferred probabilistic extension while mask_p90 remains support/comparison only.",
+        ]
+
     def _dwh_model_context_lines(self) -> list[str]:
         return [
-            "Observed DWH daily masks remain truth throughout these figures; PyGNOME is comparator-only.",
+            "The official public observation-derived DWH date-composite masks remain the scoring reference throughout these figures; PyGNOME is comparator-only.",
             "Each score line belongs to the matching model panel only; the observed corridor panel is included for visual reference.",
         ]
 
     def _dwh_trajectory_context_lines(self) -> list[str]:
         return [
             "These trajectory views are appendix/support material for the separate DWH transfer-validation case rather than the main thesis case.",
-            "Use the scored footprint figures when the panel asks about validation overlap rather than transport shape.",
+            "Scored footprint figures handle validation overlap; these trajectory views focus on transport shape.",
         ]
 
     def _mindoro_primary_score_line(self, label: str = "") -> str:
@@ -2080,8 +2490,11 @@ class FigurePackagePublicationService:
     def _dwh_deterministic_score_line(self, date_token: str, label: str = "") -> str:
         return self._format_fss_line(self._dwh_deterministic_row(date_token), label)
 
+    def _dwh_model_score_line(self, model_key: str, date_token: str, label: str = "") -> str:
+        return self._format_fss_line(self._dwh_model_row(model_key, date_token), label)
+
     def _dwh_event_score_line(self, model_key: str, label: str = "") -> str:
-        return self._format_fss_line(self._dwh_event_model_row(model_key), label)
+        return self._dwh_model_score_line(model_key, "2010-05-21_to_2010-05-23", label)
 
     def _mindoro_primary_note_lines(self, *score_lines: str) -> list[str]:
         return self._compose_note_lines(self._mindoro_primary_context_lines(), list(score_lines))
@@ -2094,6 +2507,68 @@ class FigurePackagePublicationService:
 
     def _mindoro_comparison_note_lines(self, *score_lines: str) -> list[str]:
         return self._compose_note_lines(self._mindoro_comparison_context_lines(), list(score_lines))
+
+    def _mindoro_recipe_provenance_line(self) -> str:
+        recipe = str(self.mindoro_phase1_confirmation_candidate.get("selected_recipe", "") or "").strip()
+        if not recipe:
+            return "Provenance: focused Mindoro drifter recipe confirmation was unavailable."
+        return f"Provenance: focused 2016-2023 Mindoro drifter rerun confirmed `{recipe}` for the stored B1 lane."
+
+    def _mindoro_primary_board_layout_fields(self) -> dict[str, Any]:
+        return {
+            "guide_bullets": [
+                "Read clockwise: seed-versus-target context, promoted R1 overlay, R0 baseline, then the March 13 seed mask.",
+                "March 14 NOAA remains the scoring target; March 13 NOAA is the reinit seed, not a second truth day.",
+                self._format_fss_summary(self._mindoro_primary_branch_row("R1_previous"), "Promoted R1 previous reinit p50"),
+                self._format_fss_summary(self._mindoro_primary_branch_row("R0"), "R0 baseline reinit p50"),
+            ],
+            "caveat_line": "Caveat: the March 13 and March 14 public masks share March 12 imagery.",
+            "provenance_line": self._mindoro_recipe_provenance_line(),
+            "board_issue_types": [
+                "uneven panel spacing",
+                "overlapping text",
+                "awkward reading-guide placement",
+                "weak title hierarchy",
+            ],
+        }
+
+    def _mindoro_crossmodel_board_layout_fields(self) -> dict[str, Any]:
+        return {
+            "guide_bullets": [
+                "Read clockwise: March 14 reference context, OpenDrift R1, OpenDrift R0, then the PyGNOME comparator.",
+                "March 14 NOAA stays truth throughout this board; PyGNOME is comparator-only.",
+                self._format_fss_summary(self._mindoro_crossmodel_row("r1"), "OpenDrift R1 previous reinit p50"),
+                self._format_fss_summary(self._mindoro_crossmodel_row("r0"), "OpenDrift R0 reinit p50"),
+                self._format_fss_summary(self._mindoro_crossmodel_row("pygnome"), "PyGNOME comparator"),
+            ],
+            "caveat_line": "Caveat: the March 13 and March 14 public masks share March 12 imagery.",
+            "provenance_line": self._mindoro_recipe_provenance_line(),
+            "board_issue_types": [
+                "uneven panel spacing",
+                "overlapping text",
+                "awkward reading-guide placement",
+                "legend clutter",
+            ],
+        }
+
+    def _dwh_model_board_layout_fields(self) -> dict[str, Any]:
+        return {
+            "guide_bullets": [
+                "Read clockwise: observed corridor, deterministic OpenDrift, ensemble p50, then the PyGNOME comparator.",
+                "Observed DWH masks remain truth; each model score belongs only to its matching panel.",
+                self._format_fss_summary(self._dwh_event_model_row("deterministic"), "OpenDrift deterministic"),
+                self._format_fss_summary(self._dwh_event_model_row("p50"), "OpenDrift ensemble p50"),
+                self._format_fss_summary(self._dwh_event_model_row("pygnome"), "PyGNOME comparator"),
+            ],
+            "caveat_line": "Caveat: DWH observation masks are honest date-composite truth; no exact sub-daily acquisition time is implied.",
+            "provenance_line": "Provenance: HYCOM GOFS 3.1 currents + ERA5 winds + CMEMS wave/Stokes in this external transfer-validation lane.",
+            "board_issue_types": [
+                "uneven panel spacing",
+                "awkward reading-guide placement",
+                "legend clutter",
+                "weak title hierarchy",
+            ],
+        }
 
     def _stored_empty_forecast_line(self, row: pd.Series | dict[str, Any] | None, label: str = "") -> str:
         if row is None:
@@ -2583,6 +3058,7 @@ class FigurePackagePublicationService:
                     self._mindoro_primary_branch_score_line("R0", "OpenDrift R0 reinit p50"),
                     self._stored_empty_forecast_line(self._mindoro_primary_branch_row("R0"), "OpenDrift R0 reinit p50"),
                 ),
+                **self._mindoro_primary_board_layout_fields(),
                 panels=[
                     {"panel_title": "March 13 seed vs March 14 target", "source_spec_id": "mindoro_primary_seed_vs_target"},
                     {"panel_title": "Promoted R1 previous reinit overlay", "source_spec_id": "mindoro_primary_r1_overlay"},
@@ -2610,6 +3086,7 @@ class FigurePackagePublicationService:
                     self._mindoro_crossmodel_score_line("pygnome", "PyGNOME comparator"),
                     self._stored_empty_forecast_line(self._mindoro_crossmodel_row("r0"), "OpenDrift R0 reinit p50"),
                 ),
+                **self._mindoro_crossmodel_board_layout_fields(),
                 panels=[
                     {"panel_title": "March 14 observation reference context", "source_spec_id": "mindoro_primary_seed_vs_target"},
                     {"panel_title": "OpenDrift R1 previous reinit p50", "source_spec_id": "mindoro_crossmodel_r1_overlay"},
@@ -2644,6 +3121,12 @@ class FigurePackagePublicationService:
 
     def _dwh_deterministic_note_lines(self, *score_lines: str) -> list[str]:
         return self._compose_note_lines(self._dwh_deterministic_context_lines(), list(score_lines))
+
+    def _dwh_observation_note_lines(self, *score_lines: str) -> list[str]:
+        return self._compose_note_lines(self._dwh_observation_context_lines(), list(score_lines))
+
+    def _dwh_ensemble_note_lines(self, *score_lines: str) -> list[str]:
+        return self._compose_note_lines(self._dwh_ensemble_context_lines(), list(score_lines))
 
     def _dwh_model_note_lines(self, *score_lines: str) -> list[str]:
         return self._compose_note_lines(self._dwh_model_context_lines(), list(score_lines))
@@ -3050,7 +3533,7 @@ class FigurePackagePublicationService:
                     figure_slug="comparison_overlay",
                     figure_title="Mindoro close-up: observed corridor, consolidated ensemble, and PyGNOME",
                     subtitle="Mindoro | 4-6 March 2023 | close crop around the overlap union",
-                    interpretation="This close-up overlay is useful when the panel wants a compact direct comparison between the observed corridor, the consolidated ensemble corridor, and the PyGNOME comparator.",
+                    interpretation="This close-up overlay keeps the observed corridor, the consolidated ensemble corridor, and the PyGNOME comparator in one compact comparison view.",
                     notes="Built from stored comparator rasters only.",
                     note_lines=note_lines_comparison_overlay,
                     legend_keys=["observed_mask", "ensemble_consolidated", "pygnome", "source_point"],
@@ -3258,7 +3741,7 @@ class FigurePackagePublicationService:
                     interpretation="This is one of the clearest early-story boards because it explains transport path, spread, and comparator behavior before any score tables appear.",
                     notes="Board assembled from publication-grade trajectory figures only.",
                     note_lines=[
-                        "Use this board before the validation metrics if the panel wants an intuitive transport explanation first.",
+                        "This board foregrounds transport path and spread before the score-based validation figures.",
                         "The board moves from single-path transport to ensemble spread to corridor geometry, then ends with the PyGNOME comparator path.",
                     ],
                     panels=[
@@ -3813,6 +4296,7 @@ class FigurePackagePublicationService:
                     self._dwh_event_score_line("p50", "OpenDrift ensemble p50"),
                     self._dwh_event_score_line("pygnome", "PyGNOME comparator"),
                 ),
+                **self._dwh_model_board_layout_fields(),
                 panels=[
                     {"panel_title": "Observed corridor", "source_spec_id": "dwh_event_observation"},
                     {"panel_title": "OpenDrift deterministic", "source_spec_id": "dwh_event_deterministic"},
@@ -3843,6 +4327,1148 @@ class FigurePackagePublicationService:
                 recommended_for_main_defense=False,
             ),
         ]
+        return singles, boards
+
+    def _dwh_publication_specs_v2(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        daily_cases = [
+            {
+                "date_token": "2010-05-21",
+                "period_title": "24 h | 2010-05-21",
+                "period_caption": "24 h (2010-05-21)",
+                "panel_label": "24 h | 2010-05-21",
+                "obs_phase_or_track": "phase3c_external_case_setup",
+                "obs": "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_setup/obs_mask_2010-05-21.tif",
+                "det": "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_run/products/control_footprint_mask_2010-05-21_datecomposite.tif",
+                "p50": "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_ensemble_comparison/products/mask_p50_2010-05-21_datecomposite.tif",
+                "p90": "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_ensemble_comparison/products/mask_p90_2010-05-21_datecomposite.tif",
+                "pygnome": "output/CASE_DWH_RETRO_2010_72H/phase3c_dwh_pygnome_comparator/products/pygnome_footprint_mask_2010-05-21_datecomposite.tif",
+            },
+            {
+                "date_token": "2010-05-22",
+                "period_title": "48 h | 2010-05-22",
+                "period_caption": "48 h (2010-05-22)",
+                "panel_label": "48 h | 2010-05-22",
+                "obs_phase_or_track": "phase3c_external_case_setup",
+                "obs": "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_setup/obs_mask_2010-05-22.tif",
+                "det": "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_run/products/control_footprint_mask_2010-05-22_datecomposite.tif",
+                "p50": "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_ensemble_comparison/products/mask_p50_2010-05-22_datecomposite.tif",
+                "p90": "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_ensemble_comparison/products/mask_p90_2010-05-22_datecomposite.tif",
+                "pygnome": "output/CASE_DWH_RETRO_2010_72H/phase3c_dwh_pygnome_comparator/products/pygnome_footprint_mask_2010-05-22_datecomposite.tif",
+            },
+            {
+                "date_token": "2010-05-23",
+                "period_title": "72 h | 2010-05-23",
+                "period_caption": "72 h (2010-05-23)",
+                "panel_label": "72 h | 2010-05-23",
+                "obs_phase_or_track": "phase3c_external_case_setup",
+                "obs": "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_setup/obs_mask_2010-05-23.tif",
+                "det": "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_run/products/control_footprint_mask_2010-05-23_datecomposite.tif",
+                "p50": "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_ensemble_comparison/products/mask_p50_2010-05-23_datecomposite.tif",
+                "p90": "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_ensemble_comparison/products/mask_p90_2010-05-23_datecomposite.tif",
+                "pygnome": "output/CASE_DWH_RETRO_2010_72H/phase3c_dwh_pygnome_comparator/products/pygnome_footprint_mask_2010-05-23_datecomposite.tif",
+            },
+        ]
+        event_case = {
+            "date_token": "2010-05-21_to_2010-05-23",
+            "period_title": "event corridor | 2010-05-21_to_2010-05-23",
+            "period_caption": "event corridor (2010-05-21_to_2010-05-23)",
+            "panel_label": "event corridor | 2010-05-21_to_2010-05-23",
+            "obs_phase_or_track": "phase3c_external_case_run",
+            "obs": "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_run/products/obs_mask_2010-05-21_2010-05-23_eventcorridor.tif",
+            "det": "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_run/products/control_footprint_mask_2010-05-21_2010-05-23_eventcorridor.tif",
+            "p50": "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_ensemble_comparison/products/mask_p50_2010-05-21_2010-05-23_eventcorridor.tif",
+            "p90": "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_ensemble_comparison/products/mask_p90_2010-05-21_2010-05-23_eventcorridor.tif",
+            "pygnome": "output/CASE_DWH_RETRO_2010_72H/phase3c_dwh_pygnome_comparator/products/pygnome_eventcorridor_union_2010-05-21_to_2010-05-23.tif",
+        }
+        det_track = "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_run/tracks/opendrift_control_dwh_phase3c.nc"
+        pygnome_track = "output/CASE_DWH_RETRO_2010_72H/phase3c_dwh_pygnome_comparator/tracks/pygnome_dwh_phase3c.nc"
+        note_lines_dwh_tracks = self._dwh_trajectory_note_lines()
+
+        def _dwh_caveat_line() -> str:
+            return "Caveat: DWH observation masks are used honestly as date-composite truth; no exact sub-daily acquisition time is implied."
+
+        def _dwh_provenance_line() -> str:
+            return "Provenance: all DWH panels here are rebuilt from stored rasters only under the frozen HYCOM GOFS 3.1 currents + ERA5 winds + CMEMS wave/Stokes stack."
+
+        def _official_scoring_reference_line() -> str:
+            return "Official public observation-derived DWH date-composite masks remain the scoring reference for every panel."
+
+        def _daily_mean_panel_title(panel_label: str, row: pd.Series | None, model_label: str = "") -> str:
+            mean_text = self._format_score_value(self._row_mean_fss(row))
+            label = f"{model_label} " if model_label else ""
+            return f"{panel_label} | {label}mean FSS {mean_text}"
+
+        def _dual_threshold_panel_title(panel_label: str, date_token: str) -> str:
+            p50_mean = self._format_score_value(self._row_mean_fss(self._dwh_model_row("p50", date_token)))
+            p90_mean = self._format_score_value(self._row_mean_fss(self._dwh_model_row("p90", date_token)))
+            return f"{panel_label} | p50 mean FSS {p50_mean} | p90 mean FSS {p90_mean}"
+
+        def _overview_board_note_lines(summary_line: str, *score_lines: str) -> list[str]:
+            return self._compose_note_lines(
+                [
+                    _official_scoring_reference_line(),
+                    summary_line,
+                ],
+                list(score_lines),
+            )
+
+        def _observation_spec(entry: dict[str, str], safe_date: str) -> dict[str, Any]:
+            is_event = entry["date_token"] == event_case["date_token"]
+            return self._spatial_spec(
+                spec_id=f"dwh_{safe_date}_observation_truth_context",
+                figure_family_code="F1",
+                case_id="CASE_DWH_RETRO_2010_72H",
+                phase_or_track=entry["obs_phase_or_track"],
+                date_token=entry["date_token"],
+                model_names="observation",
+                run_type="single_truth_context",
+                view_type="zoom",
+                variant="paper",
+                figure_slug="eventcorridor_observation_truth_context" if is_event else "observation_truth_context",
+                figure_title=f"DWH observation truth context | {entry['period_title']}",
+                subtitle=f"Deepwater Horizon | observation-derived date-composite truth mask | {entry['period_caption']}",
+                interpretation="This figure shows the observation-derived DWH truth mask before any model panel is introduced." if not is_event else "This figure shows the DWH event-corridor union that remains the observed truth context for the separate external transfer-validation lane.",
+                notes="Built from the stored DWH observation-derived mask only.",
+                note_lines=self._dwh_observation_note_lines(),
+                legend_keys=["observed_mask"],
+                raster_layers=[{"path": entry["obs"], "legend_key": "observed_mask", "alpha": 0.42, "zorder": 5}],
+                show_source=False,
+                recommended_for_paper=True,
+                status_key_override="dwh_observation_truth_context",
+            )
+
+        def _overlay_spec(
+            *,
+            entry: dict[str, str],
+            safe_date: str,
+            figure_family_code: str,
+            phase_or_track: str,
+            model_names: str,
+            run_type: str,
+            figure_slug: str,
+            figure_title: str,
+            subtitle: str,
+            interpretation: str,
+            notes: str,
+            note_lines: list[str],
+            legend_key: str,
+            raster_path: str,
+            alpha: float,
+            status_key_override: str,
+        ) -> dict[str, Any]:
+            return self._spatial_spec(
+                spec_id=f"dwh_{safe_date}_{figure_slug}",
+                figure_family_code=figure_family_code,
+                case_id="CASE_DWH_RETRO_2010_72H",
+                phase_or_track=phase_or_track,
+                date_token=entry["date_token"],
+                model_names=model_names,
+                run_type=run_type,
+                view_type="zoom",
+                variant="paper",
+                figure_slug=figure_slug,
+                figure_title=figure_title,
+                subtitle=subtitle,
+                interpretation=interpretation,
+                notes=notes,
+                note_lines=note_lines,
+                legend_keys=["observed_mask", legend_key, "source_point"],
+                raster_layers=[
+                    {"path": entry["obs"], "legend_key": "observed_mask", "alpha": 0.40, "zorder": 5},
+                    {"path": raster_path, "legend_key": legend_key, "alpha": alpha, "zorder": 6},
+                ],
+                show_source=True,
+                recommended_for_paper=True,
+                status_key_override=status_key_override,
+            )
+
+        def _dual_threshold_overlay_spec(entry: dict[str, str], safe_date: str) -> dict[str, Any]:
+            is_event = entry["date_token"] == event_case["date_token"]
+            return self._spatial_spec(
+                spec_id=f"dwh_{safe_date}_mask_p50_mask_p90_dual_threshold_overlay",
+                figure_family_code="H",
+                case_id="CASE_DWH_RETRO_2010_72H",
+                phase_or_track="phase3c_external_case_ensemble_comparison",
+                date_token=entry["date_token"],
+                model_names="opendrift_mask_p50_mask_p90",
+                run_type="single_dual_threshold_overlay",
+                view_type="zoom",
+                variant="paper",
+                figure_slug="mask_p50_mask_p90_dual_threshold_overlay",
+                figure_title=f"DWH mask_p50 and mask_p90 dual-threshold overlay | {entry['period_title']}",
+                subtitle=(
+                    "Deepwater Horizon | exact dual-threshold mask_p50 and mask_p90 overlay scored against official public "
+                    f"observation-derived DWH date-composite masks | {entry['period_caption']}"
+                ),
+                interpretation=(
+                    "This figure keeps the exact mask_p50 and mask_p90 thresholds on one map against the observed DWH mask; "
+                    "it does not invent a combined score."
+                    if not is_event
+                    else "This figure keeps the exact mask_p50 and mask_p90 thresholds on one event-corridor map against "
+                    "the observed DWH event corridor; it does not invent a combined score."
+                ),
+                notes=(
+                    "Built from stored DWH observation, mask_p50, and mask_p90 rasters only; both thresholds remain scored "
+                    "against the official public observation-derived DWH date-composite masks."
+                ),
+                note_lines=_overview_board_note_lines(
+                    "This exact dual-threshold overlay keeps `mask_p50` and `mask_p90` together without inventing a combined score.",
+                    self._dwh_model_score_line("p50", entry["date_token"], "mask_p50"),
+                    self._dwh_model_score_line("p90", entry["date_token"], "mask_p90"),
+                ),
+                legend_keys=["observed_mask", "ensemble_p50", "ensemble_p90", "source_point"],
+                raster_layers=[
+                    {"path": entry["obs"], "legend_key": "observed_mask", "alpha": 0.38, "zorder": 5},
+                    {"path": entry["p90"], "legend_key": "ensemble_p90", "alpha": 0.18, "zorder": 6},
+                    {"path": entry["p50"], "legend_key": "ensemble_p50", "alpha": 0.28, "zorder": 7},
+                ],
+                show_source=True,
+                recommended_for_paper=False,
+                status_key_override="dwh_ensemble_transfer",
+            )
+
+        singles: list[dict[str, Any]] = []
+        for entry in [*daily_cases, event_case]:
+            safe_date = _safe_token(entry["date_token"])
+            is_event = entry["date_token"] == event_case["date_token"]
+            singles.append(_observation_spec(entry, safe_date))
+            singles.append(
+                _overlay_spec(
+                    entry=entry,
+                    safe_date=safe_date,
+                    figure_family_code="G",
+                    phase_or_track="phase3c_external_case_run",
+                    model_names="opendrift_deterministic",
+                    run_type="single_deterministic_overlay",
+                    figure_slug="deterministic_footprint_overlay",
+                    figure_title=f"DWH deterministic footprint overlay | {entry['period_title']}",
+                    subtitle=f"Deepwater Horizon | deterministic footprint vs observed date-composite mask | {entry['period_caption']}",
+                    interpretation="This figure keeps the deterministic OpenDrift footprint as the clean baseline transfer-validation result against the observed DWH mask." if not is_event else "This figure keeps the deterministic OpenDrift event-corridor union as the clean baseline transfer-validation result against the observed DWH event corridor.",
+                    notes="Built from stored DWH observation and deterministic footprint rasters only.",
+                    note_lines=self._dwh_deterministic_note_lines(
+                        self._dwh_deterministic_score_line(entry["date_token"], "deterministic footprint")
+                    ),
+                    legend_key="deterministic_opendrift",
+                    raster_path=entry["det"],
+                    alpha=0.26,
+                    status_key_override="dwh_deterministic_transfer",
+                )
+            )
+            singles.append(
+                _overlay_spec(
+                    entry=entry,
+                    safe_date=safe_date,
+                    figure_family_code="H",
+                    phase_or_track="phase3c_external_case_ensemble_comparison",
+                    model_names="opendrift_mask_p50",
+                    run_type="single_mask_p50_overlay",
+                    figure_slug="mask_p50_overlay",
+                    figure_title=f"DWH mask_p50 overlay | {entry['period_title']}",
+                    subtitle=f"Deepwater Horizon | thresholded mask_p50 vs observed date-composite mask | {entry['period_caption']}",
+                    interpretation="This figure shows the thresholded mask_p50 product against the observed DWH mask; mask_p50 is the preferred probabilistic extension." if not is_event else "This figure shows the thresholded mask_p50 event-corridor union against the observed DWH event corridor; mask_p50 is the preferred probabilistic extension.",
+                    notes="Built from stored DWH observation and thresholded mask_p50 rasters only.",
+                    note_lines=self._dwh_ensemble_note_lines(
+                        self._dwh_model_score_line("p50", entry["date_token"], "mask_p50")
+                    ),
+                    legend_key="ensemble_p50",
+                    raster_path=entry["p50"],
+                    alpha=0.26,
+                    status_key_override="dwh_ensemble_transfer",
+                )
+            )
+            singles.append(
+                _overlay_spec(
+                    entry=entry,
+                    safe_date=safe_date,
+                    figure_family_code="H",
+                    phase_or_track="phase3c_external_case_ensemble_comparison",
+                    model_names="opendrift_mask_p90",
+                    run_type="single_mask_p90_overlay",
+                    figure_slug="mask_p90_overlay",
+                    figure_title=f"DWH mask_p90 overlay | {entry['period_title']}",
+                    subtitle=f"Deepwater Horizon | thresholded mask_p90 vs observed date-composite mask | {entry['period_caption']}",
+                    interpretation="This figure shows the wider thresholded mask_p90 product against the observed DWH mask; mask_p90 remains support/comparison only." if not is_event else "This figure shows the wider thresholded mask_p90 event-corridor union against the observed DWH event corridor; mask_p90 remains support/comparison only.",
+                    notes="Built from stored DWH observation and thresholded mask_p90 rasters only.",
+                    note_lines=self._dwh_ensemble_note_lines(
+                        self._dwh_model_score_line("p90", entry["date_token"], "mask_p90")
+                    ),
+                    legend_key="ensemble_p90",
+                    raster_path=entry["p90"],
+                    alpha=0.22,
+                    status_key_override="dwh_ensemble_transfer",
+                )
+            )
+            singles.append(_dual_threshold_overlay_spec(entry, safe_date))
+            singles.append(
+                _overlay_spec(
+                    entry=entry,
+                    safe_date=safe_date,
+                    figure_family_code="I",
+                    phase_or_track="phase3c_dwh_pygnome_comparator",
+                    model_names="pygnome",
+                    run_type="single_pygnome_overlay",
+                    figure_slug="pygnome_footprint_overlay",
+                    figure_title=f"DWH PyGNOME footprint overlay | {entry['period_title']}",
+                    subtitle=f"Deepwater Horizon | PyGNOME footprint vs observed date-composite mask | {entry['period_caption']}",
+                    interpretation="This figure keeps the PyGNOME footprint visible as a comparator-only overlay against the observed DWH mask." if not is_event else "This figure keeps the PyGNOME event-corridor union visible as a comparator-only overlay against the observed DWH event corridor.",
+                    notes="Built from stored DWH observation and PyGNOME comparator rasters only.",
+                    note_lines=self._dwh_model_note_lines(
+                        self._dwh_model_score_line("pygnome", entry["date_token"], "PyGNOME footprint")
+                    ),
+                    legend_key="pygnome",
+                    raster_path=entry["pygnome"],
+                    alpha=0.24,
+                    status_key_override="dwh_crossmodel_comparator",
+                )
+            )
+        singles.extend(
+            [
+                self._track_spec(
+                    spec_id="dwh_track_deterministic",
+                    figure_family_code="J",
+                    case_id="CASE_DWH_RETRO_2010_72H",
+                    phase_or_track="phase3c_external_case_run",
+                    date_token="2010-05-20_to_2010-05-23",
+                    model_names="opendrift",
+                    run_type="single_trajectory",
+                    view_type="zoom",
+                    variant="paper",
+                    figure_slug="deterministic_trajectory",
+                    figure_title="DWH deterministic transport path",
+                    subtitle="Deepwater Horizon | 20-23 May 2010 | deterministic OpenDrift trajectory",
+                    interpretation="This figure gives the panel an intuitive picture of the deterministic transport path behind the separate DWH external transfer-validation case.",
+                    notes="Built from the stored DWH deterministic track NetCDF.",
+                    note_lines=note_lines_dwh_tracks,
+                    legend_keys=["deterministic_opendrift", "source_point"],
+                    renderer="track",
+                    track_path=det_track,
+                    model_kind="opendrift",
+                ),
+                self._track_spec(
+                    spec_id="dwh_track_ensemble",
+                    figure_family_code="J",
+                    case_id="CASE_DWH_RETRO_2010_72H",
+                    phase_or_track="phase3c_external_case_ensemble_comparison",
+                    date_token="2010-05-20_to_2010-05-23",
+                    model_names="opendrift",
+                    run_type="single_trajectory",
+                    view_type="zoom",
+                    variant="paper",
+                    figure_slug="ensemble_sampled_trajectory",
+                    figure_title="DWH sampled ensemble trajectories",
+                    subtitle="Deepwater Horizon | 20-23 May 2010 | sampled member centroids and mean path",
+                    interpretation="This figure shows how the DWH ensemble spreads around the main transport pathway while staying readable on the same readiness-gated forcing stack.",
+                    notes="Built from stored DWH ensemble track NetCDFs only.",
+                    note_lines=note_lines_dwh_tracks,
+                    legend_keys=["ensemble_member_path", "centroid_path", "source_point"],
+                    renderer="ensemble_track",
+                    track_paths=self._dwh_member_paths(),
+                ),
+                self._track_spec(
+                    spec_id="dwh_track_pygnome",
+                    figure_family_code="J",
+                    case_id="CASE_DWH_RETRO_2010_72H",
+                    phase_or_track="phase3c_dwh_pygnome_comparator",
+                    date_token="2010-05-20_to_2010-05-23",
+                    model_names="pygnome",
+                    run_type="single_trajectory",
+                    view_type="zoom",
+                    variant="paper",
+                    figure_slug="pygnome_trajectory",
+                    figure_title="DWH PyGNOME comparator trajectory",
+                    subtitle="Deepwater Horizon | 20-23 May 2010 | PyGNOME comparator trajectory",
+                    interpretation="This figure gives the panel a like-for-like PyGNOME trajectory picture while keeping PyGNOME as comparator-only against the observed DWH truth masks.",
+                    notes="Built from the stored DWH PyGNOME track NetCDF.",
+                    note_lines=note_lines_dwh_tracks,
+                    legend_keys=["pygnome", "source_point"],
+                    renderer="track",
+                    track_path=pygnome_track,
+                    model_kind="pygnome",
+                ),
+            ]
+        )
+        boards: list[dict[str, Any]] = [
+            self._board_spec(
+                spec_id="dwh_deterministic_board",
+                figure_family_code="G",
+                case_id="CASE_DWH_RETRO_2010_72H",
+                phase_or_track="phase3c_external_case_run",
+                date_token="2010-05-21_to_2010-05-23",
+                model_names="opendrift",
+                run_type="comparison_board",
+                figure_slug="daily_deterministic_footprint_overview_board",
+                figure_title="DWH deterministic footprint overview board | 24 h / 48 h / 72 h",
+                subtitle="Deepwater Horizon | daily deterministic footprint overlays | 24 h (2010-05-21), 48 h (2010-05-22), 72 h (2010-05-23)",
+                interpretation="This board keeps the C1 deterministic baseline legible across all three daily date-composite truth masks before the richer C2 and C3 support boards are introduced.",
+                notes="Board assembled from publication-grade single figures only.",
+                note_lines=[
+                    self._dwh_deterministic_score_line("2010-05-21", "24 h"),
+                    self._dwh_deterministic_score_line("2010-05-22", "48 h"),
+                    self._dwh_deterministic_score_line("2010-05-23", "72 h"),
+                ],
+                guide_bullets=[
+                    "Read left to right: deterministic footprint overlay at 24 h, 48 h, and 72 h.",
+                    "This board keeps C1 separate from the ensemble and PyGNOME support lanes.",
+                    self._format_fss_summary(self._dwh_deterministic_row("2010-05-21"), "24 h deterministic footprint"),
+                    self._format_fss_summary(self._dwh_deterministic_row("2010-05-22"), "48 h deterministic footprint"),
+                    self._format_fss_summary(self._dwh_deterministic_row("2010-05-23"), "72 h deterministic footprint"),
+                ],
+                caveat_line=_dwh_caveat_line(),
+                provenance_line=_dwh_provenance_line(),
+                panels=[
+                    {"panel_title": "24 h | 2010-05-21", "source_spec_id": "dwh_2010_05_21_deterministic_footprint_overlay"},
+                    {"panel_title": "48 h | 2010-05-22", "source_spec_id": "dwh_2010_05_22_deterministic_footprint_overlay"},
+                    {"panel_title": "72 h | 2010-05-23", "source_spec_id": "dwh_2010_05_23_deterministic_footprint_overlay"},
+                ],
+                recommended_for_main_defense=True,
+                status_key_override="dwh_deterministic_transfer",
+            ),
+            self._board_spec(
+                spec_id="dwh_24h_48h_72h_mask_p50_footprint_overview_board",
+                figure_family_code="H",
+                case_id="CASE_DWH_RETRO_2010_72H",
+                phase_or_track="phase3c_external_case_ensemble_comparison",
+                date_token="2010-05-21_to_2010-05-23",
+                model_names="opendrift",
+                run_type="comparison_board",
+                figure_slug="24h_48h_72h_mask_p50_footprint_overview_board",
+                figure_title="DWH mask_p50 footprint overview board | 24 h / 48 h / 72 h",
+                subtitle=(
+                    "Deepwater Horizon | daily mask_p50 footprint overview scored against official public "
+                    "observation-derived DWH date-composite masks | 24 h (2010-05-21), 48 h (2010-05-22), 72 h (2010-05-23)"
+                ),
+                interpretation="This board keeps the preferred `mask_p50` extension legible across the three daily DWH date-composite masks while keeping the official observation-derived masks as the scoring reference.",
+                notes="Board assembled from publication-grade single figures only; all displayed scores reuse stored daily DWH rows against the official public observation-derived DWH date-composite masks.",
+                note_lines=_overview_board_note_lines(
+                    "This daily overview isolates the preferred `mask_p50` footprint extension without adding deterministic or PyGNOME rows.",
+                    self._dwh_model_score_line("p50", "2010-05-21", "24 h mask_p50"),
+                    self._dwh_model_score_line("p50", "2010-05-22", "48 h mask_p50"),
+                    self._dwh_model_score_line("p50", "2010-05-23", "72 h mask_p50"),
+                ),
+                guide_bullets=[
+                    "Read left to right: `mask_p50` footprint overlay at 24 h, 48 h, and 72 h.",
+                    _official_scoring_reference_line(),
+                    self._format_fss_summary(self._dwh_model_row("p50", "2010-05-21"), "24 h mask_p50"),
+                    self._format_fss_summary(self._dwh_model_row("p50", "2010-05-22"), "48 h mask_p50"),
+                    self._format_fss_summary(self._dwh_model_row("p50", "2010-05-23"), "72 h mask_p50"),
+                ],
+                caveat_line=_dwh_caveat_line(),
+                provenance_line=_dwh_provenance_line(),
+                panels=[
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "24 h | 2010-05-21",
+                            self._dwh_model_row("p50", "2010-05-21"),
+                            "mask_p50",
+                        ),
+                        "source_spec_id": "dwh_2010_05_21_mask_p50_overlay",
+                    },
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "48 h | 2010-05-22",
+                            self._dwh_model_row("p50", "2010-05-22"),
+                            "mask_p50",
+                        ),
+                        "source_spec_id": "dwh_2010_05_22_mask_p50_overlay",
+                    },
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "72 h | 2010-05-23",
+                            self._dwh_model_row("p50", "2010-05-23"),
+                            "mask_p50",
+                        ),
+                        "source_spec_id": "dwh_2010_05_23_mask_p50_overlay",
+                    },
+                ],
+                recommended_for_main_defense=False,
+                recommended_for_paper=True,
+                status_key_override="dwh_ensemble_transfer",
+            ),
+            self._board_spec(
+                spec_id="dwh_24h_48h_72h_mask_p90_footprint_overview_board",
+                figure_family_code="H",
+                case_id="CASE_DWH_RETRO_2010_72H",
+                phase_or_track="phase3c_external_case_ensemble_comparison",
+                date_token="2010-05-21_to_2010-05-23",
+                model_names="opendrift",
+                run_type="comparison_board",
+                figure_slug="24h_48h_72h_mask_p90_footprint_overview_board",
+                figure_title="DWH mask_p90 footprint overview board | 24 h / 48 h / 72 h",
+                subtitle=(
+                    "Deepwater Horizon | daily mask_p90 footprint overview scored against official public "
+                    "observation-derived DWH date-composite masks | 24 h (2010-05-21), 48 h (2010-05-22), 72 h (2010-05-23)"
+                ),
+                interpretation="This board keeps the support-only `mask_p90` extension legible across the three daily DWH date-composite masks while keeping the official observation-derived masks as the scoring reference.",
+                notes="Board assembled from publication-grade single figures only; all displayed scores reuse stored daily DWH rows against the official public observation-derived DWH date-composite masks.",
+                note_lines=_overview_board_note_lines(
+                    "This daily overview isolates the support/comparison-only `mask_p90` footprint without adding deterministic or PyGNOME rows.",
+                    self._dwh_model_score_line("p90", "2010-05-21", "24 h mask_p90"),
+                    self._dwh_model_score_line("p90", "2010-05-22", "48 h mask_p90"),
+                    self._dwh_model_score_line("p90", "2010-05-23", "72 h mask_p90"),
+                ),
+                guide_bullets=[
+                    "Read left to right: `mask_p90` footprint overlay at 24 h, 48 h, and 72 h.",
+                    _official_scoring_reference_line(),
+                    self._format_fss_summary(self._dwh_model_row("p90", "2010-05-21"), "24 h mask_p90"),
+                    self._format_fss_summary(self._dwh_model_row("p90", "2010-05-22"), "48 h mask_p90"),
+                    self._format_fss_summary(self._dwh_model_row("p90", "2010-05-23"), "72 h mask_p90"),
+                ],
+                caveat_line=_dwh_caveat_line(),
+                provenance_line=_dwh_provenance_line(),
+                panels=[
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "24 h | 2010-05-21",
+                            self._dwh_model_row("p90", "2010-05-21"),
+                            "mask_p90",
+                        ),
+                        "source_spec_id": "dwh_2010_05_21_mask_p90_overlay",
+                    },
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "48 h | 2010-05-22",
+                            self._dwh_model_row("p90", "2010-05-22"),
+                            "mask_p90",
+                        ),
+                        "source_spec_id": "dwh_2010_05_22_mask_p90_overlay",
+                    },
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "72 h | 2010-05-23",
+                            self._dwh_model_row("p90", "2010-05-23"),
+                            "mask_p90",
+                        ),
+                        "source_spec_id": "dwh_2010_05_23_mask_p90_overlay",
+                    },
+                ],
+                recommended_for_main_defense=False,
+                recommended_for_paper=True,
+                status_key_override="dwh_ensemble_transfer",
+            ),
+            self._board_spec(
+                spec_id="dwh_24h_48h_72h_mask_p50_mask_p90_dual_threshold_overview_board",
+                figure_family_code="H",
+                case_id="CASE_DWH_RETRO_2010_72H",
+                phase_or_track="phase3c_external_case_ensemble_comparison",
+                date_token="2010-05-21_to_2010-05-23",
+                model_names="opendrift",
+                run_type="comparison_board",
+                figure_slug="24h_48h_72h_mask_p50_mask_p90_dual_threshold_overview_board",
+                figure_title="DWH mask_p50 and mask_p90 dual-threshold overview board | 24 h / 48 h / 72 h",
+                subtitle=(
+                    "Deepwater Horizon | daily exact dual-threshold `mask_p50` and `mask_p90` overview scored against "
+                    "official public observation-derived DWH date-composite masks | 24 h (2010-05-21), 48 h (2010-05-22), "
+                    "72 h (2010-05-23)"
+                ),
+                interpretation="This board keeps the exact `mask_p50` and `mask_p90` thresholds together across the three daily DWH masks while making clear that the official observation-derived masks remain the scoring reference and no combined score is implied.",
+                notes="Board assembled from publication-grade single figures only; all displayed scores reuse stored daily DWH rows against the official public observation-derived DWH date-composite masks, and no combined dual-threshold FSS is invented.",
+                note_lines=_overview_board_note_lines(
+                    "This exact dual-threshold daily overview keeps `mask_p50` and `mask_p90` together without inventing a combined score.",
+                    self._dwh_model_score_line("p50", "2010-05-21", "24 h mask_p50"),
+                    self._dwh_model_score_line("p90", "2010-05-21", "24 h mask_p90"),
+                    self._dwh_model_score_line("p50", "2010-05-22", "48 h mask_p50"),
+                    self._dwh_model_score_line("p90", "2010-05-22", "48 h mask_p90"),
+                    self._dwh_model_score_line("p50", "2010-05-23", "72 h mask_p50"),
+                    self._dwh_model_score_line("p90", "2010-05-23", "72 h mask_p90"),
+                ),
+                guide_bullets=[
+                    "Read left to right: the exact dual-threshold `mask_p50` and `mask_p90` overlay at 24 h, 48 h, and 72 h.",
+                    _official_scoring_reference_line(),
+                    "No combined dual-threshold FSS is reported; each date keeps the stored `mask_p50` and `mask_p90` rows separate.",
+                    "24 h means: mask_p50 "
+                    + self._format_score_value(self._row_mean_fss(self._dwh_model_row("p50", "2010-05-21")))
+                    + "; mask_p90 "
+                    + self._format_score_value(self._row_mean_fss(self._dwh_model_row("p90", "2010-05-21")))
+                    + ".",
+                    "48 h means: mask_p50 "
+                    + self._format_score_value(self._row_mean_fss(self._dwh_model_row("p50", "2010-05-22")))
+                    + "; mask_p90 "
+                    + self._format_score_value(self._row_mean_fss(self._dwh_model_row("p90", "2010-05-22")))
+                    + ".",
+                ],
+                caveat_line=_dwh_caveat_line(),
+                provenance_line=_dwh_provenance_line(),
+                panels=[
+                    {
+                        "panel_title": _dual_threshold_panel_title("24 h | 2010-05-21", "2010-05-21"),
+                        "source_spec_id": "dwh_2010_05_21_mask_p50_mask_p90_dual_threshold_overlay",
+                    },
+                    {
+                        "panel_title": _dual_threshold_panel_title("48 h | 2010-05-22", "2010-05-22"),
+                        "source_spec_id": "dwh_2010_05_22_mask_p50_mask_p90_dual_threshold_overlay",
+                    },
+                    {
+                        "panel_title": _dual_threshold_panel_title("72 h | 2010-05-23", "2010-05-23"),
+                        "source_spec_id": "dwh_2010_05_23_mask_p50_mask_p90_dual_threshold_overlay",
+                    },
+                ],
+                recommended_for_main_defense=False,
+                recommended_for_paper=True,
+                status_key_override="dwh_ensemble_transfer",
+            ),
+            self._board_spec(
+                spec_id="dwh_24h_48h_72h_mask_p50_vs_pygnome_overview_board",
+                figure_family_code="I",
+                case_id="CASE_DWH_RETRO_2010_72H",
+                phase_or_track="phase3c_dwh_pygnome_comparator",
+                date_token="2010-05-21_to_2010-05-23",
+                model_names="opendrift_vs_pygnome",
+                run_type="comparison_board",
+                figure_slug="24h_48h_72h_mask_p50_vs_pygnome_overview_board",
+                figure_title="DWH mask_p50 vs PyGNOME overview board | 24 h / 48 h / 72 h",
+                subtitle=(
+                    "Deepwater Horizon | top-row `mask_p50`, bottom-row PyGNOME, all scored against official public "
+                    "observation-derived DWH date-composite masks | 24 h (2010-05-21), 48 h (2010-05-22), 72 h (2010-05-23)"
+                ),
+                interpretation="This board keeps the preferred `mask_p50` extension on the top row and the PyGNOME comparator on the bottom row while preserving the official DWH observation-derived masks as the scoring reference.",
+                notes="Board assembled from publication-grade single figures only; all displayed scores reuse stored daily DWH rows against the official public observation-derived DWH date-composite masks, and PyGNOME remains comparator-only.",
+                note_lines=_overview_board_note_lines(
+                    "Top row = `mask_p50`; bottom row = PyGNOME comparator-only. The official public observation-derived DWH masks remain the scoring reference for all displayed FSS values.",
+                    self._dwh_model_score_line("p50", "2010-05-21", "24 h mask_p50"),
+                    self._dwh_model_score_line("pygnome", "2010-05-21", "24 h PyGNOME"),
+                    self._dwh_model_score_line("p50", "2010-05-22", "48 h mask_p50"),
+                    self._dwh_model_score_line("pygnome", "2010-05-22", "48 h PyGNOME"),
+                    self._dwh_model_score_line("p50", "2010-05-23", "72 h mask_p50"),
+                    self._dwh_model_score_line("pygnome", "2010-05-23", "72 h PyGNOME"),
+                ),
+                guide_bullets=[
+                    "Read top row first: `mask_p50` at 24 h, 48 h, and 72 h. Then read the bottom row: PyGNOME at the same three dates.",
+                    _official_scoring_reference_line(),
+                    "PyGNOME remains comparator-only and never replaces the DWH observed masks as truth.",
+                    self._format_fss_summary(self._dwh_model_row("p50", "2010-05-21"), "24 h mask_p50"),
+                    self._format_fss_summary(self._dwh_model_row("pygnome", "2010-05-21"), "24 h PyGNOME"),
+                ],
+                caveat_line=_dwh_caveat_line(),
+                provenance_line=_dwh_provenance_line(),
+                panels=[
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "24 h | 2010-05-21",
+                            self._dwh_model_row("p50", "2010-05-21"),
+                            "mask_p50",
+                        ),
+                        "source_spec_id": "dwh_2010_05_21_mask_p50_overlay",
+                    },
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "48 h | 2010-05-22",
+                            self._dwh_model_row("p50", "2010-05-22"),
+                            "mask_p50",
+                        ),
+                        "source_spec_id": "dwh_2010_05_22_mask_p50_overlay",
+                    },
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "72 h | 2010-05-23",
+                            self._dwh_model_row("p50", "2010-05-23"),
+                            "mask_p50",
+                        ),
+                        "source_spec_id": "dwh_2010_05_23_mask_p50_overlay",
+                    },
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "24 h | 2010-05-21",
+                            self._dwh_model_row("pygnome", "2010-05-21"),
+                            "PyGNOME",
+                        ),
+                        "source_spec_id": "dwh_2010_05_21_pygnome_footprint_overlay",
+                    },
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "48 h | 2010-05-22",
+                            self._dwh_model_row("pygnome", "2010-05-22"),
+                            "PyGNOME",
+                        ),
+                        "source_spec_id": "dwh_2010_05_22_pygnome_footprint_overlay",
+                    },
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "72 h | 2010-05-23",
+                            self._dwh_model_row("pygnome", "2010-05-23"),
+                            "PyGNOME",
+                        ),
+                        "source_spec_id": "dwh_2010_05_23_pygnome_footprint_overlay",
+                    },
+                ],
+                recommended_for_main_defense=False,
+                recommended_for_paper=True,
+                status_key_override="dwh_crossmodel_comparator",
+            ),
+            self._board_spec(
+                spec_id="dwh_24h_48h_72h_mask_p90_vs_pygnome_overview_board",
+                figure_family_code="I",
+                case_id="CASE_DWH_RETRO_2010_72H",
+                phase_or_track="phase3c_dwh_pygnome_comparator",
+                date_token="2010-05-21_to_2010-05-23",
+                model_names="opendrift_vs_pygnome",
+                run_type="comparison_board",
+                figure_slug="24h_48h_72h_mask_p90_vs_pygnome_overview_board",
+                figure_title="DWH mask_p90 vs PyGNOME overview board | 24 h / 48 h / 72 h",
+                subtitle=(
+                    "Deepwater Horizon | top-row `mask_p90`, bottom-row PyGNOME, all scored against official public "
+                    "observation-derived DWH date-composite masks | 24 h (2010-05-21), 48 h (2010-05-22), 72 h (2010-05-23)"
+                ),
+                interpretation="This board keeps the support-only `mask_p90` extension on the top row and the PyGNOME comparator on the bottom row while preserving the official DWH observation-derived masks as the scoring reference.",
+                notes="Board assembled from publication-grade single figures only; all displayed scores reuse stored daily DWH rows against the official public observation-derived DWH date-composite masks, and PyGNOME remains comparator-only.",
+                note_lines=_overview_board_note_lines(
+                    "Top row = `mask_p90`; bottom row = PyGNOME comparator-only. The official public observation-derived DWH masks remain the scoring reference for all displayed FSS values.",
+                    self._dwh_model_score_line("p90", "2010-05-21", "24 h mask_p90"),
+                    self._dwh_model_score_line("pygnome", "2010-05-21", "24 h PyGNOME"),
+                    self._dwh_model_score_line("p90", "2010-05-22", "48 h mask_p90"),
+                    self._dwh_model_score_line("pygnome", "2010-05-22", "48 h PyGNOME"),
+                    self._dwh_model_score_line("p90", "2010-05-23", "72 h mask_p90"),
+                    self._dwh_model_score_line("pygnome", "2010-05-23", "72 h PyGNOME"),
+                ),
+                guide_bullets=[
+                    "Read top row first: `mask_p90` at 24 h, 48 h, and 72 h. Then read the bottom row: PyGNOME at the same three dates.",
+                    _official_scoring_reference_line(),
+                    "PyGNOME remains comparator-only and never replaces the DWH observed masks as truth.",
+                    self._format_fss_summary(self._dwh_model_row("p90", "2010-05-21"), "24 h mask_p90"),
+                    self._format_fss_summary(self._dwh_model_row("pygnome", "2010-05-21"), "24 h PyGNOME"),
+                ],
+                caveat_line=_dwh_caveat_line(),
+                provenance_line=_dwh_provenance_line(),
+                panels=[
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "24 h | 2010-05-21",
+                            self._dwh_model_row("p90", "2010-05-21"),
+                            "mask_p90",
+                        ),
+                        "source_spec_id": "dwh_2010_05_21_mask_p90_overlay",
+                    },
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "48 h | 2010-05-22",
+                            self._dwh_model_row("p90", "2010-05-22"),
+                            "mask_p90",
+                        ),
+                        "source_spec_id": "dwh_2010_05_22_mask_p90_overlay",
+                    },
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "72 h | 2010-05-23",
+                            self._dwh_model_row("p90", "2010-05-23"),
+                            "mask_p90",
+                        ),
+                        "source_spec_id": "dwh_2010_05_23_mask_p90_overlay",
+                    },
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "24 h | 2010-05-21",
+                            self._dwh_model_row("pygnome", "2010-05-21"),
+                            "PyGNOME",
+                        ),
+                        "source_spec_id": "dwh_2010_05_21_pygnome_footprint_overlay",
+                    },
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "48 h | 2010-05-22",
+                            self._dwh_model_row("pygnome", "2010-05-22"),
+                            "PyGNOME",
+                        ),
+                        "source_spec_id": "dwh_2010_05_22_pygnome_footprint_overlay",
+                    },
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "72 h | 2010-05-23",
+                            self._dwh_model_row("pygnome", "2010-05-23"),
+                            "PyGNOME",
+                        ),
+                        "source_spec_id": "dwh_2010_05_23_pygnome_footprint_overlay",
+                    },
+                ],
+                recommended_for_main_defense=False,
+                recommended_for_paper=True,
+                status_key_override="dwh_crossmodel_comparator",
+            ),
+            self._board_spec(
+                spec_id="dwh_24h_48h_72h_mask_p50_mask_p90_dual_threshold_vs_pygnome_overview_board",
+                figure_family_code="I",
+                case_id="CASE_DWH_RETRO_2010_72H",
+                phase_or_track="phase3c_dwh_pygnome_comparator",
+                date_token="2010-05-21_to_2010-05-23",
+                model_names="opendrift_vs_pygnome",
+                run_type="comparison_board",
+                figure_slug="24h_48h_72h_mask_p50_mask_p90_dual_threshold_vs_pygnome_overview_board",
+                figure_title="DWH mask_p50 and mask_p90 dual-threshold vs PyGNOME overview board | 24 h / 48 h / 72 h",
+                subtitle=(
+                    "Deepwater Horizon | top-row exact dual-threshold `mask_p50` and `mask_p90`, bottom-row PyGNOME, all scored "
+                    "against official public observation-derived DWH date-composite masks | 24 h (2010-05-21), "
+                    "48 h (2010-05-22), 72 h (2010-05-23)"
+                ),
+                interpretation="This board keeps the exact dual-threshold OpenDrift view on the top row and the PyGNOME comparator on the bottom row while preserving the official DWH observation-derived masks as the scoring reference and avoiding any invented combined score.",
+                notes="Board assembled from publication-grade single figures only; all displayed scores reuse stored daily DWH rows against the official public observation-derived DWH date-composite masks, PyGNOME remains comparator-only, and no combined dual-threshold FSS is invented.",
+                note_lines=_overview_board_note_lines(
+                    "Top row = exact dual-threshold `mask_p50` and `mask_p90`; bottom row = PyGNOME comparator-only. No combined dual-threshold FSS is invented.",
+                    self._dwh_model_score_line("p50", "2010-05-21", "24 h mask_p50"),
+                    self._dwh_model_score_line("p90", "2010-05-21", "24 h mask_p90"),
+                    self._dwh_model_score_line("pygnome", "2010-05-21", "24 h PyGNOME"),
+                    self._dwh_model_score_line("p50", "2010-05-22", "48 h mask_p50"),
+                    self._dwh_model_score_line("p90", "2010-05-22", "48 h mask_p90"),
+                    self._dwh_model_score_line("pygnome", "2010-05-22", "48 h PyGNOME"),
+                    self._dwh_model_score_line("p50", "2010-05-23", "72 h mask_p50"),
+                    self._dwh_model_score_line("p90", "2010-05-23", "72 h mask_p90"),
+                    self._dwh_model_score_line("pygnome", "2010-05-23", "72 h PyGNOME"),
+                ),
+                guide_bullets=[
+                    "Read top row first: exact dual-threshold `mask_p50` and `mask_p90` at 24 h, 48 h, and 72 h. Then read the bottom row: PyGNOME at the same three dates.",
+                    _official_scoring_reference_line(),
+                    "No combined dual-threshold FSS is reported; each date keeps the stored `mask_p50` and `mask_p90` rows separate on the top row.",
+                    self._format_fss_summary(self._dwh_model_row("pygnome", "2010-05-21"), "24 h PyGNOME"),
+                    self._format_fss_summary(self._dwh_model_row("pygnome", "2010-05-22"), "48 h PyGNOME"),
+                ],
+                caveat_line=_dwh_caveat_line(),
+                provenance_line=_dwh_provenance_line(),
+                panels=[
+                    {
+                        "panel_title": _dual_threshold_panel_title("24 h | 2010-05-21", "2010-05-21"),
+                        "source_spec_id": "dwh_2010_05_21_mask_p50_mask_p90_dual_threshold_overlay",
+                    },
+                    {
+                        "panel_title": _dual_threshold_panel_title("48 h | 2010-05-22", "2010-05-22"),
+                        "source_spec_id": "dwh_2010_05_22_mask_p50_mask_p90_dual_threshold_overlay",
+                    },
+                    {
+                        "panel_title": _dual_threshold_panel_title("72 h | 2010-05-23", "2010-05-23"),
+                        "source_spec_id": "dwh_2010_05_23_mask_p50_mask_p90_dual_threshold_overlay",
+                    },
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "24 h | 2010-05-21",
+                            self._dwh_model_row("pygnome", "2010-05-21"),
+                            "PyGNOME",
+                        ),
+                        "source_spec_id": "dwh_2010_05_21_pygnome_footprint_overlay",
+                    },
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "48 h | 2010-05-22",
+                            self._dwh_model_row("pygnome", "2010-05-22"),
+                            "PyGNOME",
+                        ),
+                        "source_spec_id": "dwh_2010_05_22_pygnome_footprint_overlay",
+                    },
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "72 h | 2010-05-23",
+                            self._dwh_model_row("pygnome", "2010-05-23"),
+                            "PyGNOME",
+                        ),
+                        "source_spec_id": "dwh_2010_05_23_pygnome_footprint_overlay",
+                    },
+                ],
+                recommended_for_main_defense=False,
+                recommended_for_paper=True,
+                status_key_override="dwh_crossmodel_comparator",
+            ),
+            self._board_spec(
+                spec_id="dwh_24h_48h_72h_mask_p50_mask_p90_vs_pygnome_three_row_overview_board",
+                figure_family_code="I",
+                case_id="CASE_DWH_RETRO_2010_72H",
+                phase_or_track="phase3c_dwh_pygnome_comparator",
+                date_token="2010-05-21_to_2010-05-23",
+                model_names="opendrift_vs_pygnome",
+                run_type="comparison_board",
+                figure_slug="24h_48h_72h_mask_p50_mask_p90_vs_pygnome_three_row_overview_board",
+                figure_title="DWH mask_p50 vs mask_p90 vs PyGNOME three-row overview board | 24 h / 48 h / 72 h",
+                subtitle=(
+                    "Deepwater Horizon | top-row `mask_p50`, middle-row `mask_p90`, bottom-row PyGNOME, all scored "
+                    "against official public observation-derived DWH date-composite masks | 24 h (2010-05-21), "
+                    "48 h (2010-05-22), 72 h (2010-05-23)"
+                ),
+                interpretation=(
+                    "This board keeps `mask_p50`, `mask_p90`, and PyGNOME on separate daily rows so the preferred "
+                    "probabilistic extension, the support-only threshold, and the comparator-only model can be read "
+                    "against the same official DWH observation-derived scoring reference."
+                ),
+                notes=(
+                    "Board assembled from publication-grade single figures only; all displayed scores reuse stored "
+                    "daily DWH rows against the official public observation-derived DWH date-composite masks, with "
+                    "`mask_p50` preferred, `mask_p90` support-only, and PyGNOME comparator-only."
+                ),
+                note_lines=_overview_board_note_lines(
+                    "Top row = `mask_p50`; middle row = `mask_p90`; bottom row = PyGNOME comparator-only. The official public observation-derived DWH masks remain the scoring reference for all displayed FSS values.",
+                    self._dwh_model_score_line("p50", "2010-05-21", "24 h mask_p50"),
+                    self._dwh_model_score_line("p90", "2010-05-21", "24 h mask_p90"),
+                    self._dwh_model_score_line("pygnome", "2010-05-21", "24 h PyGNOME"),
+                    self._dwh_model_score_line("p50", "2010-05-22", "48 h mask_p50"),
+                    self._dwh_model_score_line("p90", "2010-05-22", "48 h mask_p90"),
+                    self._dwh_model_score_line("pygnome", "2010-05-22", "48 h PyGNOME"),
+                    self._dwh_model_score_line("p50", "2010-05-23", "72 h mask_p50"),
+                    self._dwh_model_score_line("p90", "2010-05-23", "72 h mask_p90"),
+                    self._dwh_model_score_line("pygnome", "2010-05-23", "72 h PyGNOME"),
+                ),
+                guide_bullets=[
+                    "Read rows from top to bottom: `mask_p50`, then `mask_p90`, then PyGNOME, while columns stay fixed at 24 h, 48 h, and 72 h.",
+                    _official_scoring_reference_line(),
+                    "`mask_p50` remains the preferred probabilistic extension, `mask_p90` remains support/comparison only, and PyGNOME remains comparator-only.",
+                    "24 h means: mask_p50 "
+                    + self._format_score_value(self._row_mean_fss(self._dwh_model_row("p50", "2010-05-21")))
+                    + "; mask_p90 "
+                    + self._format_score_value(self._row_mean_fss(self._dwh_model_row("p90", "2010-05-21")))
+                    + "; PyGNOME "
+                    + self._format_score_value(self._row_mean_fss(self._dwh_model_row("pygnome", "2010-05-21")))
+                    + ".",
+                    "48 h means: mask_p50 "
+                    + self._format_score_value(self._row_mean_fss(self._dwh_model_row("p50", "2010-05-22")))
+                    + "; mask_p90 "
+                    + self._format_score_value(self._row_mean_fss(self._dwh_model_row("p90", "2010-05-22")))
+                    + "; PyGNOME "
+                    + self._format_score_value(self._row_mean_fss(self._dwh_model_row("pygnome", "2010-05-22")))
+                    + ".",
+                ],
+                caveat_line=_dwh_caveat_line(),
+                provenance_line=_dwh_provenance_line(),
+                panels=[
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "24 h | 2010-05-21",
+                            self._dwh_model_row("p50", "2010-05-21"),
+                            "mask_p50",
+                        ),
+                        "source_spec_id": "dwh_2010_05_21_mask_p50_overlay",
+                    },
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "48 h | 2010-05-22",
+                            self._dwh_model_row("p50", "2010-05-22"),
+                            "mask_p50",
+                        ),
+                        "source_spec_id": "dwh_2010_05_22_mask_p50_overlay",
+                    },
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "72 h | 2010-05-23",
+                            self._dwh_model_row("p50", "2010-05-23"),
+                            "mask_p50",
+                        ),
+                        "source_spec_id": "dwh_2010_05_23_mask_p50_overlay",
+                    },
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "24 h | 2010-05-21",
+                            self._dwh_model_row("p90", "2010-05-21"),
+                            "mask_p90",
+                        ),
+                        "source_spec_id": "dwh_2010_05_21_mask_p90_overlay",
+                    },
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "48 h | 2010-05-22",
+                            self._dwh_model_row("p90", "2010-05-22"),
+                            "mask_p90",
+                        ),
+                        "source_spec_id": "dwh_2010_05_22_mask_p90_overlay",
+                    },
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "72 h | 2010-05-23",
+                            self._dwh_model_row("p90", "2010-05-23"),
+                            "mask_p90",
+                        ),
+                        "source_spec_id": "dwh_2010_05_23_mask_p90_overlay",
+                    },
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "24 h | 2010-05-21",
+                            self._dwh_model_row("pygnome", "2010-05-21"),
+                            "PyGNOME",
+                        ),
+                        "source_spec_id": "dwh_2010_05_21_pygnome_footprint_overlay",
+                    },
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "48 h | 2010-05-22",
+                            self._dwh_model_row("pygnome", "2010-05-22"),
+                            "PyGNOME",
+                        ),
+                        "source_spec_id": "dwh_2010_05_22_pygnome_footprint_overlay",
+                    },
+                    {
+                        "panel_title": _daily_mean_panel_title(
+                            "72 h | 2010-05-23",
+                            self._dwh_model_row("pygnome", "2010-05-23"),
+                            "PyGNOME",
+                        ),
+                        "source_spec_id": "dwh_2010_05_23_pygnome_footprint_overlay",
+                    },
+                ],
+                recommended_for_main_defense=False,
+                recommended_for_paper=True,
+                status_key_override="dwh_crossmodel_comparator",
+            ),
+            self._board_spec(
+                spec_id="dwh_trajectory_board",
+                figure_family_code="J",
+                case_id="CASE_DWH_RETRO_2010_72H",
+                phase_or_track="phase3c_external_case_run",
+                date_token="2010-05-20_to_2010-05-23",
+                model_names="opendrift_vs_pygnome",
+                run_type="trajectory_board",
+                figure_slug="trajectory_board",
+                figure_title="DWH trajectory publication board",
+                subtitle="Deepwater Horizon | 20-23 May 2010 | deterministic, ensemble, and PyGNOME trajectories",
+                interpretation="This board is appendix/support material for the separate DWH external transfer-validation case and explains transport path before score-based truth comparisons.",
+                notes="Board assembled from publication-grade trajectory figures only.",
+                note_lines=note_lines_dwh_tracks,
+                panels=[
+                    {"panel_title": "Deterministic path", "source_spec_id": "dwh_track_deterministic"},
+                    {"panel_title": "Sampled ensemble", "source_spec_id": "dwh_track_ensemble"},
+                    {"panel_title": "PyGNOME comparator path", "source_spec_id": "dwh_track_pygnome"},
+                ],
+                recommended_for_main_defense=False,
+            ),
+        ]
+        for entry in [*daily_cases, event_case]:
+            safe_date = _safe_token(entry["date_token"])
+            is_event = entry["date_token"] == event_case["date_token"]
+            boards.append(
+                self._board_spec(
+                    spec_id=f"dwh_{safe_date}_observed_det_p50_p90_board",
+                    figure_family_code="H",
+                    case_id="CASE_DWH_RETRO_2010_72H",
+                    phase_or_track="phase3c_external_case_ensemble_comparison",
+                    date_token=entry["date_token"],
+                    model_names="opendrift",
+                    run_type="comparison_board",
+                    figure_slug="observed_deterministic_mask_p50_mask_p90_board",
+                    figure_title=f"DWH observed, deterministic, mask_p50, and mask_p90 | {entry['period_title']}",
+                    subtitle=f"Deepwater Horizon | deterministic baseline plus C2 threshold masks | {entry['period_caption']}",
+                    interpretation="This board keeps the observed truth mask, deterministic baseline, mask_p50 extension, and mask_p90 support mask on one page without relabeling any product semantics.",
+                    notes="Board assembled from publication-grade single figures only.",
+                    note_lines=[
+                        self._dwh_deterministic_score_line(entry["date_token"], "deterministic footprint"),
+                        self._dwh_model_score_line("p50", entry["date_token"], "mask_p50"),
+                        self._dwh_model_score_line("p90", entry["date_token"], "mask_p90"),
+                    ],
+                    guide_bullets=[
+                        "Read left to right: observed truth context, deterministic footprint overlay, mask_p50 overlay, then mask_p90 overlay.",
+                        "Deterministic remains the clean baseline; mask_p50 is the preferred probabilistic extension; mask_p90 stays support/comparison only.",
+                        self._format_fss_summary(self._dwh_deterministic_row(entry["date_token"]), "deterministic footprint"),
+                        self._format_fss_summary(self._dwh_model_row("p50", entry["date_token"]), "mask_p50"),
+                        self._format_fss_summary(self._dwh_model_row("p90", entry["date_token"]), "mask_p90"),
+                    ],
+                    caveat_line=_dwh_caveat_line(),
+                    provenance_line=_dwh_provenance_line(),
+                    panels=[
+                        {"panel_title": entry["panel_label"], "source_spec_id": f"dwh_{safe_date}_observation_truth_context"},
+                        {"panel_title": "deterministic footprint", "source_spec_id": f"dwh_{safe_date}_deterministic_footprint_overlay"},
+                        {"panel_title": "mask_p50", "source_spec_id": f"dwh_{safe_date}_mask_p50_overlay"},
+                        {"panel_title": "mask_p90", "source_spec_id": f"dwh_{safe_date}_mask_p90_overlay"},
+                    ],
+                    recommended_for_main_defense=is_event,
+                    status_key_override="dwh_ensemble_transfer",
+                )
+            )
+            boards.append(
+                self._board_spec(
+                    spec_id=f"dwh_{safe_date}_observed_det_p50_pygnome_board",
+                    figure_family_code="I",
+                    case_id="CASE_DWH_RETRO_2010_72H",
+                    phase_or_track="phase3c_dwh_pygnome_comparator",
+                    date_token=entry["date_token"],
+                    model_names="opendrift_vs_pygnome",
+                    run_type="comparison_board",
+                    figure_slug="observed_deterministic_mask_p50_pygnome_board",
+                    figure_title=f"DWH observed, deterministic, mask_p50, and PyGNOME | {entry['period_title']}",
+                    subtitle=f"Deepwater Horizon | truth context plus OpenDrift and PyGNOME comparator views | {entry['period_caption']}",
+                    interpretation="This board keeps the observed DWH mask as truth while showing the deterministic baseline, the preferred mask_p50 extension, and the PyGNOME comparator on the same frozen case definition.",
+                    notes="Board assembled from publication-grade single figures only.",
+                    note_lines=[
+                        self._dwh_deterministic_score_line(entry["date_token"], "deterministic footprint"),
+                        self._dwh_model_score_line("p50", entry["date_token"], "mask_p50"),
+                        self._dwh_model_score_line("pygnome", entry["date_token"], "PyGNOME footprint"),
+                    ],
+                    guide_bullets=[
+                        "Read clockwise: observed truth context, deterministic footprint overlay, mask_p50 overlay, then the PyGNOME comparator overlay.",
+                        "Observed DWH masks stay truth; mask_p50 is the preferred probabilistic extension; PyGNOME remains comparator-only.",
+                        self._format_fss_summary(self._dwh_deterministic_row(entry["date_token"]), "deterministic footprint"),
+                        self._format_fss_summary(self._dwh_model_row("p50", entry["date_token"]), "mask_p50"),
+                        self._format_fss_summary(self._dwh_model_row("pygnome", entry["date_token"]), "PyGNOME footprint"),
+                    ],
+                    caveat_line=_dwh_caveat_line(),
+                    provenance_line=_dwh_provenance_line(),
+                    panels=[
+                        {"panel_title": entry["panel_label"], "source_spec_id": f"dwh_{safe_date}_observation_truth_context"},
+                        {"panel_title": "deterministic footprint", "source_spec_id": f"dwh_{safe_date}_deterministic_footprint_overlay"},
+                        {"panel_title": "mask_p50", "source_spec_id": f"dwh_{safe_date}_mask_p50_overlay"},
+                        {"panel_title": "PyGNOME footprint", "source_spec_id": f"dwh_{safe_date}_pygnome_footprint_overlay"},
+                    ],
+                    recommended_for_main_defense=is_event,
+                    status_key_override="dwh_crossmodel_comparator",
+                )
+            )
+        boards.append(
+            self._board_spec(
+                spec_id="dwh_event_deterministic_vs_pygnome_board",
+                figure_family_code="I",
+                case_id="CASE_DWH_RETRO_2010_72H",
+                phase_or_track="phase3c_dwh_pygnome_comparator",
+                date_token="2010-05-21_to_2010-05-23",
+                model_names="opendrift_vs_pygnome",
+                run_type="comparison_board",
+                figure_slug="eventcorridor_deterministic_vs_pygnome_board",
+                figure_title="DWH deterministic footprint versus PyGNOME | event corridor | 2010-05-21_to_2010-05-23",
+                subtitle="Deepwater Horizon | event-corridor deterministic baseline versus PyGNOME comparator | event corridor (2010-05-21_to_2010-05-23)",
+                interpretation="This support board isolates the deterministic baseline and the PyGNOME comparator against the same observed DWH event-corridor truth mask.",
+                notes="Board assembled from publication-grade single figures only.",
+                note_lines=[
+                    self._dwh_event_score_line("deterministic", "deterministic footprint"),
+                    self._dwh_event_score_line("pygnome", "PyGNOME footprint"),
+                ],
+                guide_bullets=[
+                    "Read left to right: observed event-corridor truth context, deterministic footprint overlay, then PyGNOME footprint overlay.",
+                    "PyGNOME remains comparator-only; the observed DWH mask stays truth.",
+                    self._format_fss_summary(self._dwh_event_model_row("deterministic"), "event deterministic footprint"),
+                    self._format_fss_summary(self._dwh_event_model_row("pygnome"), "event PyGNOME footprint"),
+                ],
+                caveat_line=_dwh_caveat_line(),
+                provenance_line=_dwh_provenance_line(),
+                panels=[
+                    {"panel_title": event_case["panel_label"], "source_spec_id": "dwh_2010_05_21_to_2010_05_23_observation_truth_context"},
+                    {"panel_title": "deterministic footprint", "source_spec_id": "dwh_2010_05_21_to_2010_05_23_deterministic_footprint_overlay"},
+                    {"panel_title": "PyGNOME footprint", "source_spec_id": "dwh_2010_05_21_to_2010_05_23_pygnome_footprint_overlay"},
+                ],
+                recommended_for_main_defense=False,
+                status_key_override="dwh_crossmodel_comparator",
+            )
+        )
+        boards.append(
+            self._board_spec(
+                spec_id="dwh_event_mask_p50_vs_pygnome_board",
+                figure_family_code="I",
+                case_id="CASE_DWH_RETRO_2010_72H",
+                phase_or_track="phase3c_dwh_pygnome_comparator",
+                date_token="2010-05-21_to_2010-05-23",
+                model_names="opendrift_vs_pygnome",
+                run_type="comparison_board",
+                figure_slug="eventcorridor_mask_p50_vs_pygnome_board",
+                figure_title="DWH mask_p50 versus PyGNOME | event corridor | 2010-05-21_to_2010-05-23",
+                subtitle="Deepwater Horizon | event-corridor mask_p50 versus PyGNOME comparator | event corridor (2010-05-21_to_2010-05-23)",
+                interpretation="This support board isolates the preferred mask_p50 extension and the PyGNOME comparator against the same observed DWH event-corridor truth mask.",
+                notes="Board assembled from publication-grade single figures only.",
+                note_lines=[
+                    self._dwh_event_score_line("p50", "mask_p50"),
+                    self._dwh_event_score_line("pygnome", "PyGNOME footprint"),
+                ],
+                guide_bullets=[
+                    "Read left to right: observed event-corridor truth context, mask_p50 overlay, then PyGNOME footprint overlay.",
+                    "This support board checks whether mask_p50 changes the OpenDrift-versus-PyGNOME comparison.",
+                    self._format_fss_summary(self._dwh_event_model_row("p50"), "event mask_p50"),
+                    self._format_fss_summary(self._dwh_event_model_row("pygnome"), "event PyGNOME footprint"),
+                ],
+                caveat_line=_dwh_caveat_line(),
+                provenance_line=_dwh_provenance_line(),
+                panels=[
+                    {"panel_title": event_case["panel_label"], "source_spec_id": "dwh_2010_05_21_to_2010_05_23_observation_truth_context"},
+                    {"panel_title": "mask_p50", "source_spec_id": "dwh_2010_05_21_to_2010_05_23_mask_p50_overlay"},
+                    {"panel_title": "PyGNOME footprint", "source_spec_id": "dwh_2010_05_21_to_2010_05_23_pygnome_footprint_overlay"},
+                ],
+                recommended_for_main_defense=False,
+                status_key_override="dwh_crossmodel_comparator",
+            )
+        )
         return singles, boards
 
     def _prototype_support_publication_specs(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -3941,7 +5567,7 @@ class FigurePackagePublicationService:
         for builder in (
             self._mindoro_publication_specs,
             self._phase4_publication_specs,
-            self._dwh_publication_specs,
+            self._dwh_publication_specs_v2,
             self._prototype_support_publication_specs,
         ):
             singles, boards = builder()
@@ -3984,6 +5610,48 @@ class FigurePackagePublicationService:
                 "status_provenance",
                 "status_panel_text",
                 "status_dashboard_summary",
+            ],
+        )
+        return rows
+
+    def _write_font_audit(self, path: Path) -> list[dict[str, Any]]:
+        rows = [self.font_audit.as_row()]
+        _write_csv(
+            path,
+            rows,
+            columns=[
+                "requested_font_family",
+                "actual_font_family",
+                "actual_font_path",
+                "exact_requested_font_used",
+                "fallback_used",
+                "fallback_candidates",
+            ],
+        )
+        return rows
+
+    def _write_board_layout_audit(self, path: Path) -> list[dict[str, Any]]:
+        rows = sorted(self.board_layout_audit_rows, key=lambda item: item["board_file"])
+        _write_csv(
+            path,
+            rows,
+            columns=[
+                "board_file",
+                "board_family",
+                "panel_count",
+                "grid_structure",
+                "layout_mode",
+                "issue_types_found",
+                "layout_fix_applied",
+                "requested_font_family",
+                "actual_font_resolved",
+                "exact_arial_used",
+                "fallback_needed",
+                "text_shortened_or_wrapped",
+                "filenames_stayed_same",
+                "title_within_bounds",
+                "subtitle_within_bounds",
+                "guide_within_bounds",
             ],
         )
         return rows
@@ -4046,7 +5714,7 @@ class FigurePackagePublicationService:
             )
             for record in sorted(supporting_honesty, key=lambda item: item.figure_id):
                 lines.append(
-                    f"- `{record.figure_id}` [{record.status_label or record.figure_family_label}]: {record.status_panel_text or 'Use this figure when the panel asks why Phase 4 OpenDrift-versus-PyGNOME comparison is not shown.'}"
+                    f"- `{record.figure_id}` [{record.status_label or record.figure_family_label}]: {record.status_panel_text or 'This figure explains why Phase 4 OpenDrift-versus-PyGNOME comparison is not shown.'}"
                 )
         if prototype_support:
             lines.extend(
@@ -4090,6 +5758,7 @@ class FigurePackagePublicationService:
             "phase4_deferred_comparison_note_figure_produced": bool(deferred_note_figure_ids),
             "phase4_deferred_comparison_note_figure_ids": deferred_note_figure_ids,
             "style_config_path": _relative_to_repo(self.repo_root, self.repo_root / STYLE_CONFIG_PATH),
+            "font_audit": self.font_audit.as_row(),
             "map_label_paths": {
                 "mindoro": _relative_to_repo(self.repo_root, self.repo_root / MINDORO_LABELS_PATH),
                 "dwh": _relative_to_repo(self.repo_root, self.repo_root / DWH_LABELS_PATH),
@@ -4117,6 +5786,7 @@ class FigurePackagePublicationService:
                 "phase4_scientifically_reportable": bool(self._phase_status_flag("phase4", "mindoro_phase4", "scientifically_reportable", True)),
             },
             "missing_optional_artifacts": self.missing_optional_artifacts,
+            "board_layout_audit_row_count": len(self.board_layout_audit_rows),
             "figures": rows,
         }
 
@@ -4124,6 +5794,7 @@ class FigurePackagePublicationService:
         generated_at_utc = pd.Timestamp.now(tz="UTC").isoformat()
         self.output_dir.mkdir(parents=True, exist_ok=True)
         single_specs, board_specs = self._build_specs()
+        self._spec_lookup = {str(spec["spec_id"]): spec for spec in [*single_specs, *board_specs]}
         saved_by_spec_id: dict[str, PublicationFigureRecord] = {}
         for spec in single_specs:
             saved_by_spec_id[str(spec["spec_id"])] = self._save_single_figure(spec)
@@ -4134,8 +5805,12 @@ class FigurePackagePublicationService:
         manifest_json = self.output_dir / "publication_figure_manifest.json"
         captions_md = self.output_dir / "publication_figure_captions.md"
         talking_points_md = self.output_dir / "publication_figure_talking_points.md"
+        font_audit_csv = self.output_dir / "font_audit.csv"
+        board_layout_audit_csv = self.output_dir / "board_layout_audit.csv"
 
         rows = self._write_registry(registry_csv)
+        self._write_font_audit(font_audit_csv)
+        self._write_board_layout_audit(board_layout_audit_csv)
         _write_text(captions_md, self._build_captions_markdown())
         _write_text(talking_points_md, self._build_talking_points_markdown())
         _write_json(manifest_json, self._build_manifest(generated_at_utc))
@@ -4146,6 +5821,8 @@ class FigurePackagePublicationService:
             "manifest_json": str(manifest_json),
             "captions_md": str(captions_md),
             "talking_points_md": str(talking_points_md),
+            "font_audit_csv": str(font_audit_csv),
+            "board_layout_audit_csv": str(board_layout_audit_csv),
             "figure_count": len(self.figure_records),
             "figure_families_generated": sorted({record.figure_family_code for record in self.figure_records}),
             "side_by_side_comparison_boards_produced": any(record.view_type == "board" for record in self.figure_records),

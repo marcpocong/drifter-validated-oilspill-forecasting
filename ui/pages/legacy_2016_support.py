@@ -19,7 +19,6 @@ ensure_repo_root_on_path(__file__)
 
 import streamlit as st
 
-from src.core.artifact_status import get_artifact_status
 from ui.pages.common import (
     render_export_note,
     render_figure_gallery,
@@ -42,12 +41,11 @@ def _filter_case(df, case_id: str) -> object:
 
 def render(state: dict, ui_state: dict) -> None:
     export_mode = bool(ui_state.get("export_mode"))
-    support_status = get_artifact_status("prototype_2016_support")
     registry = state["legacy_2016_final_registry"]
     comparator_registry = state["legacy_2016_phase4_comparator_registry"]
     provenance = state.get("legacy_2016_provenance_metadata", {})
     case_options = ["ALL"] + sorted(registry.get("case_id", []).astype(str).unique().tolist()) if not registry.empty else ["ALL"]
-    if export_mode:
+    if export_mode or not ui_state["advanced"]:
         selected_case = "ALL"
     else:
         selected_case = st.selectbox(
@@ -60,7 +58,7 @@ def render(state: dict, ui_state: dict) -> None:
 
     render_page_intro(
         "Legacy 2016 Support Package",
-        "This page surfaces the authoritative curated prototype_2016 package. It is support-only legacy material and should be read as a thesis-facing packaging layer for historical pipeline development, not as the main Mindoro or DWH validation evidence.",
+        "This page surfaces the authoritative curated prototype_2016 package. It is support-only legacy material and should be read as historical pipeline context rather than as the main Mindoro or DWH validation evidence.",
         badge="prototype_2016 | support-only legacy package",
     )
 
@@ -72,7 +70,7 @@ def render(state: dict, ui_state: dict) -> None:
             ]
         )
 
-    render_status_callout("Lane status", support_status.panel_text, "warning")
+    render_status_callout("Support-only lane", "This page is a legacy support lane. It stays visible for historical context, but it is not the main real-world validation path.", "warning")
     render_status_callout(
         "Visible support flow",
         "The thesis-facing legacy flow is Phase 1 -> Phase 2 -> Phase 3A -> Phase 4 -> Phase 5. Phase 3A is comparator-only OpenDrift vs deterministic PyGNOME support, Phase 4 is legacy weathering/fate, and Phase 5 is this read-only packaging layer.",
@@ -83,6 +81,12 @@ def render(state: dict, ui_state: dict) -> None:
         "There is no thesis-facing Phase 3B or Phase 3C in prototype_2016, and this lane does not replace the final regional Phase 1 study.",
         "warning",
     )
+    if not export_mode and not ui_state["advanced"]:
+        render_status_callout(
+            "Panel browsing",
+            "Panel-friendly mode keeps all currently packaged legacy cases visible together so the page reads as one support gallery. Advanced mode can filter by case when you need a narrower inspection view.",
+            "info",
+        )
 
     def _format_box(bounds: object) -> str:
         if not isinstance(bounds, list) or len(bounds) != 4:
@@ -166,12 +170,17 @@ def render(state: dict, ui_state: dict) -> None:
             ("Cases", str(len(sorted(registry.get("case_id", []).astype(str).unique().tolist())) if not registry.empty else 0)),
         ]
         render_metric_row(metrics, export_mode=export_mode)
-        render_markdown_block("Legacy package README", state["legacy_2016_final_readme"], collapsed=False, export_mode=export_mode)
+        render_markdown_block(
+            "Legacy package README",
+            state["legacy_2016_final_readme"],
+            collapsed=not ui_state["advanced"] and not export_mode,
+            export_mode=export_mode,
+        )
 
     def _phase3a_publication() -> None:
         render_figure_gallery(
             phase3a_figures,
-            title="Phase 3A publication figures",
+            title="Phase 3A support-comparison figures",
             caption="These figures come from the curated legacy package and keep the Phase 3A comparator-only OpenDrift vs deterministic PyGNOME framing explicit. Click any figure to enlarge it.",
             limit=3 if export_mode else (None if ui_state["advanced"] else 6),
             columns_per_row=1 if export_mode else 2,
@@ -190,7 +199,7 @@ def render(state: dict, ui_state: dict) -> None:
     def _phase4_publication() -> None:
         render_figure_gallery(
             phase4_figures,
-            title="Phase 4 publication figures",
+            title="Phase 4 legacy-context figures",
             caption="These figures reuse the stored weathering/fate outputs and shoreline summaries derived from stored CSVs only.",
             limit=3 if export_mode else (None if ui_state["advanced"] else 6),
             columns_per_row=1 if export_mode else 2,
@@ -219,7 +228,7 @@ def render(state: dict, ui_state: dict) -> None:
         )
         render_figure_gallery(
             phase4_comparator_figures,
-            title="Phase 4 comparator figures",
+            title="Phase 4 comparator-pilot figures",
             caption="These figures stay support-only and comparator-only. They describe cross-model budget differences from the stored prototype_2016 Phase 4 PyGNOME pilot; they are not observational skill products.",
             limit=4 if export_mode else (None if ui_state["advanced"] else 6),
             columns_per_row=1 if export_mode else 2,
@@ -264,10 +273,11 @@ def render(state: dict, ui_state: dict) -> None:
     render_section_stack(
         [
             ("Package overview", _package_overview),
-            ("Phase 3A publication", _phase3a_publication),
-            ("Phase 4 publication", _phase4_publication),
-            ("Phase 4 comparator", _phase4_comparator),
-            ("Summaries and manifests", _summaries_and_manifests),
+            ("Phase 3A support comparison", _phase3a_publication),
+            ("Phase 4 legacy context", _phase4_publication),
+            ("Phase 4 comparator pilot", _phase4_comparator),
+            ("Tables and notes", _summaries_and_manifests),
         ],
         export_mode=export_mode,
+        use_tabs=ui_state["advanced"],
     )

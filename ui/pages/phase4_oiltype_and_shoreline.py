@@ -45,7 +45,7 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     render_status_callout(
-        "Current scope",
+        "Comparator availability",
         "No matched PyGNOME Phase 4 comparison is packaged yet. Current Mindoro Phase 4 results are OpenDrift/OpenOil scenario outputs only.",
         "warning",
     )
@@ -68,6 +68,7 @@ def render(state: dict, ui_state: dict) -> None:
     )
 
     st.pyplot(phase4_budget_summary_figure(state["phase4_budget_summary"]), width="stretch")
+    st.caption("Stored budget summary chart from the packaged Mindoro Phase 4 bundle.")
 
     def _publication_figures() -> None:
         render_figure_gallery(
@@ -124,4 +125,5 @@ def render(state: dict, ui_state: dict) -> None:
             ("Shoreline tables", _shoreline_tables),
         ],
         export_mode=export_mode,
+        use_tabs=ui_state["advanced"],
     )

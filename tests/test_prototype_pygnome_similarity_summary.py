@@ -19,6 +19,70 @@ from src.services.prototype_pygnome_similarity_summary import (
     PrototypePygnomeSimilaritySummaryService,
 )
 
+STYLE_YAML = """
+palette:
+  background_land: "#e6dfd1"
+  background_sea: "#f7fbfd"
+  shoreline: "#8b8178"
+  observed_mask: "#2f3a46"
+  deterministic_opendrift: "#165ba8"
+  ensemble_consolidated: "#0f766e"
+  ensemble_p50: "#1f7a4d"
+  ensemble_p90: "#72b6ff"
+  pygnome: "#9b4dca"
+  source_point: "#b42318"
+  initialization_polygon: "#d97706"
+  validation_polygon: "#0f172a"
+  centroid_path: "#111827"
+  corridor_hull: "#c2410c"
+  ensemble_member_path: "#94a3b8"
+  oil_lighter: "#f28c28"
+  oil_base: "#8c564b"
+  oil_heavier: "#4b0082"
+legend_labels:
+  observed_mask: "Observed spill extent"
+  deterministic_opendrift: "OpenDrift deterministic forecast"
+  ensemble_consolidated: "OpenDrift consolidated ensemble trajectory"
+  ensemble_p50: "OpenDrift ensemble p50 footprint"
+  ensemble_p90: "OpenDrift ensemble p90 footprint"
+  pygnome: "PyGNOME comparator"
+  source_point: "Source point"
+  initialization_polygon: "Initialization polygon"
+  validation_polygon: "Validation target polygon"
+  centroid_path: "Centroid path"
+  corridor_hull: "Corridor / hull"
+  ensemble_member_path: "Sampled ensemble trajectories"
+  oil_lighter: "Light oil scenario"
+  oil_base: "Fixed base medium-heavy proxy"
+  oil_heavier: "Heavier oil scenario"
+typography:
+  title_size: 19
+  subtitle_size: 10
+  panel_title_size: 11
+  legend_title_size: 9
+  body_size: 9
+  note_size: 8
+  font_family: "Arial"
+layout:
+  board_size_inches: [16, 9]
+  single_size_inches: [13, 8]
+  dpi: 120
+  figure_facecolor: "#ffffff"
+  axes_facecolor: "#f7fbfd"
+  grid_color: "#cbd5e1"
+  legend_facecolor: "#ffffff"
+  legend_edgecolor: "#94a3b8"
+crop_rules:
+  zoom_padding_fraction: 0.18
+  close_padding_fraction: 0.08
+  minimum_padding_m: 4000
+  minimum_crop_span_m: 12000
+locator_rules:
+  mindoro_scale_km: 25
+  dwh_scale_km: 100
+  locator_padding_fraction: 0.55
+"""
+
 
 def _write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -82,6 +146,9 @@ def _count_nonwhite_region(path: Path, *, left_frac: float, right_frac: float, t
 def _write_prototype_context(root: Path) -> None:
     grids_dir = root / "data_processed" / "grids"
     grids_dir.mkdir(parents=True, exist_ok=True)
+    style_path = root / "config" / "publication_figure_style.yaml"
+    style_path.parent.mkdir(parents=True, exist_ok=True)
+    style_path.write_text(STYLE_YAML, encoding="utf-8")
     labels_path = root / "config" / "publication_map_labels_mindoro.csv"
     labels_path.parent.mkdir(parents=True, exist_ok=True)
     labels_path.write_text(
@@ -385,6 +452,8 @@ class PrototypePygnomeSimilaritySummaryTests(unittest.TestCase):
                 "kl_by_case_hour_csv",
                 "figure_registry_csv",
                 "figure_captions_md",
+                "font_audit_csv",
+                "board_layout_audit_csv",
                 "manifest_json",
                 "summary_md",
             ):
@@ -464,8 +533,26 @@ class PrototypePygnomeSimilaritySummaryTests(unittest.TestCase):
             self.assertEqual(manifest["headline"]["top_ranked_comparison_track_id"], "deterministic")
             self.assertEqual(manifest["figure_counts"]["single_forecast_figures"], 36)
             self.assertEqual(manifest["figure_counts"]["comparison_boards"], 3)
+            self.assertIn("font_audit", manifest)
+            self.assertEqual(manifest["font_audit"]["requested_font_family"], "Arial")
+            self.assertEqual(
+                manifest["outputs"]["board_layout_audit_csv"],
+                str(Path(results["board_layout_audit_csv"]).relative_to(root)),
+            )
             self.assertIn("Prototype 2016 legacy debug support", summary_text)
             self.assertIn("Provenance:", captions_text)
+
+            font_audit_df = pd.read_csv(results["font_audit_csv"])
+            self.assertEqual(font_audit_df.iloc[0]["requested_font_family"], "Arial")
+            self.assertTrue(str(font_audit_df.iloc[0]["actual_font_family"]).strip())
+            self.assertIn("fallback_used", font_audit_df.columns)
+
+            layout_audit_df = pd.read_csv(results["board_layout_audit_csv"])
+            self.assertEqual(len(layout_audit_df), 3)
+            self.assertTrue((layout_audit_df["filenames_stayed_same"] == True).all())
+            self.assertTrue((layout_audit_df["title_within_bounds"] == True).all())
+            self.assertTrue((layout_audit_df["subtitle_within_bounds"] == True).all())
+            self.assertTrue((layout_audit_df["guide_within_bounds"] == True).all())
 
     def test_sparse_masks_use_tight_crop_and_render_visible_footprints(self):
         with tempfile.TemporaryDirectory() as tmpdir:

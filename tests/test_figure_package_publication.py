@@ -153,11 +153,23 @@ per_date,2010-05-23,0.311,0.422,0.533,0.644
 event_corridor,2010-05-21/2010-05-23,0.411,0.522,0.633,0.744
 """
 
-DWH_ALL_RESULTS_CSV = """model_result,pair_role,fss_1km,fss_3km,fss_5km,fss_10km,mean_fss
-OpenDrift deterministic,event_corridor,0.410,0.520,0.630,0.740,0.575
-OpenDrift ensemble p50,event_corridor,0.150,0.260,0.370,0.480,0.315
-OpenDrift ensemble p90,event_corridor,0.170,0.280,0.390,0.500,0.335
-PyGNOME deterministic,event_corridor,0.190,0.290,0.390,0.490,0.340
+DWH_ALL_RESULTS_CSV = """model_result,pair_role,pairing_date_utc,fss_1km,fss_3km,fss_5km,fss_10km,mean_fss
+OpenDrift deterministic,per_date,2010-05-21,0.111,0.222,0.333,0.444,0.278
+OpenDrift deterministic,per_date,2010-05-22,0.121,0.232,0.343,0.454,0.288
+OpenDrift deterministic,per_date,2010-05-23,0.131,0.242,0.353,0.464,0.298
+OpenDrift deterministic,event_corridor,2010-05-21/2010-05-23,0.410,0.520,0.630,0.740,0.575
+OpenDrift ensemble p50,per_date,2010-05-21,0.151,0.261,0.371,0.481,0.316
+OpenDrift ensemble p50,per_date,2010-05-22,0.211,0.322,0.433,0.544,0.378
+OpenDrift ensemble p50,per_date,2010-05-23,0.171,0.282,0.393,0.504,0.338
+OpenDrift ensemble p50,event_corridor,2010-05-21/2010-05-23,0.150,0.260,0.370,0.480,0.315
+OpenDrift ensemble p90,per_date,2010-05-21,0.170,0.280,0.390,0.500,0.335
+OpenDrift ensemble p90,per_date,2010-05-22,0.181,0.291,0.401,0.511,0.346
+OpenDrift ensemble p90,per_date,2010-05-23,0.191,0.301,0.411,0.521,0.356
+OpenDrift ensemble p90,event_corridor,2010-05-21/2010-05-23,0.170,0.280,0.390,0.500,0.335
+PyGNOME deterministic,per_date,2010-05-21,0.161,0.271,0.381,0.491,0.326
+PyGNOME deterministic,per_date,2010-05-22,0.171,0.281,0.391,0.501,0.336
+PyGNOME deterministic,per_date,2010-05-23,0.190,0.290,0.390,0.490,0.340
+PyGNOME deterministic,event_corridor,2010-05-21/2010-05-23,0.190,0.290,0.390,0.490,0.340
 """
 
 
@@ -320,20 +332,88 @@ class FigurePackagePublicationTests(unittest.TestCase):
     def test_dwh_publication_specs_use_exact_model_specific_fss_rows(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             service = self._build_service_fixture(Path(tmpdir))
-            singles, boards = service._dwh_publication_specs()
+            singles, boards = service._dwh_publication_specs_v2()
             specs = {spec["spec_id"]: spec for spec in [*singles, *boards]}
 
+            self.assertTrue(
+                any(
+                    "FSS(1/3/5/10 km): 0.211/0.322/0.433/0.544; mean: 0.378." in str(line)
+                    for line in specs["dwh_2010_05_22_mask_p50_overlay"]["note_lines"]
+                )
+            )
+            self.assertTrue(
+                any(
+                    "FSS(1/3/5/10 km): 0.170/0.280/0.390/0.500; mean: 0.335." in str(line)
+                    for line in specs["dwh_2010_05_21_mask_p90_overlay"]["note_lines"]
+                )
+            )
+            self.assertTrue(
+                any(
+                    "FSS(1/3/5/10 km): 0.190/0.290/0.390/0.490; mean: 0.340." in str(line)
+                    for line in specs["dwh_2010_05_23_pygnome_footprint_overlay"]["note_lines"]
+                )
+            )
+
+    def test_dwh_daily_overview_boards_use_stored_per_date_rows_only(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service = self._build_service_fixture(Path(tmpdir))
+            singles, boards = service._dwh_publication_specs_v2()
+            specs = {spec["spec_id"]: spec for spec in [*singles, *boards]}
+
+            required_board_ids = {
+                "dwh_24h_48h_72h_mask_p50_footprint_overview_board",
+                "dwh_24h_48h_72h_mask_p90_footprint_overview_board",
+                "dwh_24h_48h_72h_mask_p50_mask_p90_dual_threshold_overview_board",
+                "dwh_24h_48h_72h_mask_p50_vs_pygnome_overview_board",
+                "dwh_24h_48h_72h_mask_p90_vs_pygnome_overview_board",
+                "dwh_24h_48h_72h_mask_p50_mask_p90_dual_threshold_vs_pygnome_overview_board",
+                "dwh_24h_48h_72h_mask_p50_mask_p90_vs_pygnome_three_row_overview_board",
+            }
+            self.assertTrue(required_board_ids.issubset(set(specs)))
+
+            self.assertEqual(len(specs["dwh_24h_48h_72h_mask_p50_footprint_overview_board"]["panels"]), 3)
+            self.assertEqual(len(specs["dwh_24h_48h_72h_mask_p50_vs_pygnome_overview_board"]["panels"]), 6)
+            self.assertEqual(len(specs["dwh_24h_48h_72h_mask_p50_mask_p90_vs_pygnome_three_row_overview_board"]["panels"]), 9)
+
+            p50_board_titles = [panel["panel_title"] for panel in specs["dwh_24h_48h_72h_mask_p50_footprint_overview_board"]["panels"]]
+            self.assertIn("24 h | 2010-05-21 | mask_p50 mean FSS 0.316", p50_board_titles)
+            self.assertIn("48 h | 2010-05-22 | mask_p50 mean FSS 0.378", p50_board_titles)
+            self.assertIn("72 h | 2010-05-23 | mask_p50 mean FSS 0.338", p50_board_titles)
+
+            dual_board_titles = [
+                panel["panel_title"] for panel in specs["dwh_24h_48h_72h_mask_p50_mask_p90_dual_threshold_overview_board"]["panels"]
+            ]
+            self.assertIn("24 h | 2010-05-21 | p50 mean FSS 0.316 | p90 mean FSS 0.335", dual_board_titles)
+            self.assertIn("48 h | 2010-05-22 | p50 mean FSS 0.378 | p90 mean FSS 0.346", dual_board_titles)
+            self.assertIn("72 h | 2010-05-23 | p50 mean FSS 0.338 | p90 mean FSS 0.356", dual_board_titles)
+
+            dual_vs_pygnome_titles = [
+                panel["panel_title"]
+                for panel in specs["dwh_24h_48h_72h_mask_p50_mask_p90_dual_threshold_vs_pygnome_overview_board"]["panels"]
+            ]
+            self.assertIn("24 h | 2010-05-21 | PyGNOME mean FSS 0.326", dual_vs_pygnome_titles)
+            self.assertIn("48 h | 2010-05-22 | PyGNOME mean FSS 0.336", dual_vs_pygnome_titles)
+            self.assertIn("72 h | 2010-05-23 | PyGNOME mean FSS 0.340", dual_vs_pygnome_titles)
+
+            three_row_titles = [
+                panel["panel_title"]
+                for panel in specs["dwh_24h_48h_72h_mask_p50_mask_p90_vs_pygnome_three_row_overview_board"]["panels"]
+            ]
+            self.assertIn("24 h | 2010-05-21 | mask_p50 mean FSS 0.316", three_row_titles)
+            self.assertIn("48 h | 2010-05-22 | mask_p90 mean FSS 0.346", three_row_titles)
+            self.assertIn("72 h | 2010-05-23 | PyGNOME mean FSS 0.340", three_row_titles)
+
             self.assertIn(
-                "FSS(1/3/5/10 km): 0.211/0.322/0.433/0.544; mean: 0.378.",
-                specs["dwh_2010_05_22_overlay"]["note_lines"],
+                "Official public observation-derived DWH date-composite masks remain the scoring reference for every panel.",
+                specs["dwh_24h_48h_72h_mask_p50_footprint_overview_board"]["note_lines"],
             )
             self.assertIn(
-                "FSS(1/3/5/10 km): 0.170/0.280/0.390/0.500; mean: 0.335.",
-                specs["dwh_event_p90"]["note_lines"],
+                "No combined dual-threshold FSS is reported; each date keeps the stored `mask_p50` and `mask_p90` rows separate.",
+                specs["dwh_24h_48h_72h_mask_p50_mask_p90_dual_threshold_overview_board"]["guide_bullets"],
             )
             self.assertIn(
-                "FSS(1/3/5/10 km): 0.190/0.290/0.390/0.490; mean: 0.340.",
-                specs["dwh_event_pygnome"]["note_lines"],
+                "`mask_p50` remains the preferred probabilistic extension, `mask_p90` remains support/comparison only, and PyGNOME remains comparator-only.",
+                specs["dwh_24h_48h_72h_mask_p50_mask_p90_vs_pygnome_three_row_overview_board"]["guide_bullets"],
             )
 
     def test_case_context_normalizes_mindoro_manifest_extent_order(self):
@@ -346,7 +426,7 @@ class FigurePackagePublicationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             service = self._build_service_fixture(Path(tmpdir))
             mindoro_singles, mindoro_boards = service._mindoro_publication_specs()
-            dwh_singles, dwh_boards = service._dwh_publication_specs()
+            dwh_singles, dwh_boards = service._dwh_publication_specs_v2()
 
             mindoro_primary_board = _find_spec(mindoro_boards, "mindoro_primary_board")
             mindoro_primary_score_lines = [line for line in mindoro_primary_board["note_lines"] if "FSS(" in line]
@@ -369,8 +449,18 @@ class FigurePackagePublicationTests(unittest.TestCase):
             mindoro_primary_seed_mask = _find_spec(mindoro_singles, "mindoro_primary_seed_mask")
             self.assertFalse(any("FSS(" in line for line in mindoro_primary_seed_mask["note_lines"]))
 
-            dwh_event_observation = _find_spec(dwh_singles, "dwh_event_observation")
+            dwh_event_observation = _find_spec(dwh_singles, "dwh_2010_05_21_to_2010_05_23_observation_truth_context")
             self.assertFalse(any("FSS(" in line for line in dwh_event_observation["note_lines"]))
+
+            dwh_mask_p50_board = _find_spec(dwh_boards, "dwh_24h_48h_72h_mask_p50_footprint_overview_board")
+            self.assertEqual(len([line for line in dwh_mask_p50_board["note_lines"] if "FSS(" in line]), 3)
+
+            dwh_dual_threshold_board = _find_spec(dwh_boards, "dwh_24h_48h_72h_mask_p50_mask_p90_dual_threshold_overview_board")
+            self.assertEqual(len([line for line in dwh_dual_threshold_board["note_lines"] if "FSS(" in line]), 6)
+            self.assertFalse(any("combined dual-threshold FSS" in line and "FSS(" in line for line in dwh_dual_threshold_board["note_lines"]))
+
+            dwh_three_row_board = _find_spec(dwh_boards, "dwh_24h_48h_72h_mask_p50_mask_p90_vs_pygnome_three_row_overview_board")
+            self.assertEqual(len([line for line in dwh_three_row_board["note_lines"] if "FSS(" in line]), 9)
 
     def test_apply_map_axes_style_uses_equal_aspect_for_projected_maps(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -404,6 +494,8 @@ class FigurePackagePublicationTests(unittest.TestCase):
             self.assertTrue(Path(results["manifest_json"]).exists())
             self.assertTrue(Path(results["captions_md"]).exists())
             self.assertTrue(Path(results["talking_points_md"]).exists())
+            self.assertTrue(Path(results["font_audit_csv"]).exists())
+            self.assertTrue(Path(results["board_layout_audit_csv"]).exists())
             self.assertGreater(results["figure_count"], 0)
             self.assertTrue(results["side_by_side_comparison_boards_produced"])
             self.assertTrue(results["single_image_paper_figures_produced"])
@@ -415,6 +507,11 @@ class FigurePackagePublicationTests(unittest.TestCase):
             self.assertIn("F", manifest["figure_families_generated"])
             self.assertIn("recommended_main_defense_figures", manifest)
             self.assertTrue(manifest["phase4_deferred_comparison_note_figure_produced"])
+            self.assertIn("font_audit", manifest)
+            self.assertEqual(manifest["font_audit"]["requested_font_family"], "Arial")
+            self.assertGreater(manifest["board_layout_audit_row_count"], 0)
+            self.assertGreaterEqual(int(manifest["figure_families_generated"]["H"]), 18)
+            self.assertGreaterEqual(int(manifest["figure_families_generated"]["I"]), 13)
             registry_df = pd.read_csv(results["registry_csv"])
             self.assertIn("pixel_width", registry_df.columns)
             self.assertIn("pixel_height", registry_df.columns)
@@ -422,36 +519,39 @@ class FigurePackagePublicationTests(unittest.TestCase):
             self.assertIn("status_provenance", registry_df.columns)
             self.assertEqual(len(registry_df), len(manifest["figures"]))
 
-            dwh_ensemble_board = registry_df[
-                (registry_df["case_id"] == "CASE_DWH_RETRO_2010_72H")
-                & registry_df["figure_id"].str.contains("deterministic_vs_ensemble_board", na=False)
-            ].iloc[0]
-            self.assertEqual(dwh_ensemble_board["status_key"], "dwh_ensemble_transfer")
+            font_audit_df = pd.read_csv(results["font_audit_csv"])
+            self.assertEqual(font_audit_df.iloc[0]["requested_font_family"], "Arial")
+            self.assertTrue(str(font_audit_df.iloc[0]["actual_font_family"]).strip())
+            layout_audit_df = pd.read_csv(results["board_layout_audit_csv"])
+            self.assertGreaterEqual(len(layout_audit_df), 3)
+            self.assertTrue((layout_audit_df["filenames_stayed_same"] == True).all())
+            self.assertTrue((layout_audit_df["title_within_bounds"] == True).all())
+            self.assertTrue((layout_audit_df["subtitle_within_bounds"] == True).all())
+            self.assertTrue((layout_audit_df["guide_within_bounds"] == True).all())
+            self.assertTrue(
+                layout_audit_df["board_family"].astype(str).str.contains("Mindoro|DWH", regex=True).any()
+            )
+
+            for figure_slug, expected_status in (
+                ("24h_48h_72h_mask_p50_footprint_overview_board", "dwh_ensemble_transfer"),
+                ("24h_48h_72h_mask_p90_footprint_overview_board", "dwh_ensemble_transfer"),
+                ("24h_48h_72h_mask_p50_mask_p90_dual_threshold_overview_board", "dwh_ensemble_transfer"),
+                ("24h_48h_72h_mask_p50_vs_pygnome_overview_board", "dwh_crossmodel_comparator"),
+                ("24h_48h_72h_mask_p90_vs_pygnome_overview_board", "dwh_crossmodel_comparator"),
+                ("24h_48h_72h_mask_p50_mask_p90_dual_threshold_vs_pygnome_overview_board", "dwh_crossmodel_comparator"),
+                ("24h_48h_72h_mask_p50_mask_p90_vs_pygnome_three_row_overview_board", "dwh_crossmodel_comparator"),
+            ):
+                board_row = registry_df[
+                    (registry_df["case_id"] == "CASE_DWH_RETRO_2010_72H")
+                    & registry_df["figure_id"].str.contains(figure_slug, na=False)
+                ].iloc[0]
+                self.assertEqual(board_row["status_key"], expected_status)
+
             dwh_trajectory_board = registry_df[
                 (registry_df["case_id"] == "CASE_DWH_RETRO_2010_72H")
                 & registry_df["figure_id"].str.contains("trajectory_board", na=False)
             ].iloc[0]
             self.assertEqual(dwh_trajectory_board["status_key"], "dwh_trajectory_context")
-            dwh_event_det = registry_df[
-                (registry_df["case_id"] == "CASE_DWH_RETRO_2010_72H")
-                & registry_df["figure_id"].str.contains("eventcorridor_deterministic", na=False)
-            ].iloc[0]
-            self.assertEqual(dwh_event_det["status_key"], "dwh_deterministic_transfer")
-            dwh_event_p50 = registry_df[
-                (registry_df["case_id"] == "CASE_DWH_RETRO_2010_72H")
-                & registry_df["figure_id"].str.contains("eventcorridor_p50", na=False)
-            ].iloc[0]
-            self.assertEqual(dwh_event_p50["status_key"], "dwh_ensemble_transfer")
-            dwh_event_p90 = registry_df[
-                (registry_df["case_id"] == "CASE_DWH_RETRO_2010_72H")
-                & registry_df["figure_id"].str.contains("eventcorridor_p90", na=False)
-            ].iloc[0]
-            self.assertEqual(dwh_event_p90["status_key"], "dwh_ensemble_transfer")
-            dwh_event_pygnome = registry_df[
-                (registry_df["case_id"] == "CASE_DWH_RETRO_2010_72H")
-                & registry_df["figure_id"].str.contains("eventcorridor_pygnome", na=False)
-            ].iloc[0]
-            self.assertEqual(dwh_event_pygnome["status_key"], "dwh_crossmodel_comparator")
             dwh_event_obs = registry_df[
                 (registry_df["case_id"] == "CASE_DWH_RETRO_2010_72H")
                 & registry_df["figure_id"].str.contains("eventcorridor_observation", na=False)
@@ -482,8 +582,11 @@ class FigurePackagePublicationTests(unittest.TestCase):
 
             registry_text = Path(results["registry_csv"]).read_text(encoding="utf-8")
             self.assertIn("crossmodel_comparison_deferred", registry_text)
+            self.assertNotIn("when the panel", registry_text.lower())
             captions_text = Path(results["captions_md"]).read_text(encoding="utf-8")
             self.assertIn("Provenance:", captions_text)
+            talking_points_text = Path(results["talking_points_md"]).read_text(encoding="utf-8")
+            self.assertNotIn("when the panel", talking_points_text.lower())
 
     def test_publication_package_surfaces_prototype_support_family_k_when_registry_exists(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -511,7 +614,8 @@ class FigurePackagePublicationTests(unittest.TestCase):
 
             talking_points = Path(results["talking_points_md"]).read_text(encoding="utf-8")
             self.assertIn("Prototype Support Figures", talking_points)
-            self.assertIn("Legacy debug support only; comparator-only and not final Phase 1 evidence.", talking_points)
+            self.assertIn("Legacy debug support only;", talking_points)
+            self.assertIn("Not final Phase 1 evidence.", talking_points)
 
 
 if __name__ == "__main__":

@@ -19,7 +19,6 @@ ensure_repo_root_on_path(__file__)
 
 import streamlit as st
 
-from src.core.artifact_status import get_artifact_status
 from ui.pages.common import (
     render_export_note,
     render_figure_gallery,
@@ -39,16 +38,21 @@ def _dwh_subset(df, artifact_groups: set[str]) -> object:
     return df.loc[df.get("artifact_group", "").astype(str).isin(sorted(artifact_groups))].reset_index(drop=True)
 
 
+def _dwh_name_subset(df, include_terms: tuple[str, ...], exclude_terms: tuple[str, ...] = ()) -> object:
+    if df.empty:
+        return df
+    path_series = df.get("final_relative_path", df.get("relative_path", "")).astype(str).str.lower()
+    mask = path_series.apply(lambda value: any(term in value for term in include_terms))
+    if exclude_terms:
+        mask &= ~path_series.apply(lambda value: any(term in value for term in exclude_terms))
+    return df.loc[mask].reset_index(drop=True)
+
+
 def render(state: dict, ui_state: dict) -> None:
     export_mode = bool(ui_state.get("export_mode"))
-    deterministic_status = get_artifact_status("dwh_deterministic_transfer")
-    ensemble_status = get_artifact_status("dwh_ensemble_transfer")
-    comparator_status = get_artifact_status("dwh_crossmodel_comparator")
-    truth_status = get_artifact_status("dwh_observation_truth_context")
-
     render_page_intro(
         "DWH Phase 3C Transfer Validation",
-        "This page treats DWH as a separate frozen external transfer-validation lane. It keeps C1 deterministic, C2 ensemble extension, and C3 comparator-only semantics explicit, with public observation-derived masks as truth and no drifter baseline.",
+        "This page treats DWH as a separate Phase 3C external transfer-validation lane. It keeps C1 deterministic, C2 ensemble extension, and C3 comparator-only semantics explicit, with public observation-derived masks as truth and no drifter baseline.",
         badge="DWH Phase 3C | separate external transfer-validation lane",
     )
 
@@ -62,7 +66,7 @@ def render(state: dict, ui_state: dict) -> None:
 
     render_status_callout(
         "Truth rule",
-        "DWH truth comes from public observation-derived date-composite masks only. No drifter baseline is used here.",
+        "DWH truth comes from public observation-derived date-composite masks only, and those official masks remain the scoring reference for every displayed FSS value. No drifter baseline is used here.",
         "info",
     )
     render_status_callout(
@@ -81,13 +85,50 @@ def render(state: dict, ui_state: dict) -> None:
     deterministic_figures = _dwh_subset(registry, {"publication/opendrift_deterministic"})
     ensemble_figures = _dwh_subset(registry, {"publication/opendrift_ensemble"})
     comparator_figures = _dwh_subset(registry, {"publication/comparator_pygnome"})
+    p50_figures = _dwh_name_subset(ensemble_figures, ("mask_p50_overlay",), ("mask_p50_vs_pygnome_board", "mask_p50_mask_p90_board"))
+    ensemble_overview_figures = _dwh_name_subset(
+        ensemble_figures,
+        (
+            "mask_p50_footprint_overview_board",
+            "mask_p90_footprint_overview_board",
+            "mask_p50_mask_p90_dual_threshold_overview_board",
+        ),
+    )
+    ensemble_comparison_figures = _dwh_name_subset(ensemble_figures, ("mask_p90_overlay", "mask_p50_mask_p90_board"))
+    pygnome_truth_figures = _dwh_name_subset(
+        comparator_figures,
+        ("pygnome_footprint_overlay", "observed_deterministic_mask_p50_pygnome_board"),
+        ("_vs_pygnome_board",),
+    )
+    pygnome_daily_overview_figures = _dwh_name_subset(
+        comparator_figures,
+        (
+            "mask_p50_vs_pygnome_overview_board",
+            "mask_p90_vs_pygnome_overview_board",
+            "mask_p50_mask_p90_dual_threshold_vs_pygnome_overview_board",
+            "mask_p50_mask_p90_vs_pygnome_three_row_overview_board",
+        ),
+    )
+    pygnome_support_figures = _dwh_name_subset(comparator_figures, ("_vs_pygnome_board",))
+
+    def _truth_context() -> None:
+        render_status_callout("Observation context", "These figures show the public observation-derived daily masks and the event-corridor union used as truth before any model comparison is discussed.", "info")
+        render_figure_gallery(
+            truth_figures,
+            title="Observation truth-context figures",
+            caption="These figures establish the date-composite truth context first: 24 h = 2010-05-21, 48 h = 2010-05-22, 72 h = 2010-05-23, and the event corridor = 2010-05-21_to_2010-05-23.",
+            limit=2 if export_mode else (None if ui_state["advanced"] else 4),
+            columns_per_row=1 if export_mode else 2,
+            export_mode=export_mode,
+            overlay_label="Click to enlarge",
+        )
 
     def _c1_deterministic() -> None:
-        render_status_callout("C1 framing", deterministic_status.panel_text, "info")
+        render_status_callout("C1 framing", "C1 is the deterministic DWH baseline and the cleanest transfer-validation result to show immediately after the truth-context masks.", "info")
         render_figure_gallery(
             deterministic_figures,
-            title=deterministic_status.panel_label,
-            caption="These curated figures are the clean baseline transfer-validation visuals for DWH. Click any figure to enlarge it for the longer caption and provenance.",
+            title="C1 deterministic figures",
+            caption="These curated figures keep the deterministic footprint overlays and the daily overview board together as the baseline DWH transfer-validation lane.",
             limit=2 if export_mode else (None if ui_state["advanced"] else 5),
             columns_per_row=1 if export_mode else 2,
             export_mode=export_mode,
@@ -102,12 +143,40 @@ def render(state: dict, ui_state: dict) -> None:
             export_mode=export_mode,
         )
 
-    def _c2_ensemble() -> None:
-        render_status_callout("C2 framing", ensemble_status.panel_text, "info")
+    def _c2_p50() -> None:
+        render_status_callout("C2 p50", "C2 extends the same frozen DWH truth masks with the preferred probabilistic extension: thresholded mask_p50.", "info")
         render_figure_gallery(
-            ensemble_figures,
-            title=ensemble_status.panel_label,
-            caption="These curated figures show the ensemble extension and deterministic-vs-ensemble comparison. P50 is preferred; p90 remains support/comparison only.",
+            p50_figures,
+            title="C2 mask_p50 figures",
+            caption="These figures isolate the preferred mask_p50 overlays before the fuller deterministic-versus-mask_p50-versus-mask_p90 boards, while the official DWH observation-derived masks remain the scoring reference for all displayed scores.",
+            limit=2 if export_mode else (None if ui_state["advanced"] else 4),
+            columns_per_row=1 if export_mode else 2,
+            export_mode=export_mode,
+            overlay_label="Click to enlarge",
+        )
+
+    def _c2_overview_boards() -> None:
+        render_status_callout(
+            "C2 overview boards",
+            "These daily 24 h / 48 h / 72 h overview boards keep mask_p50, mask_p90, and the exact dual-threshold view visible without changing the official DWH observation-derived scoring reference.",
+            "info",
+        )
+        render_figure_gallery(
+            ensemble_overview_figures,
+            title="C2 daily ensemble overview boards",
+            caption="These overview boards keep the official public observation-derived DWH masks as the scoring reference while surfacing daily mask_p50, mask_p90, and exact dual-threshold views across 24 h, 48 h, and 72 h.",
+            limit=2 if export_mode else (None if ui_state["advanced"] else 3),
+            columns_per_row=1 if export_mode else 2,
+            export_mode=export_mode,
+            overlay_label="Click to enlarge",
+        )
+
+    def _c2_comparison() -> None:
+        render_status_callout("C2 comparison", "These boards keep deterministic as the clean baseline, use mask_p50 as the preferred extension, and retain mask_p90 as support/comparison only.", "info")
+        render_figure_gallery(
+            ensemble_comparison_figures,
+            title="C2 deterministic / mask_p50 / mask_p90 boards",
+            caption="These boards and support singles are the thesis-facing place to discuss when the probabilistic extension helps, without forcing a universal ensemble-wins story; the official DWH observation-derived masks remain the scoring reference for every displayed FSS line.",
             limit=2 if export_mode else (None if ui_state["advanced"] else 4),
             columns_per_row=1 if export_mode else 2,
             export_mode=export_mode,
@@ -122,12 +191,12 @@ def render(state: dict, ui_state: dict) -> None:
             export_mode=export_mode,
         )
 
-    def _c3_comparator() -> None:
-        render_status_callout("C3 framing", comparator_status.panel_text, "warning")
+    def _c3_pygnome() -> None:
+        render_status_callout("C3 framing", "C3 keeps PyGNOME visible as comparator-only against the same observed DWH masks. PyGNOME is never truth.", "warning")
         render_figure_gallery(
-            comparator_figures,
-            title=comparator_status.panel_label,
-            caption="These curated figures keep PyGNOME in its comparator-only role on the DWH lane while staying visible as a direct gallery.",
+            pygnome_truth_figures,
+            title="C3 PyGNOME-vs-observed figures",
+            caption="These figures keep the PyGNOME footprint overlays and the truth-plus-OpenDrift-plus-PyGNOME boards together under the comparator-only rule, with the official DWH observation-derived masks still serving as the scoring reference.",
             limit=2 if export_mode else (None if ui_state["advanced"] else 4),
             columns_per_row=1 if export_mode else 2,
             export_mode=export_mode,
@@ -142,19 +211,45 @@ def render(state: dict, ui_state: dict) -> None:
             export_mode=export_mode,
         )
 
-    def _truth_context() -> None:
-        render_status_callout("Observation context", truth_status.panel_text, "info")
+    def _daily_pygnome_overview() -> None:
+        render_status_callout(
+            "Daily overview comparison",
+            "These daily overview boards now include both 2 x 3 and 3 x 3 layouts: the 2 x 3 boards put the requested OpenDrift ensemble view on the top row and PyGNOME on the bottom row, while the 3 x 3 board stacks mask_p50 on top, mask_p90 in the middle, and PyGNOME on the bottom. All displayed scores still use the official DWH observation-derived masks as the scoring reference, and PyGNOME remains comparator-only.",
+            "info",
+        )
         render_figure_gallery(
-            truth_figures,
-            title=truth_status.panel_label,
-            caption="These observation-context figures establish the public daily masks and event corridor before any model comparison is discussed.",
+            pygnome_daily_overview_figures,
+            title="OpenDrift-vs-PyGNOME daily overview boards",
+            caption="These daily 24 h / 48 h / 72 h overview boards compare mask_p50, mask_p90, the exact dual-threshold view, and the new three-row mask_p50 / mask_p90 / PyGNOME board without reclassifying PyGNOME as truth; all displayed scores still refer to the official DWH observation-derived masks.",
             limit=2 if export_mode else (None if ui_state["advanced"] else 4),
             columns_per_row=1 if export_mode else 2,
             export_mode=export_mode,
             overlay_label="Click to enlarge",
         )
 
+    def _support_boards() -> None:
+        render_status_callout("Support boards", "These boards keep the OpenDrift-versus-PyGNOME comparison visible as support material after the truth-first validation story has already been established.", "info")
+        render_figure_gallery(
+            pygnome_support_figures,
+            title="OpenDrift-vs-PyGNOME support boards",
+            caption="These event-corridor boards isolate deterministic-versus-PyGNOME and mask_p50-versus-PyGNOME without reclassifying PyGNOME as truth; the official DWH observation-derived masks remain the scoring reference for the displayed FSS values.",
+            limit=2 if export_mode else (None if ui_state["advanced"] else 3),
+            columns_per_row=1 if export_mode else 2,
+            export_mode=export_mode,
+            overlay_label="Click to enlarge",
+        )
+
     def _tables_and_notes() -> None:
+        render_table(
+            "Phase 3C main scorecard",
+            state["dwh_main_scorecard_final"],
+            download_name="phase3c_main_scorecard.csv",
+            caption="This scorecard reuses the stored DWH final-validation rows across C1, C2, and C3 without recomputing the science.",
+            height=260,
+            export_mode=export_mode,
+        )
+        render_markdown_block("Interpretation note", state["dwh_interpretation_note_final"], collapsed=not ui_state["advanced"], export_mode=export_mode)
+        render_markdown_block("Output-matrix decision note", state["dwh_output_matrix_decision_note_final"], collapsed=True, export_mode=export_mode)
         render_table(
             "Comparator results table",
             state["dwh_all_results_final"],
@@ -167,11 +262,16 @@ def render(state: dict, ui_state: dict) -> None:
 
     render_section_stack(
         [
-            ("C1 deterministic baseline", _c1_deterministic),
-            ("C2 ensemble extension", _c2_ensemble),
-            ("C3 comparator-only", _c3_comparator),
             ("Observation truth context", _truth_context),
+            ("C1 deterministic baseline", _c1_deterministic),
+            ("C2 p50 extension", _c2_p50),
+            ("C2 overview boards", _c2_overview_boards),
+            ("C2 deterministic vs p50 vs p90", _c2_comparison),
+            ("C3 PyGNOME vs observed", _c3_pygnome),
+            ("OpenDrift vs PyGNOME daily overview", _daily_pygnome_overview),
+            ("OpenDrift vs PyGNOME support", _support_boards),
             ("Tables and notes", _tables_and_notes),
         ],
         export_mode=export_mode,
+        use_tabs=ui_state["advanced"],
     )

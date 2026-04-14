@@ -12,14 +12,19 @@
     "posthoc_phase1_confirmation_workflow_mode": "phase1_mindoro_focus_pre_spill_2016_2023",
     "posthoc_phase1_confirmation_candidate_baseline_path": "output/phase1_mindoro_focus_pre_spill_2016_2023/phase1_baseline_selection_candidate.yaml",
     "posthoc_phase1_confirmation_selected_recipe": "cmems_era5",
+    "posthoc_phase1_confirmation_historical_winner": "cmems_era5",
     "mindoro_phase1_provenance_workflow_mode": "phase1_mindoro_focus_pre_spill_2016_2023",
-    "mindoro_phase1_provenance_artifact": "output/phase1_mindoro_focus_pre_spill_2016_2023/phase1_baseline_selection_candidate.yaml",
+    "mindoro_phase1_provenance_artifact": "config/phase1_baseline_selection.yaml",
     "mindoro_phase1_provenance_selected_recipe": "cmems_era5",
+    "mindoro_phase1_provenance_historical_winner": "cmems_era5",
     "mindoro_phase1_provenance_recipe_family": [
       "cmems_era5",
       "hycom_era5"
     ],
-    "mindoro_phase1_provenance_gfs_outage_constrained": true,
+    "mindoro_phase1_provenance_gfs_outage_constrained": false,
+    "mindoro_phase1_provenance_gfs_historical_winner_not_adopted": false,
+    "mindoro_phase1_provenance_non_gfs_fallback_recipe": "",
+    "mindoro_phase1_provenance_reason_for_non_adoption": "",
     "mindoro_phase1_provenance_accepted_registry_path": "output/phase1_mindoro_focus_pre_spill_2016_2023/phase1_accepted_segment_registry.csv",
     "mindoro_phase1_provenance_accepted_registry_has_2023_segments": false,
     "mindoro_phase1_provenance_searched_through_early_2023": true,
@@ -69,7 +74,7 @@
       "scientific_vs_display_only": "display_only",
       "primary_vs_secondary": "primary",
       "comparator_only": false,
-      "provenance_note": "Curated publication export over stored B1 OpenDrift artifacts. B1 inherits recipe provenance from the separate focused Mindoro Phase 1 rerun selecting cmems_era5."
+      "provenance_note": "Curated publication export over stored B1 OpenDrift artifacts. B1 inherits recipe provenance from the The separate focused 2016-2023 Mindoro drifter rerun selected `cmems_era5` as the active B1 recipe provenance."
     },
     {
       "group": "publication/opendrift_primary",
@@ -79,7 +84,7 @@
       "scientific_vs_display_only": "display_only",
       "primary_vs_secondary": "primary",
       "comparator_only": false,
-      "provenance_note": "Curated publication export over stored B1 OpenDrift artifacts. B1 inherits recipe provenance from the separate focused Mindoro Phase 1 rerun selecting cmems_era5."
+      "provenance_note": "Curated publication export over stored B1 OpenDrift artifacts. B1 inherits recipe provenance from the The separate focused 2016-2023 Mindoro drifter rerun selected `cmems_era5` as the active B1 recipe provenance."
     },
     {
       "group": "publication/opendrift_primary",
@@ -89,7 +94,7 @@
       "scientific_vs_display_only": "display_only",
       "primary_vs_secondary": "primary",
       "comparator_only": false,
-      "provenance_note": "Curated publication export over stored B1 OpenDrift artifacts. B1 inherits recipe provenance from the separate focused Mindoro Phase 1 rerun selecting cmems_era5."
+      "provenance_note": "Curated publication export over stored B1 OpenDrift artifacts. B1 inherits recipe provenance from the The separate focused 2016-2023 Mindoro drifter rerun selected `cmems_era5` as the active B1 recipe provenance."
     },
     {
       "group": "publication/comparator_pygnome",
