@@ -263,10 +263,10 @@ Interpretation:
 - filenames remain machine-readable, with case, phase/track, model, run type, date/date-range, scenario, view type, and variant tokens
 - recommended-for-defense and recommended-for-paper flags are recorded in the publication registry and manifest
 - Phase 3 OpenDrift-versus-PyGNOME comparison figures are included where those comparator products exist now
-- the package also includes a shared thesis study-box reference figure plus separate per-box geography panels built from stored Phase 1 baseline/config metadata, the stored Mindoro scoring-grid display bounds, and the curated prototype_2016 first-code search-box provenance metadata only
+- the package also includes a shared thesis study-box reference figure that now foregrounds `mindoro_case_domain` plus the curated prototype_2016 historical-origin box, an archived full-context overview, and separate per-box geography panels built from stored Phase 1 baseline/config metadata, the stored Mindoro scoring-grid display bounds, and curated prototype provenance metadata only
 - Mindoro Phase 4 is shown as OpenDrift/OpenOil-only support/context material; the package includes a no-matched-PyGNOME note figure instead of a fake Phase 4 OpenDrift-versus-PyGNOME board
 - publication family `K` republishes the preferred accepted-segment 2021 deterministic OpenDrift-vs-PyGNOME forecast figures as support-only material rather than main-defense evidence, while the 2016 prototype package remains preserved as legacy output
-- Mindoro publication figures now report the promoted March 13 -> March 14 B1 validation while explicitly inheriting recipe provenance from the separate focused 2016-2023 Mindoro Phase 1 rerun; DWH figures remain transfer-validation/support visuals
+- Mindoro publication figures now report the promoted March 13 -> March 14 R1 primary validation row while explicitly inheriting recipe provenance from the separate focused 2016-2023 Mindoro Phase 1 rerun; DWH figures remain transfer-validation/support visuals
 
 ## Frozen Thesis Validation Package
 
@@ -286,11 +286,14 @@ Representative files:
 - `final_validation_claims_guardrails.md`
 - `final_validation_chapter_sync_memo.md`
 - `final_validation_interpretation_memo.md`
+- `mindoro_validation_archive_decision.md`
 - `final_validation_summary.md`
 
 Interpretation:
 
 - this remains the thesis-facing summary bundle
+- for Mindoro, thesis-facing reporting now uses only the March 13 -> March 14 R1 primary validation row plus Track A comparator support
+- the March 13 -> March 14 R0 archived baseline and the preserved March-family legacy rows remain repo-preserved archive-only materials rather than thesis-facing package rows
 - repo support layers reuse it rather than replacing it
 
 ## Curated B1 Final Output Export
@@ -412,6 +415,7 @@ Interpretation:
 - this is a read-only support/explorer layer rather than a new scientific phase
 - it is intentionally read-only in the first version
 - it now prioritizes the curated final package roots (`Phase 3B March13-14 Final Output`, `Phase 3C DWH Final Output`, and `2016 Legacy Runs FINAL Figures`) before falling back to the generic publication package or raw case trees
+- it now routes the March 13 -> March 14 R0 archived baseline plus the preserved March-family legacy rows to the dedicated `Mindoro Validation Archive` page instead of the main thesis-facing Mindoro page
 - it surfaces the Phase 4 cross-model deferred status explicitly instead of fabricating comparison products
 
 ## Case Output Trees

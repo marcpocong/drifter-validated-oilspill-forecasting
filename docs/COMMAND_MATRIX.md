@@ -15,7 +15,7 @@
 | `phase1_production_rerun` | scientific/reportable | `phase1_regional_2016_2022` | run the full 2016-2022 historical/regional Phase 1 reference rerun and stage the broader regional candidate baseline artifact only | expensive | `.\start.ps1 -Entry phase1_production_rerun -NoPause` |
 | `mindoro_phase3b_primary_public_validation` | scientific/reportable | `mindoro_retro_2023` | rerun the canonical Mindoro March 13 -> March 14 Phase 3B public-validation row without rewriting the frozen March 3 -> March 6 case definition | expensive | `.\start.ps1 -Entry mindoro_phase3b_primary_public_validation -NoPause` |
 | `mindoro_phase4_only` | scientific/reportable | `mindoro_retro_2023` | rerun only the Mindoro support-only Phase 4 oil-type/shoreline bundle | moderate | `.\start.ps1 -Entry mindoro_phase4_only -NoPause` |
-| `mindoro_reportable_core` | scientific/reportable | `mindoro_retro_2023` | intentional rerun of the main Mindoro Phase 2 -> B1 primary-validation chain plus visible B2/B3/support-only Phase 4 layers | expensive | `.\start.ps1 -Entry mindoro_reportable_core -NoPause` |
+| `mindoro_reportable_core` | scientific/reportable | `mindoro_retro_2023` | intentional rerun of the main Mindoro Phase 2 -> B1 primary-validation chain plus preserved archive-only B2/B3 and support-only Phase 4 layers | expensive | `.\start.ps1 -Entry mindoro_reportable_core -NoPause` |
 | `dwh_reportable_bundle` | scientific/reportable | `dwh_retro_2010` | intentional rerun of the DWH Phase 3C transfer-validation bundle | expensive | `.\start.ps1 -Entry dwh_reportable_bundle -NoPause` |
 | `mindoro_appendix_sensitivity_bundle` | sensitivity/appendix | `mindoro_retro_2023` | rerun appendix and sensitivity branches | expensive | `.\start.ps1 -Entry mindoro_appendix_sensitivity_bundle -NoPause` |
 | `phase1_mindoro_focus_pre_spill_experiment` | sensitivity/appendix | `phase1_mindoro_focus_pre_spill_2016_2023` | separate Mindoro-focused Phase 1 provenance rerun that now supplies the active B1 recipe-provenance story | expensive | `.\start.ps1 -Entry phase1_mindoro_focus_pre_spill_experiment` |
@@ -127,9 +127,9 @@ For `prototype_2016`, the release origin is the selected drifter-of-record start
 - Treat the selected drifter-of-record start as the authoritative `prototype_2016` release point, even if a legacy audit field still names `source_point_metadata.geojson`.
 - The dedicated Phase 1 rerun stages `output/phase1_production_rerun/phase1_baseline_selection_candidate.yaml` only; do not treat it as an automatic overwrite of `config/phase1_baseline_selection.yaml`.
 - Use `BASELINE_SELECTION_PATH` for downstream trials against the staged candidate; keep promotion of `config/phase1_baseline_selection.yaml` explicit and manual.
-- Keep `config/case_mindoro_retro_2023.yaml` frozen as the March 3 -> March 6 base case; the promoted March 13 -> March 14 B1 row is carried by amendment, not by silent rewrite.
+- Keep `config/case_mindoro_retro_2023.yaml` frozen as the March 3 -> March 6 base case; the promoted March 13 -> March 14 R1 primary validation row is carried by amendment, not by silent rewrite.
 - Keep the Mindoro-focused Phase 1 rerun as the active Mindoro-specific recipe-provenance path for B1; it does not rewrite stored B1 raw-generation history or claim direct drifter ingestion inside Phase 3B.
 - `mindoro_march13_14_noaa_reinit_stress_test` is now an alias, not the authoritative scientific label.
 - Thesis-facing Mindoro sequencing is separate focused Phase 1 confirmation -> Phase 2 -> Phase 3B primary validation.
-- Mindoro track semantics are locked as B1 only-primary, A same-case comparator-support, B2 March 6 legacy honesty, and B3 March 3-6 broader-support legacy context.
+- Mindoro track semantics are locked as B1 only-primary, A same-case comparator-support, B2 March 6 archive-only sparse reference, and B3 March 3-6 archive-only broader-support reference.
 - Do not claim independent day-to-day validation for March 13 -> March 14 while the shared-imagery caveat still applies, and do not treat PyGNOME as anything other than same-case comparator evidence.

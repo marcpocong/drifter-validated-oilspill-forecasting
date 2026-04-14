@@ -19,12 +19,11 @@ ensure_repo_root_on_path(__file__)
 
 import streamlit as st
 
-from src.core.artifact_status import get_artifact_status
-from ui.data_access import figure_subset
 from ui.pages.common import (
     render_export_note,
     render_figure_gallery,
     render_markdown_block,
+    render_package_cards,
     render_page_intro,
     render_section_stack,
     render_status_callout,
@@ -32,37 +31,67 @@ from ui.pages.common import (
 )
 
 
-def _mindoro_final_subset(df, artifact_groups: set[str]) -> object:
+def _mindoro_final_subset(
+    df,
+    artifact_groups: set[str],
+    *,
+    status_keys: set[str] | None = None,
+) -> object:
     if df.empty:
         return df
-    if "artifact_group" not in df.columns:
+    payload = df.copy()
+    if "artifact_group" in payload.columns:
+        payload = payload.loc[payload.get("artifact_group", "").astype(str).isin(sorted(artifact_groups))].copy()
+    if status_keys and "status_key" in payload.columns:
+        payload = payload.loc[payload.get("status_key", "").astype(str).isin(sorted(status_keys))].copy()
+    return payload.reset_index(drop=True)
+
+
+def _filter_table(df, *, column: str, allowed_values: set[str] | None = None, blocked_values: set[str] | None = None):
+    if df is None or df.empty or column not in df.columns:
         return df
-    return df.loc[df.get("artifact_group", "").astype(str).isin(sorted(artifact_groups))].reset_index(drop=True)
+    payload = df.copy()
+    series = payload[column].fillna("").astype(str)
+    if allowed_values:
+        payload = payload.loc[series.isin(sorted(allowed_values))].copy()
+        series = payload[column].fillna("").astype(str)
+    if blocked_values:
+        payload = payload.loc[~series.isin(sorted(blocked_values))].copy()
+    return payload.reset_index(drop=True)
 
 
 def render(state: dict, ui_state: dict) -> None:
     export_mode = bool(ui_state.get("export_mode"))
-    legacy_status = get_artifact_status("mindoro_legacy_march6")
-    support_status = get_artifact_status("mindoro_legacy_support")
-    trajectory_status = get_artifact_status("mindoro_trajectory_context")
+    phase1_manifest = state.get("phase1_focused_manifest") or {}
+    phase1_ranking = state.get("phase1_focused_recipe_ranking")
+    selected_recipe = str(phase1_manifest.get("official_b1_recipe") or "").strip()
+    if not selected_recipe and phase1_ranking is not None and not phase1_ranking.empty and "recipe" in phase1_ranking.columns:
+        selected_recipe = str(phase1_ranking.iloc[0]["recipe"]).strip()
+    recipe_family = [str(value).strip() for value in phase1_manifest.get("official_recipe_family") or [] if str(value).strip()]
+    recipe_scope = f"{len(recipe_family)}-recipe" if recipe_family else "focused"
 
     render_page_intro(
         "Mindoro B1 Primary Validation",
-        "This page leads with the March 13 -> March 14 B1 family as the main Mindoro validation result. The shared-imagery caveat stays visible, while the comparator, B2, and B3 remain clearly labeled as support or legacy context rather than co-primary evidence.",
-        badge="Mindoro B1 | primary validation row",
+        "This page leads with the Mindoro March 13 -> March 14 R1 primary validation row as the only thesis-facing Mindoro result. Track A stays comparator-only, while the March 13 -> March 14 R0 archived baseline and the preserved March-family legacy rows were moved to the Mindoro Validation Archive page.",
+        badge="Mindoro B1 | March 13 -> March 14 R1 primary validation row",
     )
 
     if export_mode:
         render_export_note(
             [
                 "Export mode presents the Mindoro validation story as a single sequential brief.",
-                "B1 stays first, Track A remains comparator-only, B2 stays a legacy reference row, and B3 remains broader support rather than co-primary evidence.",
+                "The March 13 -> March 14 R1 primary validation row stays first, Track A remains comparator-only, and archived March-family material stays on the Mindoro Validation Archive page.",
             ]
         )
 
     render_status_callout(
         "Main thesis result",
-        "B1 is the only main Mindoro validation row. It carries the March 13 seed and March 14 target, and it stays distinct from the comparator and legacy rows.",
+        "B1 uses the March 13 -> March 14 R1 primary validation row only. It carries the March 13 seed and March 14 target, and it stays distinct from both Track A comparator support and the archive-only March-family rows.",
+        "info",
+    )
+    render_status_callout(
+        "Naming note",
+        "Here, March 13 -> March 14 R1 refers to the Phase 3B validation branch. It is not the same label as the Phase 1 Recipe Code R1 family used elsewhere in Chapter 3.",
         "info",
     )
     render_status_callout(
@@ -72,7 +101,7 @@ def render(state: dict, ui_state: dict) -> None:
     )
     render_status_callout(
         "Recipe provenance",
-        "B1 inherits the official cmems_gfs recipe from the separate focused 2016-2023 Mindoro Phase 1 rerun, which completed the four-recipe comparison and promoted the focused historical winner directly into official B1. Phase 3B itself does not directly ingest drifters.",
+        f"B1 inherits the official {selected_recipe or 'Phase 1 selected'} recipe from the separate focused 2016-2023 Mindoro Phase 1 rerun, which completed the {recipe_scope} comparison and promoted the focused historical winner directly into official B1. Phase 3B itself does not directly ingest drifters, and the stored promoted B1 run remains tied to the existing R1_previous reinit lineage.",
         "info",
     )
 
@@ -80,50 +109,35 @@ def render(state: dict, ui_state: dict) -> None:
     primary_figures = _mindoro_final_subset(
         mindoro_final_registry,
         {"publication/observations", "publication/opendrift_primary"},
+        status_keys={"mindoro_primary_validation"},
     )
     comparator_figures = _mindoro_final_subset(
         mindoro_final_registry,
         {"publication/comparator_pygnome"},
+        status_keys={"mindoro_crossmodel_comparator"},
     )
-    legacy_figures = figure_subset(
-        ui_state["visual_layer"],
-        case_id="CASE_MINDORO_RETRO_2023",
-        status_keys=[legacy_status.key],
-    )
-    support_figures = figure_subset(
-        ui_state["visual_layer"],
-        case_id="CASE_MINDORO_RETRO_2023",
-        status_keys=[support_status.key],
-    )
-    trajectory_figures = figure_subset(
-        ui_state["visual_layer"],
-        case_id="CASE_MINDORO_RETRO_2023",
-        status_keys=[trajectory_status.key],
+    b1_summary = _filter_table(state["mindoro_b1_summary"], column="branch_id", allowed_values={"R1_previous"})
+    b1_fss = _filter_table(state["mindoro_b1_fss"], column="branch_id", allowed_values={"R1_previous"})
+    archive_package = next(
+        (package for package in state.get("curated_package_roots", []) if package.get("package_id") == "mindoro_validation_archive"),
+        None,
     )
 
     def _primary_package() -> None:
         render_figure_gallery(
             primary_figures,
-            title="B1 publication figures",
+            title="March 13 -> March 14 R1 primary-validation figures",
             caption="These figures come from the curated Phase 3B March13-14 final package and should be used first for thesis-facing Mindoro discussion. Click any figure to enlarge it and read the fuller interpretation there.",
             limit=2 if export_mode else (None if ui_state["advanced"] else 5),
             columns_per_row=1 if export_mode else 2,
             export_mode=export_mode,
             overlay_label="Click to enlarge",
         )
-        render_table(
-            "B1 summary",
-            state["mindoro_b1_summary"],
-            download_name="march13_14_reinit_summary.csv",
-            caption="Curated B1 summary table from the final March13-14 package.",
-            height=250,
-            export_mode=export_mode,
-        )
 
     def _comparator_support() -> None:
         render_status_callout(
             "Support comparison",
-            "Track A is attached to B1 as same-case comparator support. PyGNOME is comparator-only and never truth.",
+            "Track A is attached to B1 as same-case comparator support. PyGNOME is comparator-only and never truth, and archived March 13 -> March 14 R0 comparator outputs were moved to the Mindoro Validation Archive page.",
             "warning",
         )
         render_figure_gallery(
@@ -135,77 +149,45 @@ def render(state: dict, ui_state: dict) -> None:
             export_mode=export_mode,
             overlay_label="Click to enlarge",
         )
-        render_table(
-            "Comparator model ranking",
-            state["mindoro_comparator_ranking"],
-            download_name="march13_14_reinit_crossmodel_model_ranking.csv",
-            caption="Curated cross-model ranking table for the same-case March 14 comparator lane.",
-            height=240,
-            export_mode=export_mode,
-        )
-
-    def _legacy_reference() -> None:
-        render_status_callout("Legacy reference", "B2 remains visible as a legacy reference and limitations row, but it is not the main Mindoro validation claim.", "warning")
-        render_figure_gallery(
-            legacy_figures,
-            title="B2 legacy-reference figures",
-            caption="B2 remains visible for legacy reference and limitations. It is not the promoted primary result, but the figures are still shown directly for quick comparison.",
-            limit=2 if export_mode else (None if ui_state["advanced"] else 4),
-            columns_per_row=1 if export_mode else 2,
-            export_mode=export_mode,
-            overlay_label="Click to enlarge",
-        )
-
-    def _broader_support() -> None:
-        render_status_callout("Support context", "B3 remains broader support and appendix context only. It should not be presented as the main validation row.", "info")
-        render_figure_gallery(
-            support_figures,
-            title="B3 support figures",
-            caption="B3 remains broader support / appendix context only and should not be presented as the main validation row, but the gallery keeps the packaged figures visible without a selector.",
-            limit=2 if export_mode else (None if ui_state["advanced"] else 4),
-            columns_per_row=1 if export_mode else 2,
-            export_mode=export_mode,
-            overlay_label="Click to enlarge",
-        )
-
-    def _trajectory_context() -> None:
-        render_figure_gallery(
-            trajectory_figures,
-            title="Transport-context figures",
-            caption="These figures give transport context from stored outputs only. Panel mode now keeps them as a direct gallery while the surrounding notes stay concise.",
-            limit=2 if export_mode else (None if ui_state["advanced"] else 4),
-            columns_per_row=1 if export_mode else 2,
-            export_mode=export_mode,
-            overlay_label="Click to enlarge",
-        )
 
     def _tables_and_notes() -> None:
         render_table(
-            "B1 FSS by window",
-            state["mindoro_b1_fss"],
-            download_name="march13_14_reinit_fss_by_window.csv",
-            caption="Curated FSS table from the primary March13-14 package.",
+            "March 13 -> March 14 R1 summary",
+            b1_summary,
+            download_name="march13_14_r1_primary_summary.csv",
+            caption="Curated R1-only summary table from the final March13-14 package.",
             height=220,
             export_mode=export_mode,
         )
         render_table(
-            "Comparator summary",
-            state["mindoro_comparator_summary"],
-            download_name="march13_14_reinit_crossmodel_summary.csv",
-            caption="Curated summary for the March14 comparator-only subgroup.",
+            "March 13 -> March 14 R1 FSS by window",
+            b1_fss,
+            download_name="march13_14_reinit_fss_by_window.csv",
+            caption="Curated R1-only FSS table from the primary March13-14 package.",
             height=220,
             export_mode=export_mode,
         )
         render_markdown_block("Mindoro B1 final-package note", state["mindoro_final_readme"], collapsed=True, export_mode=export_mode)
 
+    def _archive_note() -> None:
+        render_status_callout(
+            "Archive note",
+            "The March 13 -> March 14 R0 archived baseline, archived R0-including March13-14 outputs, and preserved March-family legacy rows were moved off this page. Use the Mindoro Validation Archive page for provenance-only review.",
+            "warning",
+        )
+        if archive_package:
+            render_package_cards(
+                [{**archive_package, "button_label": "Open Mindoro Validation Archive"}],
+                columns_per_row=1,
+                export_mode=export_mode,
+            )
+
     render_section_stack(
         [
-            ("B1 main result", _primary_package),
+            ("March 13 -> March 14 R1 Main Result", _primary_package),
             ("Comparator support", _comparator_support),
-            ("B2 legacy reference", _legacy_reference),
-            ("B3 support context", _broader_support),
-            ("Trajectory context", _trajectory_context),
-            ("Tables and notes", _tables_and_notes),
+            ("R1 Tables And Notes", _tables_and_notes),
+            ("Archive Note", _archive_note),
         ],
         export_mode=export_mode,
         use_tabs=ui_state["advanced"],

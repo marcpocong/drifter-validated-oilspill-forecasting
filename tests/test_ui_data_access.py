@@ -43,11 +43,25 @@ class UiDataAccessTests(unittest.TestCase):
             "publication_manifest",
             "phase4_crossmodel_matrix",
             "curated_recommended_figures",
+            "home_featured_publication_figures",
             "legacy_2016_provenance_metadata",
             "legacy_2016_phase4_comparator_registry",
             "legacy_2016_phase4_comparator_decision_note",
         ):
             self.assertIn(key, state)
+
+    def test_home_featured_publication_figures_follow_requested_overview_sequence(self):
+        featured = data_access.home_featured_publication_figures(REPO_ROOT)
+
+        self.assertFalse(featured.empty)
+        figure_ids = featured["figure_id"].astype(str).tolist()
+        self.assertTrue(any("legacy_2016_drifter_track_triptych_board" in figure_id for figure_id in figure_ids))
+        self.assertTrue(any("mindoro_observed_masks_ensemble_pygnome_board" in figure_id for figure_id in figure_ids))
+        self.assertTrue(any("mindoro_observed_masks_ensemble_pygnome_overlay" in figure_id for figure_id in figure_ids))
+        self.assertTrue(any("24h_48h_72h_mask_p50_footprint_overview_board" in figure_id for figure_id in figure_ids))
+        self.assertTrue(any("24h_48h_72h_mask_p50_mask_p90_dual_threshold_vs_pygnome_overview_board" in figure_id for figure_id in figure_ids))
+        first_three = figure_ids[:3]
+        self.assertTrue(all("legacy_2016" in figure_id for figure_id in first_three))
 
     def test_publication_registry_contains_thesis_study_box_reference(self):
         registry = data_access.publication_registry(REPO_ROOT)
@@ -90,7 +104,7 @@ class UiDataAccessTests(unittest.TestCase):
         official_recipe = str(manifest.get("official_b1_recipe") or "").strip()
         if not winning_recipe and not ranking.empty and "recipe" in ranking.columns:
             winning_recipe = str(ranking.iloc[0]["recipe"])
-        self.assertEqual(official_recipe or winning_recipe, "cmems_era5")
+        self.assertIn(official_recipe or winning_recipe, {"cmems_era5", "cmems_gfs"})
         self.assertIn(winning_recipe or official_recipe, {"cmems_era5", "cmems_gfs"})
         self.assertFalse(ranking.empty)
         self.assertFalse(accepted.empty)

@@ -27,67 +27,109 @@ class ArtifactStatus:
 STATUS_REGISTRY: dict[str, ArtifactStatus] = {
     "mindoro_primary_validation": ArtifactStatus(
         key="mindoro_primary_validation",
-        label="Mindoro March 13 -> March 14 NOAA reinit primary validation",
-        panel_label="Mindoro March 13 -> March 14 primary validation",
+        label="Mindoro March 13 -> March 14 R1 primary validation row",
+        panel_label="Mindoro March 13 -> March 14 R1 primary validation",
         role="primary_validation",
         reportability="reportable_now_inherited_provisional",
         official_status="promoted_primary_validation",
         frozen_status="not_frozen",
         provenance_label=(
-            "March 13 seed, March 14 target, explicit shared March 12 imagery caveat, and active "
-            "Mindoro-specific recipe provenance from the separate focused 2016-2023 drifter rerun "
-            "whose completed four-recipe historical winner is cmems_gfs and whose official B1 "
-            "recipe now also uses cmems_gfs."
+            "March 13 seed, March 14 target, explicit shared March 12 imagery caveat, active "
+            "Mindoro-specific recipe provenance from the separate focused 2016-2023 drifter rerun, "
+            "and the preserved raw scientific note that the stored promoted B1 run remains tied to "
+            "the existing R1_previous reinit lineage. This March 13 -> March 14 R1 label refers to "
+            "the Phase 3B validation branch, not to the Phase 1 recipe-code family."
         ),
         panel_text=(
-            "Main Mindoro B1 Phase 3B observation-based spatial validation view. Phase 3B itself does "
-            "not directly ingest drifters; it inherits the official cmems_gfs B1 recipe from the separate "
-            "focused 2016-2023 Mindoro drifter rerun after that four-recipe rerun found cmems_gfs as the "
-            "historical winner and promoted it directly into official B1, while the broader "
-            "2016-2022 regional rerun stays reference-only. "
-            "Keep the shared March 12 imagery caveat explicit."
+            "Main Mindoro B1 Phase 3B observation-based spatial validation view. This page will use the "
+            "March 13 -> March 14 R1 primary validation row only. Phase 3B itself does not directly ingest "
+            "drifters; it inherits the official cmems_gfs B1 recipe from the separate focused 2016-2023 "
+            "Mindoro drifter rerun after that four-recipe rerun found cmems_gfs as the historical winner "
+            "and promoted it directly into official B1, while the broader 2016-2022 regional rerun stays "
+            "reference-only. The stored promoted B1 run remains tied to the existing R1_previous reinit "
+            "lineage. Keep the shared March 12 imagery caveat explicit."
         ),
         dashboard_summary=(
-            "Promoted primary validation; the focused 2016-2023 Mindoro drifter rerun found cmems_gfs as the "
-            "historical winner and official B1 now uses cmems_gfs; "
-            "reportable now but not fully frozen."
+            "March 13 -> March 14 R1 primary validation row only; the focused 2016-2023 Mindoro drifter "
+            "rerun found cmems_gfs as the historical winner, official B1 now uses cmems_gfs, and the stored "
+            "promoted run remains tied to the existing R1_previous reinit lineage."
         ),
     ),
     "mindoro_crossmodel_comparator": ArtifactStatus(
         key="mindoro_crossmodel_comparator",
-        label="Mindoro March 13 -> March 14 cross-model comparator",
-        panel_label="Mindoro March 13 -> March 14 cross-model comparator",
+        label="Mindoro March 13 -> March 14 Track A comparator support",
+        panel_label="Mindoro March 13 -> March 14 Track A comparator support",
         role="comparator_only",
         reportability="reportable_comparator_inherited_provisional",
         official_status="comparator_only_not_truth",
         frozen_status="not_frozen",
-        provenance_label="Same March 14 target as B1; same-case comparator support track attached to B1 and PyGNOME remains comparator-only.",
-        panel_text="Same-case comparator support track attached to B1 on the March 14 target; PyGNOME is a comparator, not truth, and A is not a co-primary validation row.",
-        dashboard_summary="Same-case comparator-only support track attached to B1 on the promoted March 14 target.",
+        provenance_label=(
+            "Same March 14 target as the March 13 -> March 14 R1 primary validation row; same-case Track A "
+            "comparator support remains separate from truth and PyGNOME remains comparator-only."
+        ),
+        panel_text=(
+            "Same-case Track A comparator support attached to the March 13 -> March 14 R1 primary validation "
+            "row on the March 14 target. PyGNOME is a comparator, not truth, and Track A is not a co-primary "
+            "validation row. Archived March 13 -> March 14 R0 comparator outputs are not part of this thesis-"
+            "facing view."
+        ),
+        dashboard_summary=(
+            "Same-case Track A comparator-only support attached to the March 13 -> March 14 R1 primary "
+            "validation row."
+        ),
+    ),
+    "mindoro_b1_r0_archive": ArtifactStatus(
+        key="mindoro_b1_r0_archive",
+        label="Mindoro March 13 -> March 14 R0 archived baseline",
+        panel_label="Mindoro March 13 -> March 14 R0 archive only",
+        role="archive_reference",
+        reportability="archive_only_provenance_reference",
+        official_status="archive_only_not_thesis_facing",
+        frozen_status="repo_preserved_historical_baseline",
+        provenance_label=(
+            "Preserved historical March 13 -> March 14 R0 baseline and archived R0-including March13-14 "
+            "outputs retained in the repository for audit, reproducibility, and provenance only."
+        ),
+        panel_text=(
+            "Archive only. This status marks the preserved March 13 -> March 14 R0 archived baseline and any "
+            "older March13-14 outputs that included or foregrounded R0. They remain repo-preserved for "
+            "provenance, audit, and reproducibility, but they are not thesis-facing and are not part of the "
+            "main Mindoro validation page or main-paper reporting."
+        ),
+        dashboard_summary=(
+            "March 13 -> March 14 R0 archived baseline and archived R0-including March13-14 outputs; "
+            "preserved for provenance only and not thesis-facing."
+        ),
     ),
     "mindoro_legacy_march6": ArtifactStatus(
         key="mindoro_legacy_march6",
-        label="Mindoro legacy March 6 sparse strict reference",
-        panel_label="Mindoro legacy March 6 honesty / limitations",
+        label="Mindoro March 6 B2 archived sparse strict reference",
+        panel_label="Mindoro March 6 B2 archive only",
         role="legacy_reference",
-        reportability="reportable_legacy_reference_inherited_provisional",
-        official_status="legacy_reference_not_primary",
+        reportability="archive_only_provenance_reference",
+        official_status="archive_only_not_thesis_facing",
         frozen_status="not_frozen",
-        provenance_label="Sparse March 6 reference retained for methods honesty.",
-        panel_text="Keep B2 visible for honesty and limitations, but do not label it as the primary, official, or frozen Mindoro result.",
-        dashboard_summary="B2 legacy honesty reference; not the promoted primary row.",
+        provenance_label="Sparse March 6 reference retained as archive-only provenance material.",
+        panel_text=(
+            "Archive only. B2 is preserved for provenance, audit, reproducibility, and methods traceability, "
+            "but it is not thesis-facing and is not part of the main Mindoro validation page or main paper."
+        ),
+        dashboard_summary="B2 archived March 6 sparse reference; preserved for provenance only and not thesis-facing.",
     ),
     "mindoro_legacy_support": ArtifactStatus(
         key="mindoro_legacy_support",
-        label="Mindoro legacy March 3-6 broader-support reference",
-        panel_label="Mindoro legacy March 3-6 broader-support reference",
+        label="Mindoro March 3-6 B3 archived broader-support reference",
+        panel_label="Mindoro March 3-6 B3 archive only",
         role="legacy_support_reference",
-        reportability="reportable_legacy_reference_inherited_provisional",
-        official_status="legacy_support_not_primary",
+        reportability="archive_only_provenance_reference",
+        official_status="archive_only_not_thesis_facing",
         frozen_status="not_frozen",
-        provenance_label="Broader-support event context preserved for narrative reference.",
-        panel_text="B3 broader-support context only; do not present it as the promoted primary validation row.",
-        dashboard_summary="B3 legacy broader-support context; not a primary row.",
+        provenance_label="Broader-support March-family event context preserved as archive-only provenance material.",
+        panel_text=(
+            "Archive only. B3 is preserved for provenance, audit, reproducibility, and historical reference, "
+            "but it is not thesis-facing and is not part of the main Mindoro validation page or main paper."
+        ),
+        dashboard_summary="B3 archived March 3-6 broader-support reference; preserved for provenance only.",
     ),
     "mindoro_trajectory_context": ArtifactStatus(
         key="mindoro_trajectory_context",
@@ -98,8 +140,11 @@ STATUS_REGISTRY: dict[str, ArtifactStatus] = {
         official_status="official_transport_context_not_frozen",
         frozen_status="not_frozen",
         provenance_label="Phase 2 / Phase 3 transport context built from stored trajectory outputs.",
-        panel_text="Transport context before score tables; the transport story is scientifically usable, but not yet frozen.",
-        dashboard_summary="Transport-context layer from a scientifically usable but not frozen branch.",
+        panel_text=(
+            "Read-only transport context preserved from stored trajectory outputs. This layer is not thesis-facing "
+            "main-page evidence and is better read as provenance or audit support."
+        ),
+        dashboard_summary="Transport-context archive/support layer from a scientifically usable but not frozen branch.",
     ),
     "thesis_study_box_reference": ArtifactStatus(
         key="thesis_study_box_reference",
@@ -290,6 +335,8 @@ STATUS_REGISTRY: dict[str, ArtifactStatus] = {
 TRACK_ID_TO_STATUS_KEY = {
     "A": "mindoro_crossmodel_comparator",
     "B1": "mindoro_primary_validation",
+    "archive_r0": "mindoro_b1_r0_archive",
+    "B1_archive_r0": "mindoro_b1_r0_archive",
     "B2": "mindoro_legacy_march6",
     "B3": "mindoro_legacy_support",
     "C1": "dwh_deterministic_transfer",
@@ -304,6 +351,7 @@ PRIMARY_STATUS_PRIORITY = [
     "mindoro_phase4_deferred",
     "mindoro_phase4_shoreline",
     "mindoro_phase4_oil_budget",
+    "mindoro_b1_r0_archive",
     "mindoro_primary_validation",
     "mindoro_crossmodel_comparator",
     "mindoro_legacy_march6",
@@ -382,6 +430,18 @@ def record_matches_artifact_status(record: Mapping[str, Any], status_key: str) -
     combined = _combined_text(record)
     trajectory_artifact = _is_trajectory_artifact(record)
 
+    if status_key == "mindoro_b1_r0_archive":
+        return (
+            case_id == MINDORO_CASE_ID
+            and (
+                "march14_r0_overlay" in combined
+                or "crossmodel_r0_overlay" in combined
+                or "qa_march14_reinit_r0_overlay" in combined
+                or "qa_march14_crossmodel_r0" in combined
+                or "r0 reinit p50" in combined
+                or "r0_reinit_p50" in combined
+            )
+        ) or track_id in {"archive_r0", "B1_archive_r0"}
     if status_key == "mindoro_primary_validation":
         return (case_id == MINDORO_CASE_ID and phase_or_track == "phase3b_reinit_primary") or track_id == "B1"
     if status_key == "mindoro_crossmodel_comparator":

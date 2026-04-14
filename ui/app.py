@@ -22,7 +22,7 @@ import streamlit as st
 from streamlit import config as st_config
 from PIL import Image
 
-from ui.data_access import build_dashboard_state
+from ui.data_access import build_dashboard_state, dashboard_state_signature
 from ui.pages import PageDefinition, visible_page_definitions
 
 
@@ -39,7 +39,7 @@ LAYER_LABELS = {
 
 
 @st.cache_data(show_spinner=False)
-def _load_dashboard_state() -> dict:
+def _load_dashboard_state(_cache_token: str) -> dict:
     return build_dashboard_state()
 
 
@@ -364,7 +364,7 @@ def main() -> None:
     export_mode = _export_mode_from_query_params(st.query_params)
     if export_mode:
         _load_export_css()
-    state = _load_dashboard_state()
+    state = _load_dashboard_state(dashboard_state_signature())
     ui_state = _render_sidebar_controls(state, branding) if not export_mode else {
         "advanced": False,
         "mode_label": "Export",

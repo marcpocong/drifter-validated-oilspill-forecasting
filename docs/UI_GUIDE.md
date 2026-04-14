@@ -55,6 +55,7 @@ Main pages in panel mode:
 - `Home / Overview`
 - `Phase 1 Recipe Selection`
 - `Mindoro B1 Primary Validation`
+- `Mindoro Validation Archive`
 - `Mindoro Cross-Model Comparator`
 - `DWH Phase 3C Transfer Validation`
 - `Phase 4 Oil-Type and Shoreline Context`
@@ -71,8 +72,9 @@ Advanced-only page:
 ## Output Roots Behind The Main Pages
 
 - `Home / Overview`: curated package roots plus `output/figure_package_publication/`
-- `Phase 1 Recipe Selection`: `output/phase1_mindoro_focus_pre_spill_2016_2023/`, `output/phase1_production_rerun/`, and the shared thesis study-box reference figure set with per-box geography panels from `output/figure_package_publication/`
-- `Mindoro B1 Primary Validation`: `output/Phase 3B March13-14 Final Output/`
+- `Phase 1 Recipe Selection`: `output/phase1_mindoro_focus_pre_spill_2016_2023/`, `output/phase1_production_rerun/`, and the shared thesis study-box reference figure set from `output/figure_package_publication/`, where the default overview now foregrounds boxes `2` and `4` while the focused Phase 1 and scoring-grid geography panels remain archived secondary references
+- `Mindoro B1 Primary Validation`: `output/Phase 3B March13-14 Final Output/`, filtered so the main thesis-facing page shows only the March 13 -> March 14 R1 primary validation row plus Track A comparator support
+- `Mindoro Validation Archive`: `output/final_validation_package/`, `output/Phase 3B March13-14 Final Output/`, and repo-preserved archived March-family materials routed through archive-only curation
 - `Mindoro Cross-Model Comparator`: `output/Phase 3B March13-14 Final Output/publication/comparator_pygnome/`
 - `DWH Phase 3C Transfer Validation`: `output/Phase 3C DWH Final Output/`
 - `Phase 4 Oil-Type and Shoreline Context`: `output/phase4/CASE_MINDORO_RETRO_2023/`

@@ -30,7 +30,7 @@
       "category_id": "scientific_reportable_tracks",
       "workflow_mode": "mindoro_retro_2023",
       "label": "Mindoro validation core + support bundle",
-      "description": "Prep, official Phase 1/2, the March 13 -> March 14 B1 Phase 3B primary public-validation row, the March 6 B2 legacy honesty row, broader public support, and the support-only Mindoro Phase 4 layer.",
+      "description": "Prep, official Phase 1/2, the March 13 -> March 14 R1 Phase 3B primary public-validation row, the preserved archive-only March 6 B2 row, broader archive-only March-family support outputs, and the support-only Mindoro Phase 4 layer.",
       "service_profile": "pipeline_only",
       "rerun_cost": "expensive",
       "safe_default": false,
@@ -59,12 +59,12 @@
         {
           "phase": "3b",
           "service": "pipeline",
-          "description": "March 6 B2 legacy honesty row"
+          "description": "March 6 B2 archive-only sparse-reference row"
         },
         {
           "phase": "phase3b_multidate_public",
           "service": "pipeline",
-          "description": "Legacy broader public-support B3 track"
+          "description": "Archive-only broader public-support B3 track"
         },
         {
           "phase": "phase4_oiltype_and_shoreline",
@@ -79,11 +79,11 @@
       "category_id": "scientific_reportable_tracks",
       "workflow_mode": "mindoro_retro_2023",
       "label": "Mindoro Phase 3B primary public validation",
-      "description": "Promoted March 13 -> March 14 NOAA public-validation row with explicit shared-imagery caveat while preserving the frozen March 3 -> March 6 case definition and March 6 legacy outputs.",
+      "description": "Promoted March 13 -> March 14 R1 public-validation row with explicit shared-imagery caveat while preserving the frozen March 3 -> March 6 case definition and the repo-preserved archive-only March-family outputs.",
       "service_profile": "pipeline_only",
       "rerun_cost": "expensive",
       "safe_default": false,
-      "notes": "Canonical B1 builder. This does not delete or relabel the March 6 B2 legacy honesty row, and the same-case A comparator-support lane stays separate and comparator-only.",
+      "notes": "Canonical B1 builder. This does not delete or relabel the repo-preserved archive-only March-family rows, and the same-case A comparator-support lane stays separate and comparator-only.",
       "steps": [
         {
           "phase": "phase3b_extended_public",
@@ -209,7 +209,7 @@
         {
           "phase": "phase3b_extended_public_scored_march13_14_reinit",
           "service": "pipeline",
-          "description": "Rebuild/reuse the promoted March 13 -> March 14 B1 source bundle for downstream support tracks",
+          "description": "Rebuild/reuse the promoted March 13 -> March 14 R1 source bundle for downstream support tracks",
           "extra_env": {
             "FORCING_OUTAGE_POLICY": "continue_degraded"
           }
@@ -271,7 +271,7 @@
       "service_profile": "pipeline_only",
       "rerun_cost": "expensive",
       "safe_default": false,
-      "notes": "Mindoro-specific provenance lane only. This does not rewrite the stored March 13 -> March 14 B1 raw-generation history, does not modify legacy 2016 prototype outputs, and now evaluates the full four-recipe family with a GFS completeness preflight while promoting the focused historical winner directly into official B1.",
+      "notes": "Mindoro-specific provenance lane only. This does not rewrite the stored March 13 -> March 14 R1 raw-generation history, does not modify legacy 2016 prototype outputs, and now evaluates the full four-recipe family with a GFS completeness preflight while promoting the focused historical winner directly into official B1.",
       "steps": [
         {
           "phase": "phase1_production_rerun",
@@ -357,11 +357,11 @@
       "category_id": "sensitivity_appendix_tracks",
       "workflow_mode": "mindoro_retro_2023",
       "label": "Legacy alias: Mindoro March 13-14 primary validation bundle",
-      "description": "Backward-compatible alias for the promoted March 13 -> March 14 B1 public-validation row plus the same-case comparator-support March 14 A lane.",
+      "description": "Backward-compatible alias for the promoted March 13 -> March 14 R1 public-validation row plus the same-case comparator-support March 14 A lane.",
       "service_profile": "mixed_pipeline_and_gnome",
       "rerun_cost": "expensive",
       "safe_default": false,
-      "notes": "Compatibility alias retained for older scripts. B1 is the only main-text primary row, B2 is legacy honesty-only, B3 is broader-support legacy context, PyGNOME remains comparator-only, and the support-side B1 rebuild uses degraded forcing continuation if a temporary provider outage blocks only forcing acquisition.",
+      "notes": "Compatibility alias retained for older scripts. B1 is the only main-text primary row, the March 13 -> March 14 R0 baseline plus B2/B3 are archive-only provenance rows, PyGNOME remains comparator-only, and the support-side B1 rebuild uses degraded forcing continuation if a temporary provider outage blocks only forcing acquisition.",
       "steps": [
         {
           "phase": "phase3b_extended_public",

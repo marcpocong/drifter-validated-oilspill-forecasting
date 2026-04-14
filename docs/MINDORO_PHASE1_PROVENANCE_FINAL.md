@@ -15,10 +15,10 @@ Important honesty notes:
 - The focused rerun now includes GFS-backed recipes after a full accepted-month GFS preflight and cache backfill.
 - Official B1 now promotes the focused historical winner directly, so the focused four-recipe winner `cmems_gfs` is also the official main-validation recipe.
 - Phase 3B does not directly ingest drifters. It inherits a recipe selected by the separate focused drifter-based Phase 1 rerun.
-- The stored March 13 -> March 14 B1 science bundle keeps its original raw-generation history.
+- The stored March 13 -> March 14 R1 primary validation science bundle keeps its original raw-generation history.
 
 Governance result:
 - Mindoro B1 provenance: focused Mindoro Phase 1 lane
 - Broader `phase1_regional_2016_2022` lane: preserved regional reference/governance lane
-- March 6 B2: preserved legacy honesty row
+- March 6 B2: preserved archive-only sparse-reference row
 - PyGNOME on March 13 -> March 14: comparator-only

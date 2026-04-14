@@ -95,8 +95,8 @@ These are intentional rerun paths. Do not use them casually for status inspectio
 
 - Phase 1 dedicated `2016-2022` rerun outputs now exist and stage a candidate baseline, but the default spill-case baseline remains the older preserved artifact until you trial or promote the candidate explicitly.
 - Phase 2 is scientifically usable, but not scientifically frozen.
-- The frozen Mindoro March 3 -> March 6 base case remains in `config/case_mindoro_retro_2023.yaml`; the promoted March 13 -> March 14 B1 row is tracked in `config/case_mindoro_retro_2023_phase3b_primary_validation_amendment.yaml`.
-- March 6 remains visible as a legacy honesty-only row, not as the primary Mindoro validation result.
+- The frozen Mindoro March 3 -> March 6 base case remains in `config/case_mindoro_retro_2023.yaml`; the promoted March 13 -> March 14 R1 primary validation row is tracked in `config/case_mindoro_retro_2023_phase3b_primary_validation_amendment.yaml`.
+- The March 13 -> March 14 R0 archived baseline, March 6 B2, and March 3 -> March 6 B3 remain repo-preserved as archive-only provenance material rather than thesis-facing Mindoro validation rows.
 - March 13 -> March 14 must keep the shared-imagery caveat explicit, so do not describe it as independent day-to-day validation.
 - `Phase 3B` and `Phase 3C` are validation-only lanes.
 - Outside `prototype_2016`, `phase4_oiltype_and_shoreline`, `phase5_sync`, the galleries, and the dashboard are support layers rather than main thesis phases.

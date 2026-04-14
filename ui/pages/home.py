@@ -34,7 +34,7 @@ def render(state: dict, ui_state: dict) -> None:
     export_mode = bool(ui_state.get("export_mode"))
     render_page_intro(
         "Home / Overview",
-        "This is a polished read-only launch surface over the current curated outputs. Start with Phase 1 for recipe provenance, move to Mindoro B1 for the main thesis result, then use the comparator, DWH, Phase 4, and legacy pages as clearly labeled support lanes.",
+        "This is a polished read-only launch surface over the current curated outputs. Start with Phase 1 for recipe provenance, move to Mindoro B1 for the March 13 -> March 14 R1 primary validation row, then use the comparator, archive, DWH, Phase 4, and legacy pages as clearly labeled support or provenance lanes.",
         badge="Read-only thesis dashboard | curated packages first",
     )
 
@@ -46,7 +46,7 @@ def render(state: dict, ui_state: dict) -> None:
             ]
         )
 
-    recommended = state["curated_recommended_figures"]
+    recommended = state.get("home_featured_publication_figures", state["curated_recommended_figures"])
     guide_cards = [
         {
             "title": "Start with provenance",
@@ -54,11 +54,11 @@ def render(state: dict, ui_state: dict) -> None:
         },
         {
             "title": "Treat B1 as the main result",
-            "body": "Mindoro B1 is the only main Mindoro validation claim. The Mindoro comparator, B2, and B3 stay clearly labeled as support or legacy context.",
+            "body": "Mindoro B1 is the only main Mindoro validation claim. Track A stays comparator-only, while the March 13 -> March 14 R0 archived baseline and the preserved March-family rows now live on the Mindoro Validation Archive page.",
         },
         {
             "title": "Keep the lanes separate",
-            "body": "DWH is a separate Phase 3C transfer-validation lane, Mindoro Phase 4 is context only, and the Legacy 2016 package remains support-only.",
+            "body": "DWH is a separate Phase 3C transfer-validation lane, Mindoro Phase 4 is context only, the archive page is provenance-only, and the Legacy 2016 package remains support-only.",
         },
     ]
 
@@ -95,16 +95,23 @@ def render(state: dict, ui_state: dict) -> None:
             {
                 "title": "Mindoro Primary Validation",
                 "classification": "Main thesis result",
-                "body": "The March 13 to March 14 B1 row is the main Mindoro observation-based validation claim.",
-                "note": "This is the main Mindoro evidence row.",
+                "body": "The March 13 -> March 14 R1 primary validation row is the only thesis-facing Mindoro observation-based validation claim.",
+                "note": "Main paper uses this Mindoro row only.",
                 "page_label": "Mindoro B1 Primary Validation",
             },
             {
                 "title": "Mindoro Comparator",
                 "classification": "Support comparison",
-                "body": "Track A compares OpenDrift and PyGNOME on the same March 14 target, but it remains comparator-only.",
+                "body": "Track A compares OpenDrift and PyGNOME on the same March 14 target, but it remains comparator-only and excludes archived R0-only outputs from the thesis-facing view.",
                 "note": "PyGNOME is never shown as truth here.",
                 "page_label": "Mindoro Cross-Model Comparator",
+            },
+            {
+                "title": "Mindoro Validation Archive",
+                "classification": "Archive / provenance",
+                "body": "Archived March13-14 R0 baseline, older R0-including March13-14 outputs, and preserved March-family legacy rows are centralized here for provenance, audit, and reproducibility.",
+                "note": "Not thesis-facing evidence; main paper uses March 13 -> March 14 R1 only.",
+                "page_label": "Mindoro Validation Archive",
             },
             {
                 "title": "DWH Transfer Validation",
@@ -135,6 +142,7 @@ def render(state: dict, ui_state: dict) -> None:
     quick_link_ids = {
         "mindoro_b1_final",
         "mindoro_comparator",
+        "mindoro_validation_archive",
         "dwh_phase3c_final",
         "phase4_context_status",
         "legacy_2016_final",
@@ -157,7 +165,7 @@ def render(state: dict, ui_state: dict) -> None:
     render_figure_gallery(
         recommended,
         title="Featured publication figures",
-        caption="Home keeps the full curated featured set visible in live browsing so the main story can be scanned at a glance. Click any figure to open a larger preview; export mode stays smaller and static for cleaner PDF snapshots.",
+        caption="Home keeps the requested top-down overview sequence visible in live browsing: Legacy 2016 support triptychs first, then the Mindoro March 13-14 final-validation figures, then the DWH horizon-run comparison boards. Click any figure to open a larger preview; export mode stays smaller and static for cleaner PDF snapshots.",
         limit=2 if export_mode else None,
         columns_per_row=1 if export_mode else 2,
         export_mode=export_mode,

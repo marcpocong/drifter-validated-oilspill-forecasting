@@ -6,21 +6,25 @@ amendment_type: phase3b_primary_public_validation_promotion
 summary: >
   Promote March 13 -> March 14 as the canonical Phase 3B public-validation row in
   packaging, figures, and launcher/docs semantics without mutating the original
-  March 3 -> March 6 official spill-case definition, while keeping March 6 visible
-  as the B2 legacy honesty row, keeping PyGNOME comparator-only, and pairing B1
-  with the separate focused Mindoro Phase 1 recipe-provenance lane.
+  March 3 -> March 6 official spill-case definition, while preserving the March
+  13 -> March 14 R0 baseline and the March-family legacy rows as repo-preserved
+  archive-only provenance material, keeping PyGNOME comparator-only, and pairing
+  B1 with the separate focused Mindoro Phase 1 recipe-provenance lane.
 
 promotion:
   primary_track_id: B1
   primary_phase_or_track: phase3b_reinit_primary
-  primary_track_label: Mindoro March 13 -> March 14 NOAA reinit primary validation
+  primary_track_label: Mindoro March 13 -> March 14 R1 primary validation row
   thesis_phase_title: Phase 3B Observation-Based Spatial Validation Using Public Mindoro Spill Extents
-  thesis_phase_subtitle: Mindoro March 13 -> March 14 public spill-extent reinitialization validation
+  thesis_phase_subtitle: Mindoro March 13 -> March 14 R1 primary validation row using a public spill-extent reinitialization branch
   canonical_output_dir: output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit
   canonical_launcher_entry_id: mindoro_phase3b_primary_public_validation
   retained_launcher_alias_entry_id: mindoro_march13_14_noaa_reinit_stress_test
   seed_observation_date: "2023-03-13"
   target_observation_date: "2023-03-14"
+  validation_branch_disambiguation_note: >
+    March 13 -> March 14 R1 here refers to the Phase 3B validation branch, not
+    to the separate Phase 1 recipe-code family.
   shared_imagery_caveat: >
     Both NOAA/NESDIS public products cite WorldView-3 imagery acquired on
     2023-03-12, so the promoted March 13 -> March 14 row is a reinitialization-based
@@ -31,11 +35,23 @@ legacy_retention:
   legacy_honesty_track_id: B2
   legacy_honesty_phase_or_track: phase3b_legacy_strict
   legacy_honesty_output_dir: output/CASE_MINDORO_RETRO_2023/phase3b
-  legacy_honesty_label: Mindoro March 6 B2 legacy honesty row
+  legacy_honesty_label: Mindoro March 6 B2 archive-only sparse-reference row
   broader_support_track_id: B3
   broader_support_output_dir: output/CASE_MINDORO_RETRO_2023/public_obs_appendix
+  broader_support_label: Mindoro March 3 -> March 6 B3 archive-only broader-support row
   preserve_visible_legacy_outputs: true
+  preserve_visible_legacy_outputs_scope: repo_and_archive_only_not_main_page
   preserve_visible_legacy_labels: true
+  legacy_outputs_archive_only: true
+  thesis_methodology_include_legacy_rows: false
+  ui_primary_page_include_legacy_rows: false
+  ui_archive_page_include_legacy_rows: true
+  march13_14_r0_archive_only: true
+  march13_14_r0_validation_branch_label: Mindoro March 13 -> March 14 R0 archived baseline
+  thesis_methodology_include_march13_14_r0: false
+  ui_primary_page_include_march13_14_r0: false
+  ui_archive_page_include_march13_14_r0: true
+  mindoro_primary_validation_row: march13_14_r1
 
 guardrails:
   mutate_base_case_definition: false

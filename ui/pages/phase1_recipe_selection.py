@@ -49,6 +49,23 @@ def _format_recipe_family(values: object) -> str:
     return str(values or "").strip()
 
 
+def _filter_study_box_figures(df: pd.DataFrame, slugs: tuple[str, ...]) -> pd.DataFrame:
+    if df.empty or "figure_id" not in df.columns:
+        return pd.DataFrame()
+    figure_ids = df["figure_id"].astype(str)
+    mask = pd.Series(False, index=df.index)
+    for slug in slugs:
+        mask |= figure_ids.str.contains(slug, na=False)
+    payload = df.loc[mask].copy()
+    if payload.empty:
+        return payload.reset_index(drop=True)
+    order = {slug: index for index, slug in enumerate(slugs)}
+    payload["_sort_order"] = payload["figure_id"].astype(str).apply(
+        lambda value: next((order[slug] for slug in slugs if slug in value), len(order))
+    )
+    return payload.sort_values(["_sort_order", "figure_id"]).drop(columns="_sort_order").reset_index(drop=True)
+
+
 def render(state: dict, ui_state: dict) -> None:
     export_mode = bool(ui_state.get("export_mode"))
     manifest = state["phase1_focused_manifest"] or {}
@@ -71,6 +88,20 @@ def render(state: dict, ui_state: dict) -> None:
     study_box_detail_figures = study_box_figures.loc[
         study_box_figures.get("run_type", pd.Series(dtype=str)).astype(str).eq("single_box_reference_map")
     ].reset_index(drop=True)
+    featured_study_box_detail_figures = _filter_study_box_figures(
+        study_box_detail_figures,
+        (
+            "mindoro_case_domain_geography_reference",
+            "prototype_first_code_search_box_geography_reference",
+        ),
+    )
+    archived_study_box_detail_figures = _filter_study_box_figures(
+        study_box_detail_figures,
+        (
+            "focused_phase1_box_geography_reference",
+            "scoring_grid_bounds_geography_reference",
+        ),
+    )
 
     time_window = manifest.get("time_window") or {}
     subset_info = manifest.get("ranking_subset") or {}
@@ -150,27 +181,35 @@ def render(state: dict, ui_state: dict) -> None:
     if not study_box_overview_figures.empty or not study_box_detail_figures.empty:
         render_status_callout(
             "Shared box reference",
-            "The thesis-facing box vocabulary is now bundled as one shared panel-ready reference figure plus separate per-box geography figures so the focused Mindoro Phase 1 box, `mindoro_case_domain`, the scoring-grid display bounds, and the legacy prototype first-code search box stay distinct.",
+            "The main thesis-facing box set now uses only boxes 2 and 4: the broader `mindoro_case_domain` and the prototype-origin search box. Boxes 1 and 3 remain preserved as archive-only references for appendix and audit use.",
             "info",
         )
         if not study_box_overview_figures.empty:
-            st.markdown("### Study boxes used by the thesis")
             render_figure_gallery(
                 study_box_overview_figures,
                 title="Study boxes used by the thesis",
-                caption="This shared publication figure is built from stored config, manifest, and provenance metadata only. It keeps the active Mindoro provenance box separate from the broader Mindoro overview domain, the narrower scoring-grid display bounds, and the prototype_2016 historical-origin first-code search box.",
+                caption="This updated shared publication figure is built from stored config, manifest, provenance metadata, and a local geography context layer only. The main thesis-facing overview now shows only boxes 2 and 4, while boxes 1 and 3 stay preserved as archive-only references.",
                 limit=1,
                 columns_per_row=1,
                 export_mode=export_mode,
                 overlay_label="Click to enlarge",
             )
-        if not study_box_detail_figures.empty:
-            st.markdown("### Per-box geography references")
+        if not featured_study_box_detail_figures.empty:
             render_figure_gallery(
-                study_box_detail_figures,
-                title="Per-box geography references",
-                caption="These additional panel-ready figures isolate each stored thesis box while keeping the west-coast Philippines geography visible for presentation and thesis-panel use.",
-                limit=4,
+                featured_study_box_detail_figures,
+                title="Thesis box geography references (Boxes 2 and 4)",
+                caption="These panel-ready geography references keep the two thesis-facing boxes visible individually on the main page without bringing archive-only boxes 1 and 3 back into the main thesis story.",
+                limit=2,
+                columns_per_row=2,
+                export_mode=export_mode,
+                overlay_label="Click to enlarge",
+            )
+        if ui_state["advanced"] and not archived_study_box_detail_figures.empty:
+            render_figure_gallery(
+                archived_study_box_detail_figures,
+                title="Archived box geography references (Boxes 1 and 3)",
+                caption="These preserved reference figures keep box 1, the focused Phase 1 provenance box, and box 3, the narrower scoring-grid bounds, available for archive, appendix, and audit use without making them part of the main thesis-facing box set.",
+                limit=2,
                 columns_per_row=2,
                 export_mode=export_mode,
                 overlay_label="Click to enlarge",

@@ -43,6 +43,15 @@ def _phase1_wrapper_missing_focused_for_test() -> None:
     phase1_recipe_selection.render(state, panel_state)
 
 
+def _phase1_advanced_wrapper_for_test() -> None:
+    from ui.data_access import build_dashboard_state
+    from ui.pages import phase1_recipe_selection
+
+    state = build_dashboard_state()
+    advanced_state = {"advanced": True, "mode_label": "Advanced", "visual_layer": "publication", "export_mode": False}
+    phase1_recipe_selection.render(state, advanced_state)
+
+
 def _phase4_wrapper_for_test() -> None:
     from ui.data_access import build_dashboard_state
     from ui.pages import phase4_oiltype_and_shoreline
@@ -148,7 +157,7 @@ def _missing_image_gallery_wrapper_for_test() -> None:
     from ui.pages.common import render_figure_gallery
 
     state = build_dashboard_state()
-    existing = state["curated_recommended_figures"].head(1).copy()
+    existing = state.get("home_featured_publication_figures", state["curated_recommended_figures"]).head(1).copy()
     if existing.empty:
         existing = pd.DataFrame(
             [
@@ -240,6 +249,15 @@ class UiAppSmokeTests(unittest.TestCase):
     def _gallery_tile_count(self, at: AppTest) -> int:
         return sum("figure-gallery-card__title" in element.value for element in at.markdown)
 
+    def _visible_text(self, at: AppTest, *element_names: str) -> str:
+        chunks: list[str] = []
+        for element_name in element_names:
+            for element in getattr(at, element_name, []):
+                value = getattr(element, "value", "")
+                if isinstance(value, str) and value:
+                    chunks.append(value)
+        return " ".join(chunks)
+
     def test_app_home_renders_without_exceptions(self):
         at = AppTest.from_file(str(APP_PATH), default_timeout=60)
         at.run()
@@ -266,6 +284,7 @@ class UiAppSmokeTests(unittest.TestCase):
             (_dwh_wrapper_for_test, "DWH Phase 3C Transfer Validation"),
             (_legacy_wrapper_for_test, "Legacy 2016 Support Package"),
             (_phase1_wrapper_for_test, "Phase 1 Recipe Selection"),
+            (_phase1_advanced_wrapper_for_test, "Phase 1 Recipe Selection"),
             (_phase4_wrapper_for_test, "Phase 4 Oil-Type and Shoreline Context"),
             (_home_export_wrapper_for_test, "Home / Overview"),
             (_phase1_export_wrapper_for_test, "Phase 1 Recipe Selection"),
@@ -285,7 +304,7 @@ class UiAppSmokeTests(unittest.TestCase):
         button_labels = [element.label for element in at.button]
         self.assertIn("Click to enlarge", button_labels)
         self.assertNotIn("Enlarge figure", button_labels)
-        expected_count = len(build_dashboard_state(REPO_ROOT)["curated_recommended_figures"])
+        expected_count = len(build_dashboard_state(REPO_ROOT)["home_featured_publication_figures"])
         self.assertEqual(self._gallery_tile_count(at), expected_count)
         text_blocks = " ".join(element.value for element in at.markdown)
         self.assertNotIn("keyboard_double", text_blocks)
@@ -299,7 +318,7 @@ class UiAppSmokeTests(unittest.TestCase):
         button_labels = [element.label for element in at.button]
         self.assertIn("Click to enlarge", button_labels)
         self.assertNotIn("Enlarge figure", button_labels)
-        expected_count = len(build_dashboard_state(REPO_ROOT)["curated_recommended_figures"])
+        expected_count = len(build_dashboard_state(REPO_ROOT)["home_featured_publication_figures"])
         self.assertEqual(self._gallery_tile_count(at), expected_count)
 
     def test_publication_package_pages_use_panel_gallery_without_figure_dropdowns(self):
@@ -354,20 +373,41 @@ class UiAppSmokeTests(unittest.TestCase):
         info_text = " ".join(element.value for element in at.warning)
         self.assertIn("falls back to the broader regional reference artifacts", info_text)
 
-    def test_phase1_page_surfaces_study_boxes_reference(self):
+    def test_phase1_page_surfaces_only_main_thesis_boxes_in_default_mode(self):
         at = AppTest.from_function(_phase1_wrapper_for_test, default_timeout=60)
         at.run()
         self.assertFalse(at.exception)
-        text_blocks = " ".join(
-            [element.value for element in at.markdown]
-            + [element.value for element in at.info]
-            + [element.value for element in at.warning]
+        text_blocks = self._visible_text(
+            at,
+            "markdown",
+            "subheader",
+            "info",
+            "warning",
         )
         lowered = text_blocks.lower()
-        self.assertIn("study boxes used by the thesis", lowered)
-        self.assertIn("per-box geography references", lowered)
+        self.assertEqual(lowered.count("study boxes used by the thesis"), 1)
+        self.assertIn("thesis box geography references (boxes 2 and 4)", lowered)
+        self.assertNotIn("archived box geography references (boxes 1 and 3)", lowered)
+        self.assertEqual(self._gallery_tile_count(at), 3)
         self.assertIn("mindoro_case_domain", lowered)
-        self.assertIn("first-code search box", lowered)
+        self.assertIn("first-code search-box", lowered)
+
+    def test_phase1_page_surfaces_archive_only_boxes_in_advanced_mode(self):
+        at = AppTest.from_function(_phase1_advanced_wrapper_for_test, default_timeout=60)
+        at.run()
+        self.assertFalse(at.exception)
+        text_blocks = self._visible_text(
+            at,
+            "markdown",
+            "subheader",
+            "info",
+            "warning",
+        )
+        lowered = text_blocks.lower()
+        self.assertIn("archived box geography references (boxes 1 and 3)", lowered)
+        self.assertIn("focused mindoro phase 1 box geography reference", lowered)
+        self.assertIn("mindoro scoring-grid bounds geography reference", lowered)
+        self.assertEqual(self._gallery_tile_count(at), 5)
 
     def test_legacy_page_surfaces_first_code_origin_story(self):
         at = AppTest.from_function(_legacy_wrapper_for_test, default_timeout=60)

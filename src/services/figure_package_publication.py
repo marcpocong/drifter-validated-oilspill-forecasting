@@ -25,7 +25,7 @@ from matplotlib.patches import Patch, Polygon, Rectangle
 from pyproj import Transformer
 from rasterio.plot import show
 from rasterio.warp import transform_bounds
-from shapely.geometry import MultiPoint
+from shapely.geometry import MultiPoint, box as shapely_box
 
 from src.core.artifact_status import artifact_status_columns, artifact_status_columns_for_key
 from src.services.mindoro_primary_validation_metadata import (
@@ -48,6 +48,8 @@ DOMAIN_GLOSSARY_PATH = Path("docs") / "DOMAIN_GLOSSARY.md"
 PROTOTYPE_2016_PROVENANCE_METADATA_PATH = (
     Path("output") / "2016 Legacy Runs FINAL Figures" / "manifests" / "prototype_2016_provenance_metadata.json"
 )
+PROTOTYPE_2016_FINAL_DIR = Path("output") / "2016 Legacy Runs FINAL Figures"
+STUDY_BOX_LAND_CONTEXT_PATH = Path("data_processed") / "reference" / "study_box_land_context.geojson"
 
 FINAL_REPRO_DIR = Path("output") / "final_reproducibility_package"
 FINAL_PHASE_STATUS_CSV = FINAL_REPRO_DIR / "final_phase_status_registry.csv"
@@ -106,12 +108,14 @@ FIGURE_FAMILIES: dict[str, str] = {
     "J": "DWH trajectory publication package",
     "K": "Prototype accepted-segment OpenDrift vs PyGNOME support package",
     "L": "Thesis study-box reference package",
+    "M": "Legacy 2016 home-overview support package",
 }
 
 
 @dataclass
 class PublicationFigureRecord:
     figure_id: str
+    display_title: str
     figure_family_code: str
     figure_family_label: str
     case_id: str
@@ -144,6 +148,7 @@ class PublicationFigureRecord:
     def as_row(self) -> dict[str, Any]:
         return {
             "figure_id": self.figure_id,
+            "display_title": self.display_title,
             "figure_family_code": self.figure_family_code,
             "figure_family_label": self.figure_family_label,
             "case_id": self.case_id,
@@ -462,6 +467,18 @@ class FigurePackagePublicationService:
     def _legend_labels(self) -> dict[str, str]:
         return self.style.get("legend_labels", {})
 
+    def _legend_label_overrides(self, spec: dict[str, Any] | None = None) -> dict[str, str]:
+        raw = {}
+        if spec is not None:
+            raw = spec.get("legend_label_overrides") or {}
+        overrides: dict[str, str] = {}
+        for key, value in dict(raw).items():
+            normalized_key = str(key).strip()
+            normalized_value = str(value).strip()
+            if normalized_key and normalized_value:
+                overrides[normalized_key] = normalized_value
+        return overrides
+
     def _board_size(self) -> tuple[float, float]:
         values = (self.style.get("layout") or {}).get("board_size_inches") or [16, 9]
         return float(values[0]), float(values[1])
@@ -630,9 +647,16 @@ class FigurePackagePublicationService:
             "labels_df": self.dwh_labels.copy(),
         }
 
-    def _legend_handles(self, legend_keys: list[str]) -> list[Any]:
+    def _legend_handles(
+        self,
+        legend_keys: list[str],
+        *,
+        label_overrides: dict[str, str] | None = None,
+    ) -> list[Any]:
         palette = self._palette()
-        labels = self._legend_labels()
+        labels = dict(self._legend_labels())
+        if label_overrides:
+            labels.update({str(key): str(value) for key, value in label_overrides.items()})
         handles: list[Any] = []
         for key in legend_keys:
             color = palette.get(key, "#475569")
@@ -657,9 +681,16 @@ class FigurePackagePublicationService:
                 handles.append(Patch(facecolor=color, edgecolor=color, alpha=0.7, label=label))
         return handles
 
-    def _add_legend(self, ax: plt.Axes, legend_keys: list[str], *, compact: bool = False) -> Any:
+    def _add_legend(
+        self,
+        ax: plt.Axes,
+        legend_keys: list[str],
+        *,
+        compact: bool = False,
+        label_overrides: dict[str, str] | None = None,
+    ) -> Any:
         ax.axis("off")
-        handles = self._legend_handles(legend_keys)
+        handles = self._legend_handles(legend_keys, label_overrides=label_overrides)
         legend = ax.legend(
             handles=handles,
             loc="upper left",
@@ -704,6 +735,35 @@ class FigurePackagePublicationService:
                 wrapped_lines.append(textwrap.fill(raw, width=width))
         return "\n".join(wrapped_lines)
 
+    @staticmethod
+    def _artist_vertical_gap_px(upper_artist: Any, lower_artist: Any) -> float:
+        renderer = upper_artist.figure.canvas.get_renderer()
+        upper_bbox = upper_artist.get_window_extent(renderer=renderer)
+        lower_bbox = lower_artist.get_window_extent(renderer=renderer)
+        return float(upper_bbox.y0 - lower_bbox.y1)
+
+    def _enforce_artist_gap(
+        self,
+        ax: plt.Axes,
+        upper_artist: Any,
+        lower_artist: Any,
+        *,
+        minimum_gap_px: float,
+        min_lower_y: float = 0.02,
+    ) -> None:
+        if float(minimum_gap_px) <= 0.0:
+            return
+        fig = ax.figure
+        fig.canvas.draw()
+        current_gap_px = self._artist_vertical_gap_px(upper_artist, lower_artist)
+        if current_gap_px >= float(minimum_gap_px):
+            return
+        shift_px = float(minimum_gap_px) - current_gap_px
+        axis_height_px = max(float(ax.bbox.height), 1.0)
+        x_value, y_value = lower_artist.get_position()
+        lower_artist.set_position((float(x_value), max(float(min_lower_y), float(y_value) - (shift_px / axis_height_px))))
+        fig.canvas.draw()
+
     def _add_note_box(
         self,
         ax: plt.Axes,
@@ -715,6 +775,7 @@ class FigurePackagePublicationService:
         title_y: float = 1.0,
         body_y: float = 0.92,
         box_pad: float = 0.36,
+        minimum_title_gap_px: float = 10.0,
     ) -> tuple[Any, Any]:
         ax.axis("off")
         if wrap_width is None:
@@ -745,6 +806,12 @@ class FigurePackagePublicationService:
             transform=ax.transAxes,
             bbox={"boxstyle": f"round,pad={box_pad:.2f}", "facecolor": "#ffffff", "edgecolor": "#cbd5e1"},
         )
+        self._enforce_artist_gap(
+            ax,
+            title_artist,
+            body_artist,
+            minimum_gap_px=float(minimum_title_gap_px),
+        )
         return title_artist, body_artist
 
     def _artist_within_bbox(self, artist: Any, bbox: Any, *, pad_px: float = 2.0) -> bool:
@@ -763,6 +830,17 @@ class FigurePackagePublicationService:
         if legend_key and legend_key not in keys:
             keys.append(legend_key)
         return keys
+
+    def _board_legend_label_overrides(self, board_spec: dict[str, Any]) -> dict[str, str]:
+        overrides = dict(self._legend_label_overrides(board_spec))
+        for panel in list(board_spec.get("panels", [])):
+            source_spec_id = str(panel.get("source_spec_id") or "").strip()
+            source_spec = self._spec_lookup.get(source_spec_id)
+            if source_spec is not None and str(source_spec.get("renderer") or "") != "external_image":
+                overrides.update(self._legend_label_overrides(source_spec))
+            else:
+                overrides.update(self._legend_label_overrides(panel))
+        return overrides
 
     def _board_text_blocks(self, spec: dict[str, Any]) -> dict[str, Any]:
         guide_bullets = [str(item).strip() for item in spec.get("guide_bullets", []) if str(item).strip()]
@@ -800,6 +878,40 @@ class FigurePackagePublicationService:
             "provenance_line": provenance_line,
             "extra_lines": extra_lines,
         }
+
+    def _board_layout_settings(self, spec: dict[str, Any], panel_count: int) -> dict[str, Any]:
+        layout_mode = "bottom_strip" if panel_count <= 3 else "sidecar"
+        defaults: dict[str, Any] = {
+            "layout_mode": layout_mode,
+            "outer_left": 0.04,
+            "outer_right": 0.98,
+            "outer_top": 0.89,
+            "outer_bottom": 0.06,
+            "outer_hspace": 0.12,
+            "outer_wspace": 0.06,
+            "panel_grid_wspace": 0.10,
+            "panel_grid_hspace": 0.12 if layout_mode == "bottom_strip" else 0.14,
+            "info_grid_wspace": 0.12,
+            "locator_stack_hspace": 0.10,
+            "side_grid_hspace": 0.12,
+            "guide_title_y": 0.98,
+            "guide_body_y": 0.84 if layout_mode == "bottom_strip" else 0.82,
+            "guide_box_pad": 0.34,
+            "guide_minimum_title_gap_px": 18.0,
+            "guide_wrap_max_chars": 52,
+            "note_title_y": 0.98,
+            "note_body_y": 0.84 if layout_mode == "bottom_strip" else 0.82,
+            "note_box_pad": 0.34,
+            "note_minimum_title_gap_px": 18.0,
+            "note_wrap_max_chars": 50,
+            "title_y": 0.965,
+            "subtitle_y": 0.935,
+            "subtitle_wrap_width": 116,
+        }
+        overrides = spec.get("board_layout_overrides") or {}
+        for key, value in overrides.items():
+            defaults[str(key)] = value
+        return defaults
 
     def _add_geographic_labels(self, ax: plt.Axes, case_id: str, target_crs: str) -> None:
         labels_df = self._case_context(case_id).get("labels_df", pd.DataFrame())
@@ -1520,7 +1632,7 @@ class FigurePackagePublicationService:
             {
                 "tag": "1",
                 "label": "Focused Mindoro Phase 1 validation box",
-                "short_label": "Focused Phase 1",
+                "short_label": "Focused provenance box",
                 "bounds": focused_box,
                 "color": "#d97706",
                 "fill_alpha": 0.10,
@@ -1529,8 +1641,8 @@ class FigurePackagePublicationService:
             },
             {
                 "tag": "2",
-                "label": "`mindoro_case_domain` fallback transport/overview extent",
-                "short_label": "mindoro_case_domain",
+                "label": "Mindoro case-domain overview box (`mindoro_case_domain`)",
+                "short_label": "Mindoro case domain",
                 "bounds": mindoro_case_domain,
                 "color": "#165ba8",
                 "fill_alpha": 0.07,
@@ -1550,8 +1662,8 @@ class FigurePackagePublicationService:
             },
             {
                 "tag": "4",
-                "label": "prototype_2016 first-code search box",
-                "short_label": "First-code search box",
+                "label": "prototype_2016 first-code search box (historical-origin)",
+                "short_label": "Prototype origin box",
                 "bounds": first_code_box,
                 "color": "#7c3aed",
                 "fill_alpha": 0.05,
@@ -1682,6 +1794,38 @@ class FigurePackagePublicationService:
             },
         ]
 
+    def _load_study_box_land_context(self) -> gpd.GeoDataFrame | None:
+        path = self._resolve(STUDY_BOX_LAND_CONTEXT_PATH)
+        key = (path.resolve(), "EPSG:4326")
+        if key in self._vector_cache:
+            return self._vector_cache[key]
+        if not path.exists():
+            return None
+        gdf = gpd.read_file(path)
+        if gdf.empty:
+            return None
+        if gdf.crs and str(gdf.crs) != "EPSG:4326":
+            gdf = gdf.to_crs("EPSG:4326")
+        self._vector_cache[key] = gdf
+        return gdf
+
+    def _study_box_land_context_subset(
+        self,
+        *,
+        xlim: tuple[float, float],
+        ylim: tuple[float, float],
+    ) -> gpd.GeoDataFrame | None:
+        land = self._load_study_box_land_context()
+        if land is None or land.empty:
+            return None
+        window = shapely_box(xlim[0] - 0.25, ylim[0] - 0.25, xlim[1] + 0.25, ylim[1] + 0.25)
+        subset = land.loc[land.geometry.intersects(window)].copy()
+        if subset.empty:
+            return None
+        subset["geometry"] = subset.geometry.intersection(window)
+        subset = subset.loc[subset.geometry.notna() & ~subset.geometry.is_empty].copy()
+        return subset if not subset.empty else None
+
     def _draw_study_box_geography_context(
         self,
         ax: plt.Axes,
@@ -1689,38 +1833,51 @@ class FigurePackagePublicationService:
         xlim: tuple[float, float],
         ylim: tuple[float, float],
     ) -> None:
-        ax.set_facecolor("#dff1fb")
-        ax.axvspan(xlim[0], xlim[1], color="#dbeafe", alpha=0.16, zorder=0)
-        ax.axhspan(ylim[0], ylim[1], color="#e0f2fe", alpha=0.10, zorder=0)
+        ax.set_facecolor("#d8edf7")
+        ax.axvspan(xlim[0], xlim[1], color="#ebf5fb", alpha=0.68, zorder=0)
+        ax.axhspan(ylim[0], ylim[1], color="#eff7fc", alpha=0.50, zorder=0)
+
+        land_context = self._study_box_land_context_subset(xlim=xlim, ylim=ylim)
+        if land_context is not None and not land_context.empty:
+            land_context.plot(ax=ax, color="#f3ebdd", edgecolor="none", linewidth=0.0, zorder=1)
+            land_context.boundary.plot(ax=ax, color="#b6a89b", linewidth=1.15, alpha=0.35, zorder=1)
+            land_context.boundary.plot(ax=ax, color="#77695f", linewidth=0.55, alpha=0.95, zorder=2)
+        else:
+            for feature in self._study_box_geography_features():
+                coords = feature["coordinates"]
+                lons = [point[0] for point in coords]
+                lats = [point[1] for point in coords]
+                if max(lons) < xlim[0] or min(lons) > xlim[1] or max(lats) < ylim[0] or min(lats) > ylim[1]:
+                    continue
+                patch = Polygon(
+                    coords,
+                    closed=True,
+                    facecolor="#f6efe4",
+                    edgecolor="#7c6f64",
+                    linewidth=0.9,
+                    alpha=0.96,
+                    zorder=1,
+                )
+                ax.add_patch(patch)
 
         for feature in self._study_box_geography_features():
-            coords = feature["coordinates"]
-            lons = [point[0] for point in coords]
-            lats = [point[1] for point in coords]
-            if max(lons) < xlim[0] or min(lons) > xlim[1] or max(lats) < ylim[0] or min(lats) > ylim[1]:
-                continue
-            patch = Polygon(
-                coords,
-                closed=True,
-                facecolor="#f6efe4",
-                edgecolor="#7c6f64",
-                linewidth=0.9,
-                alpha=0.96,
-                zorder=1,
-            )
-            ax.add_patch(patch)
             label_lon, label_lat = feature["label_pos"]
             if xlim[0] <= label_lon <= xlim[1] and ylim[0] <= label_lat <= ylim[1]:
                 ax.text(
                     label_lon,
                     label_lat,
                     str(feature["label"]),
-                    fontsize=7.6,
+                    fontsize=7.4,
                     color="#334155",
                     ha="center",
                     va="center",
-                    zorder=2,
-                    bbox={"boxstyle": "round,pad=0.16", "facecolor": (1, 1, 1, 0.82), "edgecolor": "none"},
+                    zorder=3,
+                    bbox={
+                        "boxstyle": "round,pad=0.18",
+                        "facecolor": (1, 1, 1, 0.78),
+                        "edgecolor": "#cbd5e1",
+                        "linewidth": 0.45,
+                    },
                 )
 
         ocean_labels = [
@@ -1765,12 +1922,12 @@ class FigurePackagePublicationService:
         ax.text(
             xlim[0] + 0.35,
             ylim[0] + 0.35,
-            "West coast of the Philippines thesis context",
+            "West-coast Philippines study context",
             fontsize=8,
             color="#475569",
             ha="left",
             va="bottom",
-            bbox={"boxstyle": "round,pad=0.18", "facecolor": (1, 1, 1, 0.85), "edgecolor": "none"},
+            bbox={"boxstyle": "round,pad=0.22", "facecolor": (1, 1, 1, 0.86), "edgecolor": "#cbd5e1", "linewidth": 0.4},
             zorder=1,
         )
 
@@ -1789,12 +1946,12 @@ class FigurePackagePublicationService:
             )
             ax.add_patch(rect)
             label_box = {
-                "boxstyle": "round,pad=0.16",
+                "boxstyle": "round,pad=0.18",
                 "facecolor": "#ffffff",
                 "edgecolor": str(item.get("color") or "#0f172a"),
-                "linewidth": 1.1,
+                "linewidth": 1.15,
             }
-            label_text = f"{item['tag']}  {item['short_label']}"
+            label_text = f"{item['tag']}. {item['short_label']}"
             if item.get("arrow_to_center"):
                 center = (bounds[0] + width / 2.0, bounds[2] + height / 2.0)
                 ax.annotate(
@@ -1925,6 +2082,7 @@ class FigurePackagePublicationService:
             )
         record = PublicationFigureRecord(
             figure_id=path.stem,
+            display_title=str(spec.get("figure_title") or ""),
             figure_family_code=str(spec["figure_family_code"]),
             figure_family_label=FIGURE_FAMILIES[str(spec["figure_family_code"])],
             case_id=str(spec["case_id"]),
@@ -1985,6 +2143,7 @@ class FigurePackagePublicationService:
         output_path = self._figure_path(spec)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         is_spatial = str(spec["renderer"]) in {"spatial", "track", "ensemble_track", "corridor", "shoreline_segment"}
+        is_study_box = str(spec["renderer"]) == "study_boxes"
         fig = plt.figure(figsize=self._single_size(), dpi=self._dpi(), facecolor=(self.style.get("layout") or {}).get("figure_facecolor") or "#ffffff")
         if is_spatial:
             grid = fig.add_gridspec(3, 2, width_ratios=[3.8, 1.35], height_ratios=[1.15, 0.8, 1.25], left=0.05, right=0.98, top=0.90, bottom=0.07, wspace=0.16, hspace=0.22)
@@ -1997,14 +2156,41 @@ class FigurePackagePublicationService:
                 panel_title = spec.get("map_panel_title") or ""
             render_info = self._render_panel(main_ax, dict(spec, panel_title=panel_title))
             self._add_locator(locator_ax, str(spec["case_id"]), render_info.get("crop_bounds"), str(render_info.get("target_crs") or self._case_context(str(spec["case_id"]))["projected_crs"]))
-            self._add_legend(legend_ax, [str(item) for item in spec.get("legend_keys", [])])
-            self._add_note_box(note_ax, str(spec.get("note_box_title") or "How to read this figure"), [str(item) for item in spec.get("note_lines", [])])
+            self._add_legend(
+                legend_ax,
+                [str(item) for item in spec.get("legend_keys", [])],
+                label_overrides=self._legend_label_overrides(spec),
+            )
+            self._add_note_box(
+                note_ax,
+                str(spec.get("note_box_title") or "How to read this figure"),
+                [str(item) for item in spec.get("note_lines", [])],
+                title_y=0.98,
+                body_y=0.82,
+                box_pad=0.34,
+                minimum_title_gap_px=18.0,
+            )
         else:
-            grid = fig.add_gridspec(2, 2, width_ratios=[3.3, 1.4], height_ratios=[1.0, 1.0], left=0.05, right=0.98, top=0.90, bottom=0.07, wspace=0.18, hspace=0.24)
+            width_ratios = [3.2, 1.45] if is_study_box else [3.3, 1.4]
+            height_ratios = [0.24, 0.76] if is_study_box else [1.0, 1.0]
+            top = 0.905 if is_study_box else 0.90
+            hspace = 0.10 if is_study_box else 0.24
+            grid = fig.add_gridspec(
+                2,
+                2,
+                width_ratios=width_ratios,
+                height_ratios=height_ratios,
+                left=0.05,
+                right=0.98,
+                top=top,
+                bottom=0.07,
+                wspace=0.18,
+                hspace=hspace,
+            )
             main_ax = fig.add_subplot(grid[:, 0])
             info_ax = fig.add_subplot(grid[0, 1])
             note_ax = fig.add_subplot(grid[1, 1])
-            panel_title = spec.get("figure_title")
+            panel_title = "" if is_study_box else spec.get("figure_title")
             if "map_panel_title" in spec:
                 panel_title = spec.get("map_panel_title") or ""
             render_info = self._render_panel(main_ax, dict(spec, panel_title=panel_title))
@@ -2024,10 +2210,25 @@ class FigurePackagePublicationService:
                 info_ax,
                 str(spec.get("subtitle_box_title") or "Context"),
                 subtitle_box_lines,
+                title_y=0.98,
+                body_y=0.79 if is_study_box else 0.82,
+                box_pad=0.38 if is_study_box else 0.34,
+                minimum_title_gap_px=22.0 if is_study_box else 18.0,
             )
-            self._add_note_box(note_ax, str(spec.get("note_box_title") or "How to read this figure"), [str(item) for item in spec.get("note_lines", [])])
+            self._add_note_box(
+                note_ax,
+                str(spec.get("note_box_title") or "How to read this figure"),
+                [str(item) for item in spec.get("note_lines", [])],
+                title_y=0.98,
+                body_y=0.79 if is_study_box else 0.82,
+                box_pad=0.38 if is_study_box else 0.34,
+                minimum_title_gap_px=22.0 if is_study_box else 18.0,
+            )
+        subtitle_text = str(spec["subtitle"])
+        if is_study_box:
+            subtitle_text = textwrap.fill(subtitle_text, width=116)
         fig.suptitle(str(spec["figure_title"]), x=0.05, y=0.965, ha="left", fontsize=float((self.style.get("typography") or {}).get("title_size") or 19), fontweight="bold")
-        fig.text(0.05, 0.932, str(spec["subtitle"]), ha="left", va="top", fontsize=float((self.style.get("typography") or {}).get("subtitle_size") or 10), color="#475569")
+        fig.text(0.05, 0.932, subtitle_text, ha="left", va="top", fontsize=float((self.style.get("typography") or {}).get("subtitle_size") or 10), color="#475569")
         pixel_width, pixel_height = self._figure_pixel_size(fig)
         fig.savefig(output_path, dpi=self._dpi())
         plt.close(fig)
@@ -2128,21 +2329,27 @@ class FigurePackagePublicationService:
         legend_keys: list[str] = []
         crop_candidates: list[tuple[float, float, float, float] | None] = []
         target_crs = ""
-        layout_mode = "bottom_strip" if panel_count <= 3 else "sidecar"
+        layout = self._board_layout_settings(spec, panel_count)
+        layout_mode = str(layout["layout_mode"])
         if layout_mode == "bottom_strip":
             outer_grid = fig.add_gridspec(
                 2,
                 1,
                 height_ratios=[1.0, 0.32],
-                left=0.04,
-                right=0.98,
-                top=0.89,
-                bottom=0.06,
-                hspace=0.12,
+                left=float(layout["outer_left"]),
+                right=float(layout["outer_right"]),
+                top=float(layout["outer_top"]),
+                bottom=float(layout["outer_bottom"]),
+                hspace=float(layout["outer_hspace"]),
             )
-            panel_grid = outer_grid[0, 0].subgridspec(rows, cols, wspace=0.10, hspace=0.12)
-            info_grid = outer_grid[1, 0].subgridspec(1, 3, width_ratios=[0.95, 1.55, 1.15], wspace=0.12)
-            locator_stack = info_grid[0, 0].subgridspec(2, 1, height_ratios=[1.0, 0.88], hspace=0.10)
+            panel_grid = outer_grid[0, 0].subgridspec(
+                rows,
+                cols,
+                wspace=float(layout["panel_grid_wspace"]),
+                hspace=float(layout["panel_grid_hspace"]),
+            )
+            info_grid = outer_grid[1, 0].subgridspec(1, 3, width_ratios=[0.95, 1.55, 1.15], wspace=float(layout["info_grid_wspace"]))
+            locator_stack = info_grid[0, 0].subgridspec(2, 1, height_ratios=[1.0, 0.88], hspace=float(layout["locator_stack_hspace"]))
             locator_ax = fig.add_subplot(locator_stack[0, 0])
             legend_ax = fig.add_subplot(locator_stack[1, 0])
             guide_ax = fig.add_subplot(info_grid[0, 1])
@@ -2152,14 +2359,19 @@ class FigurePackagePublicationService:
                 1,
                 2,
                 width_ratios=[4.65, 1.85],
-                left=0.04,
-                right=0.98,
-                top=0.89,
-                bottom=0.06,
-                wspace=0.06,
+                left=float(layout["outer_left"]),
+                right=float(layout["outer_right"]),
+                top=float(layout["outer_top"]),
+                bottom=float(layout["outer_bottom"]),
+                wspace=float(layout["outer_wspace"]),
             )
-            panel_grid = outer_grid[0, 0].subgridspec(rows, cols, wspace=0.10, hspace=0.14)
-            side_grid = outer_grid[0, 1].subgridspec(4, 1, height_ratios=[0.96, 0.82, 1.34, 1.18], hspace=0.12)
+            panel_grid = outer_grid[0, 0].subgridspec(
+                rows,
+                cols,
+                wspace=float(layout["panel_grid_wspace"]),
+                hspace=float(layout["panel_grid_hspace"]),
+            )
+            side_grid = outer_grid[0, 1].subgridspec(4, 1, height_ratios=[0.96, 0.82, 1.34, 1.18], hspace=float(layout["side_grid_hspace"]))
             locator_ax = fig.add_subplot(side_grid[0, 0])
             legend_ax = fig.add_subplot(side_grid[1, 0])
             guide_ax = fig.add_subplot(side_grid[2, 0])
@@ -2188,9 +2400,15 @@ class FigurePackagePublicationService:
         else:
             locator_ax.axis("off")
         legend_artist = None
+        legend_label_overrides = self._board_legend_label_overrides(spec)
         legend_keys = list(dict.fromkeys(key for key in legend_keys if key))
         if legend_keys:
-            legend_artist = self._add_legend(legend_ax, legend_keys, compact=True)
+            legend_artist = self._add_legend(
+                legend_ax,
+                legend_keys,
+                compact=True,
+                label_overrides=legend_label_overrides,
+            )
         else:
             legend_ax.axis("off")
         _, guide_body_artist = self._add_note_box(
@@ -2200,12 +2418,13 @@ class FigurePackagePublicationService:
             wrap_width=self._axis_wrap_width(
                 guide_ax,
                 fontsize=float((self.style.get("typography") or {}).get("note_size") or 8),
-                max_chars=52,
+                max_chars=int(layout["guide_wrap_max_chars"]),
             ),
             bullet_lines=True,
-            title_y=0.98,
-            body_y=0.84,
-            box_pad=0.34,
+            title_y=float(layout["guide_title_y"]),
+            body_y=float(layout["guide_body_y"]),
+            box_pad=float(layout["guide_box_pad"]),
+            minimum_title_gap_px=float(layout["guide_minimum_title_gap_px"]),
         )
         note_lines = [
             line
@@ -2224,11 +2443,12 @@ class FigurePackagePublicationService:
                 wrap_width=self._axis_wrap_width(
                     note_ax,
                     fontsize=float((self.style.get("typography") or {}).get("note_size") or 8),
-                    max_chars=50,
+                    max_chars=int(layout["note_wrap_max_chars"]),
                 ),
-                title_y=0.98,
-                body_y=0.84,
-                box_pad=0.34,
+                title_y=float(layout["note_title_y"]),
+                body_y=float(layout["note_body_y"]),
+                box_pad=float(layout["note_box_pad"]),
+                minimum_title_gap_px=float(layout["note_minimum_title_gap_px"]),
             )
         else:
             note_ax.axis("off")
@@ -2236,20 +2456,20 @@ class FigurePackagePublicationService:
         title_artist = fig.suptitle(
             str(spec["figure_title"]),
             x=0.04,
-            y=0.965,
+            y=float(layout["title_y"]),
             ha="left",
             fontsize=float((self.style.get("typography") or {}).get("title_size") or 19),
             fontweight="bold",
         )
         subtitle_text = textwrap.fill(
             str(spec["subtitle"]),
-            width=116,
+            width=int(layout["subtitle_wrap_width"]),
             break_long_words=False,
             break_on_hyphens=False,
         )
         subtitle_artist = fig.text(
             0.04,
-            0.935,
+            float(layout["subtitle_y"]),
             subtitle_text,
             ha="left",
             va="top",
@@ -2526,6 +2746,8 @@ class FigurePackagePublicationService:
         box_padding_fraction: float = 0.08,
         minimum_pad_lon: float = 0.9,
         minimum_pad_lat: float = 0.7,
+        recommended_for_main_defense: bool = False,
+        recommended_for_paper: bool = True,
     ) -> dict[str, Any]:
         return {
             "spec_id": spec_id,
@@ -2548,8 +2770,8 @@ class FigurePackagePublicationService:
             "subtitle_box_title": subtitle_box_title,
             "subtitle_box_lines": subtitle_box_lines,
             "short_plain_language_interpretation": interpretation,
-            "recommended_for_main_defense": False,
-            "recommended_for_paper": True,
+            "recommended_for_main_defense": recommended_for_main_defense,
+            "recommended_for_paper": recommended_for_paper,
             "notes": notes,
             "source_paths": source_paths,
             "study_boxes": study_boxes,
@@ -2630,6 +2852,7 @@ class FigurePackagePublicationService:
         caveat_line: str = "",
         provenance_line: str = "",
         board_issue_types: list[str] | None = None,
+        board_layout_overrides: dict[str, Any] | None = None,
         scenario_id: str = "",
         recommended_for_main_defense: bool = True,
         recommended_for_paper: bool = False,
@@ -2655,6 +2878,7 @@ class FigurePackagePublicationService:
             "caveat_line": caveat_line,
             "provenance_line": provenance_line,
             "board_issue_types": list(board_issue_types or []),
+            "board_layout_overrides": dict(board_layout_overrides or {}),
             "note_box_title": "Board reading guide",
             "short_plain_language_interpretation": interpretation,
             "recommended_for_main_defense": recommended_for_main_defense,
@@ -2842,7 +3066,7 @@ class FigurePackagePublicationService:
             self.phase1_baseline_selection.get("historical_four_recipe_winner", "")
             or official_recipe
         ).strip()
-        return [
+        lines = [
             f"{MINDORO_PRIMARY_VALIDATION_THESIS_PHASE_TITLE} is now carried by the March 13 -> March 14 promoted Mindoro validation pair, seeded from the March 13 NOAA polygon and scored against the March 14 NOAA target.",
             MINDORO_SHARED_IMAGERY_CAVEAT,
             (
@@ -2852,6 +3076,10 @@ class FigurePackagePublicationService:
             ),
             f"The promoted OpenDrift R1 previous reinit p50 row reaches FSS beyond zero at 3/5/10 km with {int(row.get('forecast_nonzero_cells', 0))} forecast cells against {int(row.get('obs_nonzero_cells', 0))} observed cells.",
         ]
+        threshold_line = self._mindoro_reinit_threshold_equivalence_line()
+        if threshold_line:
+            lines.append(threshold_line)
+        return lines
 
     def _mindoro_strict_context_lines(self) -> list[str]:
         row = self._mindoro_strict_row()
@@ -2876,18 +3104,26 @@ class FigurePackagePublicationService:
             ["mean_fss", "fss_1km", "iou", "nearest_distance_to_obs_m", "track_tie_break_order"],
             ascending=[False, False, False, True, True],
         ).iloc[0]
-        return [
+        lines = [
             "This cross-model lane reuses the completed March 13 -> March 14 reinit outputs and adds one deterministic PyGNOME surrogate seeded from the same March 13 NOAA polygon.",
             f"{top['model_name']} currently ranks first in the promoted local cross-model bundle under the current case definition.",
             "PyGNOME remains comparator-only here, and the shared-imagery caveat still applies to the March 13 -> March 14 pair.",
         ]
+        threshold_line = self._mindoro_reinit_threshold_equivalence_line()
+        if threshold_line:
+            lines.append(threshold_line)
+        return lines
 
     def _mindoro_comparison_context_lines(self) -> list[str]:
-        return [
+        lines = [
             "This comparison keeps the promoted OpenDrift reinit and PyGNOME comparator views side by side without treating PyGNOME as truth.",
             "In this lane, the score lines come from the March 14 NOAA target while the seed geometry comes from the March 13 NOAA polygon.",
             MINDORO_SHARED_IMAGERY_CAVEAT,
         ]
+        threshold_line = self._mindoro_reinit_threshold_equivalence_line()
+        if threshold_line:
+            lines.append(threshold_line)
+        return lines
 
     def _dwh_observation_context_lines(self) -> list[str]:
         return [
@@ -2959,14 +3195,67 @@ class FigurePackagePublicationService:
             return "Provenance: focused Mindoro drifter recipe confirmation was unavailable."
         return f"Provenance: focused 2016-2023 Mindoro drifter rerun promoted `{recipe}` into the active official B1 lane."
 
+    def _mindoro_primary_branch_probability_path(self, branch_id: str) -> Path | None:
+        row = self._mindoro_primary_branch_row(branch_id)
+        if row is None:
+            return None
+        candidates = [
+            row.get("probability_path"),
+            row.get("march14_probability_path"),
+            row.get("probability_path_survival"),
+        ]
+        for value in candidates:
+            text = str(value or "").strip()
+            if text and text.lower() not in {"nan", "none", "null"}:
+                return self._resolve(text)
+        return None
+
+    def _mindoro_reinit_threshold_equivalence_line(self, branch_id: str = "R1_previous") -> str:
+        probability_path = self._mindoro_primary_branch_probability_path(branch_id)
+        if probability_path is None:
+            return ""
+        info = self._load_raster_mask(probability_path)
+        if info is None:
+            return ""
+        probability = np.asarray(info["array"], dtype=float)
+        finite = np.isfinite(probability)
+        if not finite.any():
+            return ""
+        nonzero = finite & (probability > 0)
+        p50_mask = finite & (probability >= 0.5)
+        p90_mask = finite & (probability >= 0.9)
+        p50_cells = int(np.count_nonzero(p50_mask))
+        p90_cells = int(np.count_nonzero(p90_mask))
+        if np.array_equal(p50_mask, p90_mask):
+            if p50_cells == 0:
+                return "Derived March 14 p90 is also empty in this stored reinit output."
+            min_nonzero = self._format_score_value(float(np.min(probability[nonzero])))
+            max_nonzero = self._format_score_value(float(np.max(probability[nonzero])))
+            return (
+                "Derived March 14 p90 equals p50 for the promoted R1 previous reinit branch: "
+                f"all {p50_cells} nonzero cells are already {min_nonzero}-{max_nonzero} probability."
+            )
+        if p50_cells > 0:
+            return (
+                "Derived March 14 p90 is smaller than p50 for the promoted R1 previous reinit branch: "
+                f"{p90_cells} of {p50_cells} p50 cells remain at >=0.900 probability."
+            )
+        return ""
+
+    @staticmethod
+    def _mindoro_reinit_equivalent_legend_label() -> str:
+        return "OpenDrift p50 footprint (= p90 here)"
+
     def _mindoro_primary_board_layout_fields(self) -> dict[str, Any]:
+        threshold_line = self._mindoro_reinit_threshold_equivalence_line()
+        guide_bullets = [
+            "Read left to right: seed-versus-target context, promoted R1 previous reinit p50, then the March 13 seed mask; March 14 NOAA remains the scoring target while March 13 NOAA is the reinit seed.",
+            self._format_fss_summary(self._mindoro_primary_branch_row("R1_previous"), "Promoted R1 previous reinit p50"),
+        ]
+        if threshold_line:
+            guide_bullets.insert(1, threshold_line)
         return {
-            "guide_bullets": [
-                "Read clockwise: seed-versus-target context, promoted R1 overlay, R0 baseline, then the March 13 seed mask.",
-                "March 14 NOAA remains the scoring target; March 13 NOAA is the reinit seed, not a second truth day.",
-                self._format_fss_summary(self._mindoro_primary_branch_row("R1_previous"), "Promoted R1 previous reinit p50"),
-                self._format_fss_summary(self._mindoro_primary_branch_row("R0"), "R0 baseline reinit p50"),
-            ],
+            "guide_bullets": guide_bullets,
             "caveat_line": "Caveat: the March 13 and March 14 public masks share March 12 imagery.",
             "provenance_line": self._mindoro_recipe_provenance_line(),
             "board_issue_types": [
@@ -2975,17 +3264,22 @@ class FigurePackagePublicationService:
                 "awkward reading-guide placement",
                 "weak title hierarchy",
             ],
+            "board_layout_overrides": {
+                "outer_top": 0.855,
+            },
         }
 
     def _mindoro_crossmodel_board_layout_fields(self) -> dict[str, Any]:
+        threshold_line = self._mindoro_reinit_threshold_equivalence_line()
+        guide_bullets = [
+            "Read left to right: March 14 reference context, OpenDrift R1 previous reinit p50, then the PyGNOME comparator; March 14 NOAA stays truth throughout this board and PyGNOME remains comparator-only.",
+            self._format_fss_summary(self._mindoro_crossmodel_row("r1"), "OpenDrift R1 previous reinit p50"),
+            self._format_fss_summary(self._mindoro_crossmodel_row("pygnome"), "PyGNOME comparator"),
+        ]
+        if threshold_line:
+            guide_bullets.insert(1, threshold_line)
         return {
-            "guide_bullets": [
-                "Read clockwise: March 14 reference context, OpenDrift R1, OpenDrift R0, then the PyGNOME comparator.",
-                "March 14 NOAA stays truth throughout this board; PyGNOME is comparator-only.",
-                self._format_fss_summary(self._mindoro_crossmodel_row("r1"), "OpenDrift R1 previous reinit p50"),
-                self._format_fss_summary(self._mindoro_crossmodel_row("r0"), "OpenDrift R0 reinit p50"),
-                self._format_fss_summary(self._mindoro_crossmodel_row("pygnome"), "PyGNOME comparator"),
-            ],
+            "guide_bullets": guide_bullets,
             "caveat_line": "Caveat: the March 13 and March 14 public masks share March 12 imagery.",
             "provenance_line": self._mindoro_recipe_provenance_line(),
             "board_issue_types": [
@@ -2994,6 +3288,34 @@ class FigurePackagePublicationService:
                 "awkward reading-guide placement",
                 "legend clutter",
             ],
+            "board_layout_overrides": {
+                "outer_top": 0.855,
+            },
+        }
+
+    def _mindoro_observed_masks_crossmodel_board_layout_fields(self) -> dict[str, Any]:
+        threshold_line = self._mindoro_reinit_threshold_equivalence_line()
+        guide_bullets = [
+            "Read clockwise: March 13 seed mask, March 14 target mask, OpenDrift R1 previous reinit p50, then the PyGNOME comparator.",
+            "March 14 NOAA remains the scoring truth on this board; March 13 NOAA is the reinitialization seed context rather than a second independent validation day.",
+            self._format_fss_summary(self._mindoro_crossmodel_row("r1"), "OpenDrift R1 previous reinit p50"),
+            self._format_fss_summary(self._mindoro_crossmodel_row("pygnome"), "PyGNOME comparator"),
+        ]
+        if threshold_line:
+            guide_bullets.insert(2, threshold_line)
+        return {
+            "guide_bullets": guide_bullets,
+            "caveat_line": "Caveat: the March 13 and March 14 public masks share March 12 imagery.",
+            "provenance_line": self._mindoro_recipe_provenance_line(),
+            "board_issue_types": [
+                "uneven panel spacing",
+                "overlapping text",
+                "awkward reading-guide placement",
+                "legend clutter",
+            ],
+            "board_layout_overrides": {
+                "outer_top": 0.855,
+            },
         }
 
     def _dwh_model_board_layout_fields(self) -> dict[str, Any]:
@@ -3068,6 +3390,7 @@ class FigurePackagePublicationService:
         r0_row = self._mindoro_primary_branch_row("R0")
         r1_mask = str(r1_row.get("forecast_path") or r1_row.get("march14_forecast_path") or "") if r1_row is not None else ""
         r0_mask = str(r0_row.get("forecast_path") or r0_row.get("march14_forecast_path") or "") if r0_row is not None else ""
+        reinit_p50_label = self._mindoro_reinit_equivalent_legend_label()
         return [
             self._spatial_spec(
                 spec_id="mindoro_primary_seed_mask",
@@ -3108,6 +3431,44 @@ class FigurePackagePublicationService:
                     }
                 ],
                 show_source=True,
+                include_source_in_crop=False,
+            ),
+            self._spatial_spec(
+                spec_id="mindoro_primary_target_mask",
+                figure_family_code="A",
+                case_id="CASE_MINDORO_RETRO_2023",
+                phase_or_track="phase3b_reinit_primary",
+                date_token="2023-03-14",
+                model_names="observation",
+                run_type="single_target_observation",
+                view_type="single",
+                variant="paper",
+                figure_slug="march14_target_mask_on_grid",
+                figure_title="Mindoro March 14 target mask on grid",
+                map_panel_title="",
+                subtitle=subtitle,
+                interpretation=(
+                    "This figure isolates the March 14 NOAA target mask so the comparator lane can show the scoring truth "
+                    "without folding the seed geometry into every observation panel."
+                ),
+                notes=(
+                    "Built from the stored March 14 observation mask only; this is the scoring truth surface for the "
+                    "promoted March 13 -> March 14 validation pair."
+                ),
+                note_lines=self._mindoro_primary_note_lines(
+                    "Dark slate shows the March 14 observation target only; March 13 is kept separate as the reinitialization seed context."
+                ),
+                legend_keys=["observed_mask"],
+                raster_layers=[
+                    {
+                        "path": target_mask,
+                        "legend_key": "observed_mask",
+                        "alpha": 0.34,
+                        "linewidth": 1.3,
+                        "zorder": 5,
+                    }
+                ],
+                show_source=False,
                 include_source_in_crop=False,
             ),
             self._spatial_spec(
@@ -3157,7 +3518,8 @@ class FigurePackagePublicationService:
                 show_source=True,
                 include_source_in_crop=False,
             ),
-            self._spatial_spec(
+            {
+                **self._spatial_spec(
                 spec_id="mindoro_primary_r1_overlay",
                 figure_family_code="A",
                 case_id="CASE_MINDORO_RETRO_2023",
@@ -3214,8 +3576,11 @@ class FigurePackagePublicationService:
                 include_source_in_crop=False,
                 recommended_for_main_defense=True,
                 recommended_for_paper=True,
-            ),
-            self._spatial_spec(
+                ),
+                "legend_label_overrides": {"ensemble_p50": reinit_p50_label},
+            },
+            {
+                **self._spatial_spec(
                 spec_id="mindoro_primary_r0_overlay",
                 figure_family_code="A",
                 case_id="CASE_MINDORO_RETRO_2023",
@@ -3226,17 +3591,18 @@ class FigurePackagePublicationService:
                 view_type="single",
                 variant="paper",
                 figure_slug="march14_r0_overlay",
-                figure_title="Mindoro March 14 OpenDrift R0 branch",
+                figure_title="Mindoro March 13 -> March 14 R0 archived baseline",
                 map_panel_title="",
                 subtitle=subtitle,
                 interpretation=(
-                    "This companion figure keeps the stored R0 branch visible in the same publication "
-                    "grammar so the promoted R1 result can be compared against it honestly within the "
-                    "final B1 Phase 3B framing."
+                    "This repo-preserved archive figure keeps the stored March 13 -> March 14 R0 "
+                    "archived baseline available for provenance, audit, and reproducibility only. "
+                    "It is not thesis-facing and is excluded from main-paper reporting."
                 ),
                 notes=(
                     "Built from the stored March 14 observation mask, the stored March 13 seed mask "
-                    "outline, and the stored OpenDrift R0 p50 raster only."
+                    "outline, and the stored OpenDrift R0 p50 raster only. This figure remains "
+                    "archive-only and is not part of the thesis-facing Mindoro validation row."
                 ),
                 note_lines=self._mindoro_primary_note_lines(
                     self._mindoro_primary_branch_score_line("R0", "OpenDrift R0 reinit p50"),
@@ -3270,7 +3636,9 @@ class FigurePackagePublicationService:
                 ],
                 show_source=True,
                 include_source_in_crop=False,
-            ),
+                ),
+                "legend_label_overrides": {"ensemble_p50": reinit_p50_label},
+            },
         ]
 
     def _mindoro_crossmodel_publication_specs(self) -> list[dict[str, Any]]:
@@ -3283,8 +3651,10 @@ class FigurePackagePublicationService:
         r1_mask = str(r1_row.get("forecast_path") or "") if r1_row is not None else ""
         r0_mask = str(r0_row.get("forecast_path") or "") if r0_row is not None else ""
         pygnome_mask = str(pygnome_row.get("forecast_path") or "") if pygnome_row is not None else ""
+        reinit_p50_label = self._mindoro_reinit_equivalent_legend_label()
         return [
-            self._spatial_spec(
+            {
+                **self._spatial_spec(
                 spec_id="mindoro_crossmodel_r1_overlay",
                 figure_family_code="B",
                 case_id="CASE_MINDORO_RETRO_2023",
@@ -3333,8 +3703,11 @@ class FigurePackagePublicationService:
                 include_source_in_crop=False,
                 recommended_for_main_defense=True,
                 recommended_for_paper=True,
-            ),
-            self._spatial_spec(
+                ),
+                "legend_label_overrides": {"ensemble_p50": reinit_p50_label},
+            },
+            {
+                **self._spatial_spec(
                 spec_id="mindoro_crossmodel_r0_overlay",
                 figure_family_code="B",
                 case_id="CASE_MINDORO_RETRO_2023",
@@ -3345,11 +3718,19 @@ class FigurePackagePublicationService:
                 view_type="single",
                 variant="paper",
                 figure_slug="march14_crossmodel_r0_overlay",
-                figure_title="Mindoro March 14 OpenDrift R0",
+                figure_title="Mindoro March 13 -> March 14 R0 archived comparator support",
                 map_panel_title="",
                 subtitle=subtitle,
-                interpretation="This figure keeps the baseline OpenDrift branch visible in the promoted March 14 cross-model discussion using the same publication-grade map grammar as the DWH family.",
-                notes="Built from the stored March 14 observation mask, March 13 seed mask outline, and the stored OpenDrift R0 p50 raster only.",
+                interpretation=(
+                    "This repo-preserved archive figure keeps the March 13 -> March 14 R0 branch "
+                    "available for comparator provenance only. It is not thesis-facing and is not "
+                    "part of the promoted same-case comparator story."
+                ),
+                notes=(
+                    "Built from the stored March 14 observation mask, March 13 seed mask outline, "
+                    "and the stored OpenDrift R0 p50 raster only. This figure remains archive-only "
+                    "and is excluded from the thesis-facing comparator lane."
+                ),
                 note_lines=self._mindoro_crossmodel_note_lines(
                     self._mindoro_crossmodel_score_line("r0", "OpenDrift R0 reinit p50"),
                     self._stored_empty_forecast_line(r0_row, "OpenDrift R0 reinit p50"),
@@ -3382,7 +3763,9 @@ class FigurePackagePublicationService:
                 ],
                 show_source=True,
                 include_source_in_crop=False,
-            ),
+                ),
+                "legend_label_overrides": {"ensemble_p50": reinit_p50_label},
+            },
             self._spatial_spec(
                 spec_id="mindoro_crossmodel_pygnome_overlay",
                 figure_family_code="B",
@@ -3431,6 +3814,78 @@ class FigurePackagePublicationService:
                 show_source=True,
                 include_source_in_crop=False,
             ),
+            {
+                **self._spatial_spec(
+                spec_id="mindoro_observed_masks_ensemble_pygnome_overlay",
+                figure_family_code="B",
+                case_id="CASE_MINDORO_RETRO_2023",
+                phase_or_track="phase3a_reinit_crossmodel",
+                date_token="2023-03-13_to_2023-03-14",
+                model_names="opendrift_vs_pygnome",
+                run_type="single_comparison_overlay",
+                view_type="single",
+                variant="paper",
+                figure_slug="mindoro_observed_masks_ensemble_pygnome_overlay",
+                figure_title="Mindoro March 13-14 observed masks, ensemble forecast, and PyGNOME overlay",
+                map_panel_title="",
+                subtitle="Mindoro | 13-14 March 2023 | March 13 and March 14 observed extents with the promoted ensemble forecast and PyGNOME comparator",
+                interpretation=(
+                    "This single overlay keeps the March 13 observed extent, the March 14 observed target, the "
+                    "promoted ensemble forecast, and the PyGNOME comparator visible together on one map."
+                ),
+                notes=(
+                    "Built from the stored March 13 seed mask, March 14 target mask, promoted OpenDrift ensemble raster, "
+                    "and stored PyGNOME comparator raster only."
+                ),
+                note_lines=self._mindoro_crossmodel_note_lines(
+                    self._mindoro_crossmodel_score_line("r1", "Ensemble forecast"),
+                    self._mindoro_crossmodel_score_line("pygnome", "PyGNOME forecast"),
+                ),
+                legend_keys=["observed_mask", "initialization_polygon", "ensemble_p50", "pygnome", "source_point"],
+                raster_layers=[
+                    {
+                        "path": target_mask,
+                        "legend_key": "observed_mask",
+                        "alpha": 0.34,
+                        "linewidth": 1.1,
+                        "zorder": 5,
+                    },
+                    {
+                        "path": seed_mask,
+                        "legend_key": "initialization_polygon",
+                        "fill": False,
+                        "outline": True,
+                        "linewidth": 1.2,
+                        "linestyle": "--",
+                        "zorder": 6,
+                    },
+                    {
+                        "path": r1_mask,
+                        "legend_key": "ensemble_p50",
+                        "alpha": 0.26,
+                        "linewidth": 1.4,
+                        "zorder": 7,
+                    },
+                    {
+                        "path": pygnome_mask,
+                        "legend_key": "pygnome",
+                        "alpha": 0.24,
+                        "linewidth": 1.4,
+                        "zorder": 8,
+                    },
+                ],
+                show_source=True,
+                include_source_in_crop=False,
+                recommended_for_main_defense=False,
+                recommended_for_paper=True,
+                ),
+                "legend_label_overrides": {
+                    "observed_mask": "March 14 observed spill extent",
+                    "initialization_polygon": "March 13 observed spill extent",
+                    "ensemble_p50": "Ensemble forecast",
+                    "pygnome": "PyGNOME forecast",
+                },
+            },
         ]
 
     def _mindoro_legacy_publication_specs(self) -> list[dict[str, Any]]:
@@ -3479,6 +3934,9 @@ class FigurePackagePublicationService:
         crossmodel_subtitle = (
             "Mindoro | 13-14 March 2023 | promoted cross-model comparator on the March 14 NOAA target | shared-imagery caveat explicit"
         )
+        observed_masks_crossmodel_subtitle = (
+            "Mindoro | 13-14 March 2023 | observed seed/target masks plus OpenDrift ensemble and PyGNOME comparator | shared-imagery caveat explicit"
+        )
         legacy_subtitle = "Mindoro | 6 March 2023 | legacy sparse-reference honesty view"
         return [
             self._board_spec(
@@ -3495,19 +3953,16 @@ class FigurePackagePublicationService:
                 interpretation=(
                     "This is now the main Mindoro presentation board for Phase 3B observation-based spatial validation "
                     "using public Mindoro spill extents because it centers the promoted March 13 -> March 14 validation "
-                    "pair, the best OpenDrift result, and the shared-imagery caveat without rewriting the stored run provenance."
+                    "pair, the thesis-facing R1 row, and the shared-imagery caveat without rewriting the stored run provenance."
                 ),
                 notes="Board assembled from publication-grade March 13 -> March 14 singles rebuilt from stored rasters and vectors only.",
                 note_lines=self._mindoro_primary_note_lines(
                     self._mindoro_primary_branch_score_line("R1_previous", "OpenDrift R1 previous reinit p50"),
-                    self._mindoro_primary_branch_score_line("R0", "OpenDrift R0 reinit p50"),
-                    self._stored_empty_forecast_line(self._mindoro_primary_branch_row("R0"), "OpenDrift R0 reinit p50"),
                 ),
                 **self._mindoro_primary_board_layout_fields(),
                 panels=[
                     {"panel_title": "March 13 seed vs March 14 target", "source_spec_id": "mindoro_primary_seed_vs_target"},
                     {"panel_title": "Promoted R1 previous reinit overlay", "source_spec_id": "mindoro_primary_r1_overlay"},
-                    {"panel_title": "R0 baseline branch overlay", "source_spec_id": "mindoro_primary_r0_overlay"},
                     {"panel_title": "March 13 seed mask on grid", "source_spec_id": "mindoro_primary_seed_mask"},
                 ],
                 recommended_for_main_defense=True,
@@ -3527,18 +3982,47 @@ class FigurePackagePublicationService:
                 notes="Board assembled from publication-grade March 13 -> March 14 singles rebuilt from stored rasters only; PyGNOME remains comparator-only.",
                 note_lines=self._mindoro_comparison_note_lines(
                     self._mindoro_crossmodel_score_line("r1", "OpenDrift R1 previous reinit p50"),
-                    self._mindoro_crossmodel_score_line("r0", "OpenDrift R0 reinit p50"),
                     self._mindoro_crossmodel_score_line("pygnome", "PyGNOME comparator"),
-                    self._stored_empty_forecast_line(self._mindoro_crossmodel_row("r0"), "OpenDrift R0 reinit p50"),
                 ),
                 **self._mindoro_crossmodel_board_layout_fields(),
                 panels=[
                     {"panel_title": "March 14 observation reference context", "source_spec_id": "mindoro_primary_seed_vs_target"},
                     {"panel_title": "OpenDrift R1 previous reinit p50", "source_spec_id": "mindoro_crossmodel_r1_overlay"},
-                    {"panel_title": "OpenDrift R0 reinit p50", "source_spec_id": "mindoro_crossmodel_r0_overlay"},
                     {"panel_title": "PyGNOME deterministic comparator", "source_spec_id": "mindoro_crossmodel_pygnome_overlay"},
                 ],
                 recommended_for_main_defense=True,
+            ),
+            self._board_spec(
+                spec_id="mindoro_observed_masks_ensemble_pygnome_board",
+                figure_family_code="B",
+                case_id="CASE_MINDORO_RETRO_2023",
+                phase_or_track="phase3a_reinit_crossmodel",
+                date_token="2023-03-13_to_2023-03-14",
+                model_names="opendrift_vs_pygnome",
+                run_type="comparison_board",
+                figure_slug="mindoro_observed_masks_ensemble_pygnome_board",
+                figure_title="Mindoro March 13 -> March 14 observed masks, ensemble forecast, and PyGNOME board",
+                subtitle=observed_masks_crossmodel_subtitle,
+                interpretation=(
+                    "This board keeps the March 13 seed mask, the March 14 target mask, the promoted OpenDrift ensemble "
+                    "forecast, and the PyGNOME comparator visible together without treating PyGNOME as truth."
+                ),
+                notes=(
+                    "Board assembled from publication-grade observation, OpenDrift, and PyGNOME singles rebuilt from stored "
+                    "rasters only; March 14 remains the scoring truth and PyGNOME remains comparator-only."
+                ),
+                note_lines=self._mindoro_comparison_note_lines(
+                    self._mindoro_crossmodel_score_line("r1", "OpenDrift R1 previous reinit p50"),
+                    self._mindoro_crossmodel_score_line("pygnome", "PyGNOME comparator"),
+                ),
+                **self._mindoro_observed_masks_crossmodel_board_layout_fields(),
+                panels=[
+                    {"panel_title": "March 13 seed mask on grid", "source_spec_id": "mindoro_primary_seed_mask"},
+                    {"panel_title": "March 14 target mask on grid", "source_spec_id": "mindoro_primary_target_mask"},
+                    {"panel_title": "OpenDrift R1 previous reinit p50", "source_spec_id": "mindoro_crossmodel_r1_overlay"},
+                    {"panel_title": "PyGNOME deterministic comparator", "source_spec_id": "mindoro_crossmodel_pygnome_overlay"},
+                ],
+                recommended_for_main_defense=False,
             ),
             self._board_spec(
                 spec_id="mindoro_legacy_board",
@@ -4406,22 +4890,25 @@ class FigurePackagePublicationService:
 
     def _study_box_publication_specs(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         study_boxes = self._thesis_study_box_entries()
+        featured_tags = {"2", "4"}
+        featured_study_boxes = [item for item in study_boxes if str(item.get("tag")) in featured_tags]
         source_paths = [
             str(PHASE1_BASELINE_SELECTION_PATH),
             str(MINDORO_BASE_CASE_CONFIG_PATH),
+            str(STUDY_BOX_LAND_CONTEXT_PATH),
             str(MINDORO_FORECAST_MANIFEST),
             str(PROTOTYPE_2016_PROVENANCE_METADATA_PATH),
             str(DOMAIN_GLOSSARY_PATH),
         ]
         subtitle_box_lines = [
             f"{item['tag']}. {item['label']}: {self._format_wgs84_bounds(item['bounds'])}"
-            for item in study_boxes
+            for item in featured_study_boxes
         ]
         note_lines = [
             "All boxes are WGS84 longitude/latitude references copied from stored repo metadata only.",
-            "The focused Mindoro Phase 1 validation box is the active thesis-facing provenance box for the B1 recipe story.",
-            "`mindoro_case_domain` remains the broader official transport/overview fallback extent, while the scoring-grid display bounds remain the narrower scoreable display extent.",
-            "The prototype_2016 first-code search box is historical-origin support metadata only; the stored case-local prototype extents remain the operative scientific/display extents for the 2016 figures.",
+            "This panel-friendly thesis default now foregrounds the broader Mindoro case-domain overview box and the prototype-origin search box.",
+            "The focused Phase 1 provenance box and the scoring-grid display bounds are still preserved as secondary archived references and are not deleted from the package.",
+            "The prototype_2016 first-code search box remains historical-origin support metadata only; the stored case-local prototype extents remain the operative scientific/display extents for the 2016 figures.",
         ]
         singles = [
             self._study_box_spec(
@@ -4429,25 +4916,58 @@ class FigurePackagePublicationService:
                 figure_slug="thesis_study_boxes_reference",
                 figure_title="Thesis study boxes reference figure",
                 subtitle=(
-                    "Shared thesis-facing WGS84 box reference for the Mindoro provenance lane, the Mindoro spill-case "
-                    "overview domain, the scoring-grid display bounds, and the prototype_2016 historical-origin search box"
+                    "Panel-friendly thesis-facing WGS84 box reference centered on the Mindoro case-domain overview box "
+                    "and the prototype_2016 historical-origin search box"
                 ),
                 interpretation=(
-                    "This figure turns the thesis-facing study boxes into one panel-ready reference image without "
-                    "pretending that the focused Mindoro box, the broader Mindoro case domain, the scoring-grid "
-                    "display bounds, and the prototype_2016 first-code search box are one operative scientific domain."
+                    "This panel-friendly thesis default foregrounds only the broader Mindoro case-domain overview box "
+                    "and the prototype_2016 historical-origin search box, while keeping the focused Phase 1 and "
+                    "scoring-grid boxes available as archived secondary references."
                 ),
                 notes=(
-                    "Built from stored Phase 1 baseline/config metadata, the stored Mindoro forecast manifest display "
-                    "bounds, and the curated prototype_2016 provenance metadata only; no scientific rerun or live "
-                    "extent rewriting was triggered."
+                    "Built from stored Phase 1 baseline/config metadata, a local clipped land-context geography file, "
+                    "the stored Mindoro forecast manifest display bounds, and the curated prototype_2016 provenance "
+                    "metadata only; no scientific rerun or live extent rewriting was triggered."
                 ),
                 note_lines=note_lines,
                 subtitle_box_title="Included boxes",
                 subtitle_box_lines=subtitle_box_lines,
+                study_boxes=featured_study_boxes,
+                source_paths=source_paths,
+            ),
+            self._study_box_spec(
+                spec_id="thesis_study_boxes_reference_archive_full_context",
+                figure_slug="thesis_study_boxes_reference_archive_full_context",
+                figure_title="Archived full study-box reference figure",
+                subtitle=(
+                    "Archive copy of the earlier all-box WGS84 overview showing tags 1, 2, 3, and 4 together for "
+                    "traceability"
+                ),
+                interpretation=(
+                    "This archive preserves the earlier all-box study-area overview so the previous 1/2/3/4 rendering "
+                    "remains available after the thesis-default overview switched to the cleaner 2/4 presentation."
+                ),
+                notes=(
+                    "Archive copy of the earlier full-context study-box overview preserved for traceability. The "
+                    "thesis-default overview now foregrounds only the broader Mindoro case-domain and the prototype "
+                    "historical-origin box."
+                ),
+                note_lines=[
+                    "This archived overview keeps the earlier full 1/2/3/4 box set available for traceability.",
+                    "The current thesis-default panel now foregrounds only boxes 2 and 4 for a cleaner panel story.",
+                    "No study-box outputs were deleted; the focused Phase 1 and scoring-grid references remain available separately.",
+                ],
+                subtitle_box_title="Archived box set",
+                subtitle_box_lines=[
+                    f"{item['tag']}. {item['label']}: {self._format_wgs84_bounds(item['bounds'])}"
+                    for item in study_boxes
+                ],
                 study_boxes=study_boxes,
                 source_paths=source_paths,
-            )
+                run_type="archived_reference_map",
+                model_names="study_boxes_archive",
+                recommended_for_paper=False,
+            ),
         ]
 
         detail_specs = {
@@ -4469,7 +4989,7 @@ class FigurePackagePublicationService:
                 ),
                 "note_lines": [
                     "This is the active thesis-facing provenance box for the B1 recipe-selection story.",
-                    "The geographic backdrop is reference context so the Mindoro setting stays visible in a panel-ready figure.",
+                    "It is preserved here as a secondary archived reference rather than the default thesis overview image.",
                     "Built from stored repo metadata only; no scientific rerun or live extent rewriting was triggered.",
                 ],
                 "subtitle_box_lines": [
@@ -4477,6 +4997,7 @@ class FigurePackagePublicationService:
                     f"Bounds (WGS84): {self._format_wgs84_bounds(study_boxes[0]['bounds'])}",
                     "Role: active thesis-facing provenance box for the B1 recipe story",
                 ],
+                "recommended_for_paper": False,
             },
             "2": {
                 "spec_id": "mindoro_case_domain_geography_reference",
@@ -4495,14 +5016,15 @@ class FigurePackagePublicationService:
                 ),
                 "note_lines": [
                     "`mindoro_case_domain` remains the broader fallback transport and overview extent.",
-                    "It should not be collapsed into the focused Mindoro Phase 1 provenance box or the narrower scoring-grid bounds.",
+                    "This is one of the two boxes now foregrounded in the thesis-default panel-friendly overview.",
                     "Built from stored repo metadata only; no scientific rerun or live extent rewriting was triggered.",
                 ],
                 "subtitle_box_lines": [
-                    "Selected box: `mindoro_case_domain` fallback transport/overview extent",
+                    "Selected box: Mindoro case-domain overview box (`mindoro_case_domain`)",
                     f"Bounds (WGS84): {self._format_wgs84_bounds(study_boxes[1]['bounds'])}",
                     "Role: broader Mindoro transport and overview context, not the active thesis provenance box",
                 ],
+                "recommended_for_paper": True,
             },
             "3": {
                 "spec_id": "scoring_grid_bounds_geography_reference",
@@ -4522,7 +5044,7 @@ class FigurePackagePublicationService:
                 ),
                 "note_lines": [
                     "These are the stored scoring-grid display bounds used for the Mindoro scoreable display extent.",
-                    "They are narrower than the broader `mindoro_case_domain` and do not replace the active thesis-facing provenance box.",
+                    "They are narrower than the broader `mindoro_case_domain` and remain a secondary archived reference rather than the default thesis overview image.",
                     "Built from stored repo metadata only; no scientific rerun or live extent rewriting was triggered.",
                 ],
                 "subtitle_box_lines": [
@@ -4530,6 +5052,7 @@ class FigurePackagePublicationService:
                     f"Bounds (WGS84): {self._format_wgs84_bounds(study_boxes[2]['bounds'])}",
                     "Role: narrower scoreable display extent derived from the stored forecast manifest",
                 ],
+                "recommended_for_paper": False,
             },
             "4": {
                 "spec_id": "prototype_first_code_search_box_geography_reference",
@@ -4549,6 +5072,7 @@ class FigurePackagePublicationService:
                 ),
                 "note_lines": [
                     "This is historical-origin support metadata from the very first prototype code, not an active thesis-facing Mindoro box.",
+                    "It is one of the two boxes now foregrounded in the thesis-default panel-friendly overview.",
                     "The stored case-local prototype extents remain the operative scientific/display extents for the 2016 figures.",
                     "Built from stored repo metadata only; no scientific rerun or live extent rewriting was triggered.",
                 ],
@@ -4557,6 +5081,7 @@ class FigurePackagePublicationService:
                     f"Bounds (WGS84): {self._format_wgs84_bounds(study_boxes[3]['bounds'])}",
                     "Role: historical-origin west-coast Philippines search box used by the earliest prototype code",
                 ],
+                "recommended_for_paper": True,
             },
         }
 
@@ -4582,6 +5107,7 @@ class FigurePackagePublicationService:
                     box_padding_fraction=0.22,
                     minimum_pad_lon=1.05,
                     minimum_pad_lat=0.85,
+                    recommended_for_paper=bool(detail_spec.get("recommended_for_paper", True)),
                 )
             )
         return singles, []
@@ -6200,6 +6726,171 @@ class FigurePackagePublicationService:
             )
         return specs, []
 
+    def _legacy_2016_home_overview_specs(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        legacy_cases = [
+            {"case_id": "CASE_2016-09-01", "label": "1 Sep 2016", "date_token": "2016-09-01"},
+            {"case_id": "CASE_2016-09-06", "label": "6 Sep 2016", "date_token": "2016-09-06"},
+            {"case_id": "CASE_2016-09-17", "label": "17 Sep 2016", "date_token": "2016-09-17"},
+        ]
+        source_root = self.repo_root / PROTOTYPE_2016_FINAL_DIR
+        if not source_root.exists():
+            self._record_missing(
+                source_root,
+                "Legacy 2016 final support root is missing, so the requested home-overview triptychs could not be built.",
+            )
+            return [], []
+
+        view_specs = {
+            "drifter_track": {
+                "filename": "drifter_track_72h.png",
+                "model_names": "observation",
+                "figure_title": "Legacy 2016 observed drifter tracks across the three support cases",
+                "subtitle": "Legacy 2016 | observed drifter-of-record reference tracks | case-local 72 h support view",
+                "interpretation": (
+                    "This triptych keeps the three observed 72 h drifter-of-record tracks visible together so the "
+                    "legacy September 2016 support cases can be scanned from one board."
+                ),
+                "notes": (
+                    "Board assembled from the stored case-local legacy 72 h drifter-track figures only. "
+                    "This remains support-only context."
+                ),
+                "guide_bullets": [
+                    "Read left to right as 1 Sep, 6 Sep, and 17 Sep 2016.",
+                    "These are the observed drifter-of-record reference paths only, with no forecast envelope added yet.",
+                    "Use this board to compare path shape and extent before reading the forecast overlays below.",
+                ],
+                "note_lines": [
+                    "These three panels preserve the observed 72 h drifter-of-record tracks for the legacy September 2016 support cases.",
+                    "Legacy support only; these figures do not replace the final regional Phase 1 evidence.",
+                ],
+                "figure_slug": "legacy_2016_drifter_track_triptych_board",
+                "spec_suffix": "drifter_track",
+            },
+            "drifter_vs_ensemble": {
+                "filename": "drifter_vs_ensemble_72h.png",
+                "model_names": "observation_vs_opendrift",
+                "figure_title": "Legacy 2016 drifter vs ensemble p50/p90 across the three support cases",
+                "subtitle": "Legacy 2016 | observed drifter track against the stored 72 h OpenDrift p50/p90 occupancy footprints",
+                "interpretation": (
+                    "This board compares each observed drifter path with the stored 72 h ensemble p50 and p90 "
+                    "footprint envelopes for the three legacy support cases."
+                ),
+                "notes": (
+                    "Board assembled from the stored case-local legacy drifter-versus-ensemble 72 h panels only. "
+                    "The source images already preserve the exact stored p50/p90 footprint rendering."
+                ),
+                "guide_bullets": [
+                    "Each panel overlays the observed drifter track on the stored 72 h p50 and p90 occupancy footprints.",
+                    "p50 is the tighter preferred legacy ensemble footprint; p90 is the broader support envelope.",
+                    "Use this board to compare how closely the observed track sits inside the stored forecast envelope for each case.",
+                ],
+                "note_lines": [
+                    "The source panels already preserve the exact stored 72 h p50 and p90 member-occupancy footprint geometry.",
+                    "Legacy support only; these figures remain descriptive rather than thesis-facing validation claims.",
+                ],
+                "figure_slug": "legacy_2016_drifter_vs_mask_p50_mask_p90_triptych_board",
+                "spec_suffix": "drifter_vs_ensemble",
+            },
+            "pygnome_vs_ensemble": {
+                "filename": "pygnome_vs_ensemble_consolidated_72h.png",
+                "model_names": "opendrift_vs_pygnome",
+                "figure_title": "Legacy 2016 ensemble p50/p90 vs PyGNOME across the three support cases",
+                "subtitle": "Legacy 2016 | consolidated 72 h OpenDrift p50/p90 versus deterministic PyGNOME comparator with stored FSS callouts",
+                "interpretation": (
+                    "This board keeps the stored consolidated PyGNOME-versus-ensemble legacy comparison panels together "
+                    "so the three September 2016 support cases can be compared on one page."
+                ),
+                "notes": (
+                    "Board assembled from the stored consolidated PyGNOME-versus-ensemble legacy panels only. "
+                    "PyGNOME remains comparator-only where shown."
+                ),
+                "guide_bullets": [
+                    "Each source panel keeps the stored p50, p90, and deterministic PyGNOME footprints visible for one legacy case.",
+                    "The corresponding FSS summary remains embedded inside each source panel.",
+                    "Read this board together with the drifter-reference boards above because the stored consolidated PyGNOME source panels do not redraw the observed drifter line.",
+                ],
+                "note_lines": [
+                    "PyGNOME remains comparator-only; it is never shown as truth in the legacy 2016 lane.",
+                    "The stored consolidated PyGNOME panels keep the corresponding FSS summary visible for each case.",
+                    "Observed drifter tracks remain visible in the companion legacy boards above because these stored comparator panels focus on the forecast overlays and score callouts.",
+                ],
+                "figure_slug": "legacy_2016_mask_p50_mask_p90_vs_pygnome_triptych_board",
+                "spec_suffix": "pygnome_vs_ensemble",
+            },
+        }
+
+        singles: list[dict[str, Any]] = []
+        boards: list[dict[str, Any]] = []
+        board_panels: dict[str, list[dict[str, Any]]] = {key: [] for key in view_specs}
+
+        for case in legacy_cases:
+            case_root = source_root / case["case_id"]
+            for view_key, view in view_specs.items():
+                source_path = case_root / str(view["filename"])
+                if not source_path.exists():
+                    self._record_missing(
+                        source_path,
+                        f"Legacy 2016 home-overview source image missing for {case['case_id']} ({view_key}).",
+                    )
+                    continue
+                spec_id = f"legacy_2016_{_safe_token(case['case_id'])}_{str(view['spec_suffix'])}"
+                singles.append(
+                    self._image_spec(
+                        spec_id=spec_id,
+                        figure_family_code="M",
+                        case_id=case["case_id"],
+                        phase_or_track="prototype_2016_home_overview",
+                        date_token=case["date_token"],
+                        model_names=str(view["model_names"]),
+                        run_type="single_support_context",
+                        view_type="single",
+                        variant="paper",
+                        figure_slug=f"{str(view['spec_suffix'])}_{_safe_token(case['case_id'])}",
+                        figure_title=f"{case['label']} legacy support panel",
+                        subtitle=f"Legacy 2016 | {case['label']} | home-overview support source panel",
+                        interpretation=f"Stored legacy support source panel for {case['label']}.",
+                        notes=(
+                            f"Copied from the curated legacy 2016 final package root for {case['case_id']} and reused "
+                            "as a home-overview source panel."
+                        ),
+                        source_image_path=_relative_to_repo(self.repo_root, source_path),
+                        source_paths=[_relative_to_repo(self.repo_root, source_path)],
+                        recommended_for_main_defense=False,
+                        recommended_for_paper=False,
+                        legacy_debug_only=True,
+                    )
+                )
+                board_panels[view_key].append({"panel_title": case["label"], "source_spec_id": spec_id})
+
+        board_case_id = "CASE_LEGACY_2016"
+        for view_key, view in view_specs.items():
+            if len(board_panels[view_key]) != len(legacy_cases):
+                continue
+            boards.append(
+                self._board_spec(
+                    spec_id=str(view["figure_slug"]),
+                    figure_family_code="M",
+                    case_id=board_case_id,
+                    phase_or_track="prototype_2016_home_overview",
+                    date_token="2016-09-01_to_2016-09-17",
+                    model_names=str(view["model_names"]),
+                    run_type="comparison_board",
+                    figure_slug=str(view["figure_slug"]),
+                    figure_title=str(view["figure_title"]),
+                    subtitle=str(view["subtitle"]),
+                    interpretation=str(view["interpretation"]),
+                    notes=str(view["notes"]),
+                    note_lines=[str(item) for item in view["note_lines"]],
+                    panels=board_panels[view_key],
+                    guide_bullets=[str(item) for item in view["guide_bullets"]],
+                    recommended_for_main_defense=False,
+                    recommended_for_paper=False,
+                    status_key_override="prototype_2016_support",
+                )
+            )
+
+        return singles, boards
+
     def _build_specs(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         single_specs: list[dict[str, Any]] = []
         board_specs: list[dict[str, Any]] = []
@@ -6209,6 +6900,7 @@ class FigurePackagePublicationService:
             self._study_box_publication_specs,
             self._dwh_publication_specs_v2,
             self._prototype_support_publication_specs,
+            self._legacy_2016_home_overview_specs,
         ):
             singles, boards = builder()
             single_specs.extend(singles)
@@ -6222,6 +6914,7 @@ class FigurePackagePublicationService:
             rows,
             columns=[
                 "figure_id",
+                "display_title",
                 "figure_family_code",
                 "figure_family_label",
                 "case_id",

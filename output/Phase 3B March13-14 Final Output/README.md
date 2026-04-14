@@ -10,10 +10,17 @@ What is primary here:
 - OpenDrift-versus-observation is the main claim in this folder.
 - The primary success statement is that the promoted OpenDrift row achieves non-zero FSS against the March 14 observed spill mask.
 - PyGNOME remains comparator-only; OpenDrift-versus-PyGNOME figures here are supporting context only and never truth replacement.
+- Side-by-side publication boards in this folder keep the thesis-facing March 13 -> March 14 comparison visible without surfacing archived R0 panels.
+
+Naming note:
+- March 13 -> March 14 R1 in this package refers to the Phase 3B validation branch, not to the separate Phase 1 Recipe Code R1 family.
 
 What remains secondary:
+- This thesis-facing export omits archived March 13 -> March 14 R0 publication and QA PNGs; those remain repo-preserved in archive surfaces only.
+- March 13 -> March 14 R0 archived baseline materials and older R0-including March13-14 outputs are repo-preserved archive-only materials surfaced through the Mindoro Validation Archive page, not thesis-facing figures in the main Mindoro page.
 - March 6 remains a preserved legacy honesty/reference row and is not renamed as primary.
-- The separate March 13 -> March 14 cross-model comparator family is exported only in a comparator-only subgroup and is not the main result.
+- March 6 B2 and March 3 -> March 6 B3 remain repo-preserved archive-only provenance rows and are not renamed as primary.
+- The separate March 13 -> March 14 cross-model comparator family is exported only in a comparator-only subgroup, including a dedicated observed-masks / ensemble / PyGNOME board, and is not the main result.
 - This folder is curated packaging over canonical scientific outputs; it does not change any scoreable products.
 
 Mindoro Phase 1 provenance:

@@ -23,10 +23,18 @@ from ui.pages.common import (
     render_export_note,
     render_figure_gallery,
     render_markdown_block,
+    render_package_cards,
     render_page_intro,
     render_status_callout,
     render_table,
 )
+
+
+def _filter_table(df, *, blocked_values: set[str]) -> object:
+    if df is None or df.empty or "track_id" not in df.columns:
+        return df
+    payload = df.copy()
+    return payload.loc[~payload["track_id"].fillna("").astype(str).isin(sorted(blocked_values))].reset_index(drop=True)
 
 
 def render(state: dict, ui_state: dict) -> None:
@@ -34,11 +42,18 @@ def render(state: dict, ui_state: dict) -> None:
     registry = state["mindoro_final_registry"]
     figures = registry.loc[
         registry.get("artifact_group", "").astype(str).eq("publication/comparator_pygnome")
+        & registry.get("status_key", "").astype(str).eq("mindoro_crossmodel_comparator")
     ].reset_index(drop=True)
+    comparator_ranking = _filter_table(state["mindoro_comparator_ranking"], blocked_values={"R0_reinit_p50"})
+    comparator_summary = _filter_table(state["mindoro_comparator_summary"], blocked_values={"R0_reinit_p50"})
+    archive_package = next(
+        (package for package in state.get("curated_package_roots", []) if package.get("package_id") == "mindoro_validation_archive"),
+        None,
+    )
 
     render_page_intro(
         "Mindoro Cross-Model Comparator",
-        "This page is the dedicated home for the Mindoro support comparison. It stays comparator-only, uses the same March 14 target as B1, and never lets PyGNOME read like truth or a co-primary validation row.",
+        "This page is the dedicated home for the thesis-facing Mindoro Track A support comparison. It stays comparator-only, uses the same March 14 target as the March 13 -> March 14 R1 primary validation row, and never lets PyGNOME read like truth or a co-primary validation row.",
         badge="Mindoro A | comparator-only",
     )
 
@@ -46,7 +61,7 @@ def render(state: dict, ui_state: dict) -> None:
         render_export_note(
             [
                 "Export mode keeps the comparator page concise so the PDF reads as cross-model context rather than a second validation claim.",
-                "The figures below remain comparator-only and should be read alongside the main B1 page, not instead of it.",
+                "The figures and tables below remain comparator-only and should be read alongside the main B1 page, not instead of it.",
             ]
         )
 
@@ -57,7 +72,7 @@ def render(state: dict, ui_state: dict) -> None:
     )
     render_status_callout(
         "Relationship to B1",
-        "Track A is attached to the B1 package as supporting cross-model context on the same March 14 target.",
+        "Track A is attached to the B1 package as supporting cross-model context on the same March 14 target. Archived March 13 -> March 14 R0 comparator outputs were moved to the Mindoro Validation Archive page.",
         "info",
     )
     render_status_callout(
@@ -79,17 +94,17 @@ def render(state: dict, ui_state: dict) -> None:
     if export_mode:
         render_table(
             "Comparator ranking",
-            state["mindoro_comparator_ranking"],
+            comparator_ranking,
             download_name="march13_14_reinit_crossmodel_model_ranking.csv",
-            caption="Curated ranking table for the same-case March 14 comparator lane.",
+            caption="Curated thesis-facing ranking table for the same-case March 14 comparator lane after removing the archived R0 row.",
             height=260,
             export_mode=export_mode,
         )
         render_table(
             "Comparator summary",
-            state["mindoro_comparator_summary"],
+            comparator_summary,
             download_name="march13_14_reinit_crossmodel_summary.csv",
-            caption="Curated summary table for the Mindoro comparator subgroup.",
+            caption="Curated thesis-facing summary table for the Mindoro comparator subgroup after removing the archived R0 row.",
             height=260,
             export_mode=export_mode,
         )
@@ -98,19 +113,31 @@ def render(state: dict, ui_state: dict) -> None:
         with left:
             render_table(
                 "Comparator ranking",
-                state["mindoro_comparator_ranking"],
+                comparator_ranking,
                 download_name="march13_14_reinit_crossmodel_model_ranking.csv",
-                caption="Curated ranking table for the same-case March 14 comparator lane.",
+                caption="Curated thesis-facing ranking table for the same-case March 14 comparator lane after removing the archived R0 row.",
                 height=260,
             )
         with right:
             render_table(
                 "Comparator summary",
-                state["mindoro_comparator_summary"],
+                comparator_summary,
                 download_name="march13_14_reinit_crossmodel_summary.csv",
-                caption="Curated summary table for the Mindoro comparator subgroup.",
+                caption="Curated thesis-facing summary table for the Mindoro comparator subgroup after removing the archived R0 row.",
                 height=260,
             )
+
+    if archive_package:
+        render_status_callout(
+            "Archive note",
+            "For the March 13 -> March 14 R0 archived baseline and other R0-including March13-14 comparator outputs, use the Mindoro Validation Archive page.",
+            "warning",
+        )
+        render_package_cards(
+            [{**archive_package, "button_label": "Open Mindoro Validation Archive"}],
+            columns_per_row=1,
+            export_mode=export_mode,
+        )
 
     if ui_state["advanced"] or export_mode:
         render_markdown_block("Mindoro final-package note", state["mindoro_final_readme"], collapsed=True, export_mode=export_mode)

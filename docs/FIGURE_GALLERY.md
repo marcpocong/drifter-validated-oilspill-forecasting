@@ -85,7 +85,6 @@ docker-compose exec -T -e WORKFLOW_MODE=prototype_2016 -e PIPELINE_PHASE=prototy
 
 - A. Mindoro March 13 -> March 14 primary validation board
 - B. Mindoro March 13 -> March 14 cross-model comparator board
-- C. Mindoro legacy March 6 honesty / limitations board
 - D. Mindoro trajectory board
 - G. DWH deterministic forecast-vs-observation board
 - H. DWH deterministic vs ensemble board
@@ -95,6 +94,7 @@ Optional support/context figures:
 
 - E. Mindoro Phase 4 oil-budget board
 - F. Mindoro Phase 4 shoreline-arrival / shoreline-impact board
+- Archive-only provenance figures: Mindoro March 13 -> March 14 R0 archived baseline and preserved March-family legacy boards on the `Mindoro Validation Archive` page
 - Supporting honesty figure: Mindoro Phase 4 deferred-comparison note figure
 
 These are the clearest figures for a main defense presentation. Use the publication package first, the panel gallery second, and the raw gallery only when the panel needs the technical archive behind a polished board. Keep the Phase 4 boards as support/context figures rather than as main-phase claims outside `prototype_2016`.
@@ -103,7 +103,6 @@ These are the clearest figures for a main defense presentation. Use the publicat
 
 - A. Mindoro March 13 -> March 14 primary validation board
 - B. Mindoro March 13 -> March 14 cross-model comparator board
-- C. Mindoro legacy March 6 honesty / limitations board
 - D. Mindoro trajectory board
 - G. DWH deterministic forecast-vs-observation board
 - H. DWH deterministic vs ensemble board
@@ -112,6 +111,7 @@ These are the clearest figures for a main defense presentation. Use the publicat
 
 Available support/context board families:
 
+- C. Mindoro archive-only March-family boards on the `Mindoro Validation Archive` page
 - E. Mindoro Phase 4 oil-budget board
 - F. Mindoro Phase 4 shoreline-arrival / shoreline-impact board
 
@@ -127,7 +127,7 @@ The polished board layer adds:
 
 - A. Mindoro March 13 -> March 14 promoted primary-validation singles plus board
 - B. Mindoro March 13 -> March 14 cross-model comparison singles plus board
-- C. Mindoro legacy March 6 honesty / limitations singles plus board
+- C. Mindoro archive-only March-family singles plus board
 - D. Mindoro trajectory singles plus trajectory board
 - E. Mindoro Phase 4 OpenDrift-only support/context oil-budget and shoreline-impact singles plus boards
 - F. Mindoro Phase 4 deferred-comparison note figure built from the cross-model audit bundle
@@ -136,7 +136,7 @@ The polished board layer adds:
 - I. DWH OpenDrift vs PyGNOME singles plus comparison board
 - J. DWH trajectory singles plus trajectory board
 - K. Prototype 2021 accepted-segment support-only OpenDrift vs PyGNOME singles plus per-case side-by-side boards
-- L. Shared thesis study-box reference figure set built from stored box metadata only
+- L. Shared thesis study-box reference figure set built from stored box metadata only, now with a 2/4 thesis-default overview plus an archived full-context overview
 
 The publication package adds:
 
@@ -146,7 +146,7 @@ The publication package adds:
 - a promoted March 13 -> March 14 Mindoro validation presentation lane for `Phase 3B Observation-Based Spatial Validation Using Public Mindoro Spill Extents`, with the shared March 12 imagery caveat kept explicit and the separate focused Mindoro Phase 1 drifter-based provenance note carried as provenance rather than rewritten run history
 - an explicit publication-grade note figure explaining why Phase 4 OpenDrift-versus-PyGNOME comparison is still deferred
 - support-only prototype family `K`, which now republishes the preferred accepted-segment 2021 deterministic OpenDrift-vs-PyGNOME forecast figures without elevating them into the default main-defense list
-- a shared thesis study-box reference figure plus separate per-box geography panels that keep the focused Mindoro Phase 1 box, `mindoro_case_domain`, the scoring-grid display bounds, and the prototype_2016 first-code search box explicit in panel-ready WGS84 reference images with geography shown
+- a shared thesis study-box reference figure that now foregrounds `mindoro_case_domain` plus the prototype_2016 historical-origin box, an archived full-context overview, and separate per-box geography panels that keep the focused Mindoro Phase 1 box and the scoring-grid display bounds available as secondary references in panel-ready WGS84 images with geography shown
 - the canonical presentation layer for defense and manuscript use
 
 ## Curated B1 Final Output Export
@@ -190,7 +190,7 @@ These figures remain:
 - The polished board pack reorganizes existing evidence into clearer presentation boards, but it does not fabricate trajectories or relabel score products.
 - The publication package redraws from the stored rasters, tracks, and Phase 4 tables, but it still does not fabricate trajectories or relabel score products.
 - The publication package includes Phase 3 OpenDrift-versus-PyGNOME comparison boards, but it does not generate fake Phase 4 cross-model figures; instead it writes a deferred-comparison note figure grounded in `output/phase4_crossmodel_comparability_audit/`.
-- Mindoro validation figures now report the promoted March 13 -> March 14 B1 row while explicitly inheriting recipe provenance from the separate focused 2016-2023 Mindoro drifter rerun; the Phase 4 figures remain support/context material outside `prototype_2016`.
+- Mindoro validation figures now report the promoted March 13 -> March 14 R1 primary validation row while explicitly inheriting recipe provenance from the separate focused 2016-2023 Mindoro drifter rerun; the Phase 4 figures remain support/context material outside `prototype_2016`.
 - DWH figures remain reportable transfer-validation/support visuals, not a replacement for the Mindoro thesis case.
 
 ## Still Optional

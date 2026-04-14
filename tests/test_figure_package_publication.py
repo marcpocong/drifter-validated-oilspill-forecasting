@@ -66,6 +66,24 @@ def _write_tif(path: Path, value: int = 1, width: int = 8, height: int = 8) -> N
         dataset.write(data, 1)
 
 
+def _write_float_tif(path: Path, data: np.ndarray) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    transform = from_origin(120.9, 13.8, 0.02, 0.02)
+    array = np.asarray(data, dtype=np.float32)
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=int(array.shape[0]),
+        width=int(array.shape[1]),
+        count=1,
+        dtype=array.dtype,
+        crs="EPSG:4326",
+        transform=transform,
+    ) as dataset:
+        dataset.write(array, 1)
+
+
 STYLE_YAML = """
 title_format: "{figure_title}"
 subtitle_format: "{case_label} | {date_label} | {phase_label}"
@@ -135,9 +153,9 @@ MINDORO_PHASE3B_SUMMARY_CSV = """pair_id,obs_nonzero_cells,forecast_nonzero_cell
 official_primary_march6,2,3,0.111,0.222,0.333,0.444
 """
 
-MINDORO_REINIT_SUMMARY_CSV = """branch_id,model_name,validation_dates_used,fss_1km,fss_3km,fss_5km,fss_10km,mean_fss,forecast_nonzero_cells,obs_nonzero_cells,forecast_path
-R1_previous,OpenDrift R1 previous reinit p50,2023-03-14,0.000,0.044,0.137,0.249,0.1075,5,22,output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit/r1_previous_mask.tif
-R0,OpenDrift R0 reinit p50,2023-03-14,0.000,0.000,0.000,0.000,0.0000,0,22,output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit/r0_mask.tif
+MINDORO_REINIT_SUMMARY_CSV = """branch_id,model_name,validation_dates_used,fss_1km,fss_3km,fss_5km,fss_10km,mean_fss,forecast_nonzero_cells,obs_nonzero_cells,forecast_path,probability_path
+R1_previous,OpenDrift R1 previous reinit p50,2023-03-14,0.000,0.044,0.137,0.249,0.1075,5,22,output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit/r1_previous_mask.tif,output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit/r1_previous_prob.tif
+R0,OpenDrift R0 reinit p50,2023-03-14,0.000,0.000,0.000,0.000,0.0000,0,22,output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit/r0_mask.tif,output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit/r0_prob.tif
 """
 
 MINDORO_REINIT_CROSSMODEL_SUMMARY_CSV = """track_id,model_name,validation_dates_used,fss_1km,fss_3km,fss_5km,fss_10km,mean_fss,iou,dice,nearest_distance_to_obs_m,forecast_path
@@ -242,6 +260,13 @@ class FigurePackagePublicationTests(unittest.TestCase):
                 "operative_extent_note": "The stored case-local prototype extents remain the operative scientific/display extents.",
             },
         )
+        for case_id in ("CASE_2016-09-01", "CASE_2016-09-06", "CASE_2016-09-17"):
+            for filename in (
+                "drifter_track_72h.png",
+                "drifter_vs_ensemble_72h.png",
+                "pygnome_vs_ensemble_consolidated_72h.png",
+            ):
+                _write_png(root / "output" / "2016 Legacy Runs FINAL Figures" / case_id / filename, width=720, height=480)
         for rel_path, value in (
             ("output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit/march13_seed_mask_on_grid.tif", 1),
             ("output/CASE_MINDORO_RETRO_2023/phase3b_extended_public/accepted_obs_masks/10b37c42a9754363a5f7b14199b077e6.tif", 1),
@@ -252,6 +277,20 @@ class FigurePackagePublicationTests(unittest.TestCase):
             ("output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit_pygnome_comparison/pygnome_crossmodel_mask.tif", 1),
         ):
             _write_tif(root / rel_path, value=value)
+        r1_probability = np.zeros((8, 8), dtype=np.float32)
+        r1_probability[2, 2] = np.float32(1.0)
+        r1_probability[2, 3] = np.float32(1.0)
+        r1_probability[3, 2] = np.float32(1.0)
+        r1_probability[3, 3] = np.float32(1.0)
+        r1_probability[4, 4] = np.float32(0.96)
+        _write_float_tif(
+            root / "output" / "CASE_MINDORO_RETRO_2023" / "phase3b_extended_public_scored_march13_14_reinit" / "r1_previous_prob.tif",
+            r1_probability,
+        )
+        _write_float_tif(
+            root / "output" / "CASE_MINDORO_RETRO_2023" / "phase3b_extended_public_scored_march13_14_reinit" / "r0_prob.tif",
+            np.zeros((8, 8), dtype=np.float32),
+        )
         for rel_path in (
             "output/CASE_MINDORO_RETRO_2023/phase3b/qa_phase3b_obsmask_vs_p50.png",
             "output/CASE_MINDORO_RETRO_2023/phase3b/qa_phase3b_source_init_validation_overlay.png",
@@ -335,9 +374,15 @@ class FigurePackagePublicationTests(unittest.TestCase):
             service = self._build_service_fixture(Path(tmpdir))
             singles, boards = service._mindoro_publication_specs()
             specs = {spec["spec_id"]: spec for spec in [*singles, *boards]}
+            service._spec_lookup = specs
+            expected_legend_label = "OpenDrift p50 footprint (= p90 here)"
 
             self.assertIn(
                 "OpenDrift R1 previous reinit p50 FSS(1/3/5/10 km): 0.000/0.044/0.137/0.249; mean: 0.108.",
+                specs["mindoro_primary_board"]["note_lines"],
+            )
+            self.assertIn(
+                "Derived March 14 p90 equals p50 for the promoted R1 previous reinit branch: all 5 nonzero cells are already 0.960-1.000 probability.",
                 specs["mindoro_primary_board"]["note_lines"],
             )
             self.assertIn(
@@ -349,8 +394,24 @@ class FigurePackagePublicationTests(unittest.TestCase):
                 specs["mindoro_crossmodel_board"]["note_lines"],
             )
             self.assertIn(
+                "Derived March 14 p90 equals p50 for the promoted R1 previous reinit branch: all 5 nonzero cells are already 0.960-1.000 probability.",
+                specs["mindoro_crossmodel_board"]["note_lines"],
+            )
+            self.assertIn(
                 "PyGNOME comparator FSS(1/3/5/10 km): 0.000/0.000/0.000/0.024; mean: 0.006.",
                 specs["mindoro_crossmodel_board"]["note_lines"],
+            )
+            self.assertIn(
+                "Dark slate shows the March 14 observation target only; March 13 is kept separate as the reinitialization seed context.",
+                specs["mindoro_primary_target_mask"]["note_lines"],
+            )
+            self.assertIn(
+                "OpenDrift R1 previous reinit p50 FSS(1/3/5/10 km): 0.000/0.044/0.137/0.249; mean: 0.108.",
+                specs["mindoro_observed_masks_ensemble_pygnome_board"]["note_lines"],
+            )
+            self.assertIn(
+                "PyGNOME comparator FSS(1/3/5/10 km): 0.000/0.000/0.000/0.024; mean: 0.006.",
+                specs["mindoro_observed_masks_ensemble_pygnome_board"]["note_lines"],
             )
             self.assertIn(
                 "Legacy strict March 6 FSS(1/3/5/10 km): 0.111/0.222/0.333/0.444; mean: 0.278.",
@@ -362,6 +423,91 @@ class FigurePackagePublicationTests(unittest.TestCase):
                 specs["mindoro_primary_seed_mask"]["subtitle"],
             )
             self.assertIn("sparse-reference", specs["mindoro_legacy_board"]["short_plain_language_interpretation"])
+            self.assertIn("observed masks, ensemble forecast, and PyGNOME", specs["mindoro_observed_masks_ensemble_pygnome_board"]["figure_title"])
+            self.assertIn(
+                "Mindoro March 13-14 observed masks, ensemble forecast, and PyGNOME overlay",
+                specs["mindoro_observed_masks_ensemble_pygnome_overlay"]["figure_title"],
+            )
+            self.assertIn(
+                "Ensemble forecast FSS(1/3/5/10 km): 0.000/0.044/0.137/0.249; mean: 0.108.",
+                specs["mindoro_observed_masks_ensemble_pygnome_overlay"]["note_lines"],
+            )
+            self.assertIn(
+                "PyGNOME forecast FSS(1/3/5/10 km): 0.000/0.000/0.000/0.024; mean: 0.006.",
+                specs["mindoro_observed_masks_ensemble_pygnome_overlay"]["note_lines"],
+            )
+            self.assertEqual(
+                specs["mindoro_observed_masks_ensemble_pygnome_overlay"]["legend_label_overrides"]["observed_mask"],
+                "March 14 observed spill extent",
+            )
+            self.assertEqual(
+                specs["mindoro_observed_masks_ensemble_pygnome_overlay"]["legend_label_overrides"]["initialization_polygon"],
+                "March 13 observed spill extent",
+            )
+            self.assertEqual(
+                specs["mindoro_primary_r1_overlay"]["legend_label_overrides"]["ensemble_p50"],
+                expected_legend_label,
+            )
+            self.assertEqual(
+                specs["mindoro_primary_r0_overlay"]["legend_label_overrides"]["ensemble_p50"],
+                expected_legend_label,
+            )
+            self.assertEqual(
+                specs["mindoro_crossmodel_r1_overlay"]["legend_label_overrides"]["ensemble_p50"],
+                expected_legend_label,
+            )
+            self.assertEqual(
+                specs["mindoro_crossmodel_r0_overlay"]["legend_label_overrides"]["ensemble_p50"],
+                expected_legend_label,
+            )
+            self.assertEqual(
+                service._board_legend_label_overrides(specs["mindoro_primary_board"]).get("ensemble_p50"),
+                expected_legend_label,
+            )
+            self.assertEqual(
+                service._board_legend_label_overrides(specs["mindoro_crossmodel_board"]).get("ensemble_p50"),
+                expected_legend_label,
+            )
+            fig, ax = plt.subplots(figsize=(3.0, 2.0), dpi=120)
+            try:
+                legend = service._add_legend(
+                    ax,
+                    ["observed_mask", "ensemble_p50", "initialization_polygon", "source_point"],
+                    compact=True,
+                    label_overrides=service._board_legend_label_overrides(specs["mindoro_primary_board"]),
+                )
+                self.assertIn(expected_legend_label, [text.get_text() for text in legend.get_texts()])
+            finally:
+                plt.close(fig)
+
+    def test_legacy_2016_home_overview_specs_build_requested_triptychs(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service = self._build_service_fixture(Path(tmpdir))
+            singles, boards = service._legacy_2016_home_overview_specs()
+            self.assertEqual(len(singles), 9)
+            self.assertEqual(len(boards), 3)
+            specs = {spec["spec_id"]: spec for spec in [*singles, *boards]}
+
+            self.assertIn("legacy_2016_drifter_track_triptych_board", specs)
+            self.assertIn("legacy_2016_drifter_vs_mask_p50_mask_p90_triptych_board", specs)
+            self.assertIn("legacy_2016_mask_p50_mask_p90_vs_pygnome_triptych_board", specs)
+            self.assertEqual(specs["legacy_2016_drifter_track_triptych_board"]["figure_family_code"], "M")
+            self.assertEqual(specs["legacy_2016_drifter_track_triptych_board"]["status_key_override"], "prototype_2016_support")
+            self.assertEqual(len(specs["legacy_2016_drifter_track_triptych_board"]["panels"]), 3)
+            self.assertIn(
+                "Read left to right as 1 Sep, 6 Sep, and 17 Sep 2016.",
+                specs["legacy_2016_drifter_track_triptych_board"]["guide_bullets"],
+            )
+            self.assertIn(
+                "The corresponding FSS summary remains embedded inside each source panel.",
+                specs["legacy_2016_mask_p50_mask_p90_vs_pygnome_triptych_board"]["guide_bullets"],
+            )
+            self.assertEqual(specs["legacy_2016_case_2016_09_01_drifter_track"]["figure_family_code"], "M")
+            self.assertTrue(
+                str(specs["legacy_2016_case_2016_09_17_pygnome_vs_ensemble"]["source_image_path"]).endswith(
+                    "output/2016 Legacy Runs FINAL Figures/CASE_2016-09-17/pygnome_vs_ensemble_consolidated_72h.png"
+                )
+            )
 
     def test_dwh_publication_specs_use_exact_model_specific_fss_rows(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -455,8 +601,9 @@ class FigurePackagePublicationTests(unittest.TestCase):
             service = self._build_service_fixture(Path(tmpdir))
             singles, boards = service._study_box_publication_specs()
             self.assertEqual(boards, [])
-            self.assertEqual(len(singles), 5)
+            self.assertEqual(len(singles), 6)
             spec = _find_spec(singles, "thesis_study_boxes_reference")
+            archive_spec = _find_spec(singles, "thesis_study_boxes_reference_archive_full_context")
             focused_spec = _find_spec(singles, "focused_phase1_box_geography_reference")
             prototype_spec = _find_spec(singles, "prototype_first_code_search_box_geography_reference")
 
@@ -464,35 +611,36 @@ class FigurePackagePublicationTests(unittest.TestCase):
             self.assertEqual(spec["status_key_override"], "thesis_study_box_reference")
             self.assertEqual(spec["case_id"], "THESIS_STUDY_CONTEXT")
             self.assertEqual(spec["renderer"], "study_boxes")
-            self.assertEqual(len(spec["study_boxes"]), 4)
+            self.assertEqual(len(spec["study_boxes"]), 2)
             self.assertIn(
-                "1. Focused Mindoro Phase 1 validation box: [118.751, 124.305, 10.62, 16.026]",
+                "2. Mindoro case-domain overview box (`mindoro_case_domain`): [115, 122, 6, 14.5]",
                 spec["subtitle_box_lines"],
             )
             self.assertIn(
-                "2. `mindoro_case_domain` fallback transport/overview extent: [115, 122, 6, 14.5]",
+                "4. prototype_2016 first-code search box (historical-origin): [108.6465, 121.3655, 6.1865, 20.3515]",
                 spec["subtitle_box_lines"],
             )
             self.assertIn(
-                "4. prototype_2016 first-code search box: [108.6465, 121.3655, 6.1865, 20.3515]",
-                spec["subtitle_box_lines"],
-            )
-            self.assertIn(
-                "The prototype_2016 first-code search box is historical-origin support metadata only; the stored case-local prototype extents remain the operative scientific/display extents for the 2016 figures.",
+                "The focused Phase 1 provenance box and the scoring-grid display bounds are still preserved as secondary archived references and are not deleted from the package.",
                 spec["note_lines"],
             )
+            self.assertEqual(spec["recommended_for_paper"], True)
+            self.assertEqual(archive_spec["run_type"], "archived_reference_map")
+            self.assertEqual(len(archive_spec["study_boxes"]), 4)
+            self.assertEqual(archive_spec["recommended_for_paper"], False)
             self.assertIn("config/phase1_baseline_selection.yaml", spec["source_paths"])
             self.assertIn(
                 "output/2016 Legacy Runs FINAL Figures/manifests/prototype_2016_provenance_metadata.json",
                 spec["source_paths"],
             )
+            self.assertIn("data_processed/reference/study_box_land_context.geojson", spec["source_paths"])
             self.assertEqual(focused_spec["run_type"], "single_box_reference_map")
             self.assertEqual(focused_spec["model_names"], "study_box_geography")
             self.assertEqual(len(focused_spec["study_boxes"]), 1)
             self.assertEqual(focused_spec["figure_slug"], "focused_phase1_box_geography_reference")
             self.assertIn("Selected box: Focused Mindoro Phase 1 validation box", focused_spec["subtitle_box_lines"])
             self.assertIn(
-                "The geographic backdrop is reference context so the Mindoro setting stays visible in a panel-ready figure.",
+                "It is preserved here as a secondary archived reference rather than the default thesis overview image.",
                 focused_spec["note_lines"],
             )
             self.assertEqual(prototype_spec["figure_slug"], "prototype_first_code_search_box_geography_reference")
@@ -515,18 +663,20 @@ class FigurePackagePublicationTests(unittest.TestCase):
 
             mindoro_primary_board = _find_spec(mindoro_boards, "mindoro_primary_board")
             mindoro_primary_score_lines = [line for line in mindoro_primary_board["note_lines"] if "FSS(" in line]
-            self.assertEqual(len(mindoro_primary_score_lines), 2)
+            self.assertEqual(len(mindoro_primary_score_lines), 1)
             self.assertEqual(
                 mindoro_primary_score_lines,
                 [
                     "OpenDrift R1 previous reinit p50 FSS(1/3/5/10 km): 0.000/0.044/0.137/0.249; mean: 0.108.",
-                    "OpenDrift R0 reinit p50 FSS(1/3/5/10 km): 0.000/0.000/0.000/0.000; mean: 0.000.",
                 ],
             )
 
             mindoro_crossmodel_board = _find_spec(mindoro_boards, "mindoro_crossmodel_board")
             mindoro_crossmodel_score_lines = [line for line in mindoro_crossmodel_board["note_lines"] if "FSS(" in line]
-            self.assertEqual(len(mindoro_crossmodel_score_lines), 3)
+            self.assertEqual(len(mindoro_crossmodel_score_lines), 2)
+
+            mindoro_observed_masks_board = _find_spec(mindoro_boards, "mindoro_observed_masks_ensemble_pygnome_board")
+            self.assertEqual(len([line for line in mindoro_observed_masks_board["note_lines"] if "FSS(" in line]), 2)
 
             dwh_trajectory_board = _find_spec(dwh_boards, "dwh_trajectory_board")
             self.assertFalse(any("FSS(" in line for line in dwh_trajectory_board["note_lines"]))
@@ -569,6 +719,39 @@ class FigurePackagePublicationTests(unittest.TestCase):
             finally:
                 plt.close(fig)
 
+    def test_add_note_box_enforces_visible_gap_between_heading_and_box(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service = self._build_service_fixture(Path(tmpdir))
+            fig, ax = plt.subplots(figsize=(3.2, 2.8), dpi=120)
+            try:
+                title_artist, body_artist = service._add_note_box(
+                    ax,
+                    "How to read this board",
+                    [
+                        "Read clockwise: seed-versus-target context, promoted R1 overlay, R0 baseline, then the March 13 seed mask.",
+                        "March 14 NOAA remains the scoring target; March 13 NOAA is the reinit seed, not a second truth day.",
+                    ],
+                    title_y=0.98,
+                    body_y=0.90,
+                    minimum_title_gap_px=18.0,
+                )
+                fig.canvas.draw()
+                self.assertGreaterEqual(service._artist_vertical_gap_px(title_artist, body_artist), 17.0)
+            finally:
+                plt.close(fig)
+
+    def test_mindoro_promoted_boards_reserve_extra_top_margin(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service = self._build_service_fixture(Path(tmpdir))
+            _, boards = service._mindoro_publication_specs()
+            primary_board = _find_spec(boards, "mindoro_primary_board")
+            crossmodel_board = _find_spec(boards, "mindoro_crossmodel_board")
+            observed_masks_board = _find_spec(boards, "mindoro_observed_masks_ensemble_pygnome_board")
+
+            self.assertEqual(primary_board["board_layout_overrides"]["outer_top"], 0.855)
+            self.assertEqual(crossmodel_board["board_layout_overrides"]["outer_top"], 0.855)
+            self.assertEqual(observed_masks_board["board_layout_overrides"]["outer_top"], 0.855)
+
     def test_service_writes_registry_manifest_and_records_missing_optional_inputs(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -591,6 +774,7 @@ class FigurePackagePublicationTests(unittest.TestCase):
             self.assertIn("A", manifest["figure_families_generated"])
             self.assertIn("F", manifest["figure_families_generated"])
             self.assertIn("L", manifest["figure_families_generated"])
+            self.assertIn("M", manifest["figure_families_generated"])
             self.assertIn("recommended_main_defense_figures", manifest)
             self.assertTrue(manifest["phase4_deferred_comparison_note_figure_produced"])
             self.assertIn("font_audit", manifest)
@@ -601,6 +785,7 @@ class FigurePackagePublicationTests(unittest.TestCase):
             registry_df = pd.read_csv(results["registry_csv"])
             self.assertIn("pixel_width", registry_df.columns)
             self.assertIn("pixel_height", registry_df.columns)
+            self.assertIn("display_title", registry_df.columns)
             self.assertIn("status_key", registry_df.columns)
             self.assertIn("status_provenance", registry_df.columns)
             self.assertEqual(len(registry_df), len(manifest["figures"]))
@@ -612,10 +797,15 @@ class FigurePackagePublicationTests(unittest.TestCase):
                 (registry_df["case_id"] == "THESIS_STUDY_CONTEXT")
                 & registry_df["run_type"].astype(str).eq("single_box_reference_map")
             ].copy()
+            thesis_archive_rows = registry_df[
+                (registry_df["case_id"] == "THESIS_STUDY_CONTEXT")
+                & registry_df["run_type"].astype(str).eq("archived_reference_map")
+            ].copy()
             self.assertEqual(thesis_boxes_row["status_key"], "thesis_study_box_reference")
-            self.assertIn("stored Phase 1 baseline/config metadata", thesis_boxes_row["notes"])
+            self.assertIn("local clipped land-context geography file", thesis_boxes_row["notes"])
             self.assertEqual(thesis_boxes_row["figure_family_code"], "L")
             self.assertEqual(len(thesis_detail_rows), 4)
+            self.assertEqual(len(thesis_archive_rows), 1)
             self.assertTrue(thesis_detail_rows["figure_id"].astype(str).str.contains("focused_phase1_box_geography_reference", na=False).any())
             self.assertTrue(thesis_detail_rows["figure_id"].astype(str).str.contains("prototype_first_code_search_box_geography_reference", na=False).any())
 
@@ -657,6 +847,27 @@ class FigurePackagePublicationTests(unittest.TestCase):
                 & registry_df["figure_id"].str.contains("eventcorridor_observation", na=False)
             ].iloc[0]
             self.assertEqual(dwh_event_obs["status_key"], "dwh_observation_truth_context")
+
+            mindoro_overlay = registry_df[
+                registry_df["figure_id"].str.contains("mindoro_observed_masks_ensemble_pygnome_overlay", na=False)
+            ].iloc[0]
+            self.assertEqual(mindoro_overlay["status_key"], "mindoro_crossmodel_comparator")
+            self.assertIn("March 13-14 observed masks", str(mindoro_overlay["display_title"]))
+
+            legacy_family_m = registry_df[registry_df["figure_family_code"].astype(str).eq("M")].copy()
+            legacy_family_m_boards = legacy_family_m[legacy_family_m["view_type"].astype(str).eq("board")].copy()
+            self.assertGreaterEqual(len(legacy_family_m), 12)
+            self.assertEqual(len(legacy_family_m_boards), 3)
+            self.assertTrue((legacy_family_m_boards["status_key"] == "prototype_2016_support").all())
+            self.assertTrue(
+                legacy_family_m_boards["figure_id"].astype(str).str.contains("legacy_2016_drifter_track_triptych_board", na=False).any()
+            )
+            self.assertTrue(
+                legacy_family_m_boards["figure_id"].astype(str).str.contains("legacy_2016_drifter_vs_mask_p50_mask_p90_triptych_board", na=False).any()
+            )
+            self.assertTrue(
+                legacy_family_m_boards["figure_id"].astype(str).str.contains("legacy_2016_mask_p50_mask_p90_vs_pygnome_triptych_board", na=False).any()
+            )
 
             expected_single_dims = (
                 int(service._single_size()[0] * service._dpi()),

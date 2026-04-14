@@ -2,7 +2,7 @@
 
 ## Decision
 
-March 13 -> March 14 is now the canonical Mindoro Phase 3B public-validation row, but the original March 3 -> March 6 case definition remains frozen in `config/case_mindoro_retro_2023.yaml`.
+March 13 -> March 14 R1 is now the canonical thesis-facing Mindoro Phase 3B public-validation row, but the original March 3 -> March 6 case definition remains frozen in `config/case_mindoro_retro_2023.yaml`.
 The promotion is recorded separately in `config/case_mindoro_retro_2023_phase3b_primary_validation_amendment.yaml` so repo history preserves the original case provenance instead of silently rewriting it.
 
 ## Old Paths And New Paths
@@ -20,14 +20,14 @@ The promotion is recorded separately in `config/case_mindoro_retro_2023_phase3b_
 - Legacy B3 outputs remain under `output/CASE_MINDORO_RETRO_2023/public_obs_appendix/`
 - Comparator-only A outputs remain under `output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit_pygnome_comparison/`
 
-No existing March 6 output directory was deleted, renamed, or re-labeled as primary.
+No existing March-family output directory was deleted, renamed, or re-labeled as primary.
 
 ## Backward Compatibility Behavior
 
 - Existing code and docs may still reference `mindoro_march13_14_noaa_reinit_stress_test`; that entry is preserved as an alias so older scripts and notes do not break.
 - The alias no longer defines the authoritative scientific label. The authoritative launcher entry is now `mindoro_phase3b_primary_public_validation`.
 - `config/case_mindoro_retro_2023.yaml` remains loadable as the base case file. The promotion metadata is additive and does not mutate the original March 3 -> March 6 definition.
-- March 6 remains visible as B2, but it is now explicitly framed as `legacy_honesty_only`.
+- The March 13 -> March 14 R0 archived baseline plus B2/B3 remain repo-preserved archive-only rows and are no longer thesis-facing Mindoro validation rows.
 
 ## Final Table-Field Changes
 
@@ -49,8 +49,9 @@ The synced Phase 5 case registry now also carries:
 
 - `A`: comparator-only cross-model lane; PyGNOME remains comparator-only.
 - `B1`: `primary_public_validation`
-- `B2`: `legacy_honesty_only`
-- `B3`: `legacy_support_only`
+- `archive_r0`: `archive_only_baseline`
+- `B2`: `archive_only_reference`
+- `B3`: `archive_only_reference`
 
 ## Claim Guardrail
 

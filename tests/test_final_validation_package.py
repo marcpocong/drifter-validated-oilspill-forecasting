@@ -304,6 +304,7 @@ class FinalValidationPackageTests(unittest.TestCase):
             self.assertTrue((export_root / "publication" / "observations" / "march14_target_mask_on_grid.png").exists())
             self.assertTrue((export_root / "publication" / "opendrift_primary" / "mindoro_primary_validation_board.png").exists())
             self.assertTrue((export_root / "publication" / "comparator_pygnome" / "mindoro_crossmodel_board.png").exists())
+            self.assertTrue((export_root / "publication" / "comparator_pygnome" / "mindoro_observed_masks_ensemble_pygnome_board.png").exists())
             self.assertTrue((export_root / "scientific_source_pngs" / "opendrift_primary" / "qa_march14_reinit_R1_previous_overlay.png").exists())
             self.assertTrue((export_root / "scientific_source_pngs" / "comparator_pygnome" / "qa_march14_crossmodel_pygnome_reinit_deterministic_overlay.png").exists())
             self.assertTrue((export_root / "summary" / "opendrift_primary" / "march13_14_reinit_run_manifest.json").exists())

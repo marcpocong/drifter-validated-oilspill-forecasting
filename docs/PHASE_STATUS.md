@@ -4,7 +4,7 @@
 
 - Phase 1: Mindoro-specific recipe provenance is now finalized through the separate focused `2016-2023` drifter rerun, which recorded `cmems_gfs` as the historical four-recipe winner and now promotes `cmems_gfs` directly into the official B1 artifact; the broader `2016-2022` regional rerun remains preserved as a reference/governance lane and currently selects `cmems_gfs`.
 - Phase 2: scientifically usable, not frozen.
-- Mindoro Phase 3: validation-focused and reportable; `Phase 3B Observation-Based Spatial Validation Using Public Mindoro Spill Extents` is now carried by the March 13 -> March 14 B1 row, March 6 remains the preserved sparse-reference honesty case, the promotion is tracked by amendment rather than by rewriting the frozen March 3 -> March 6 case file, and B1 now inherits its recipe provenance from the separate focused `2016-2023` Mindoro drifter rerun without claiming direct drifter ingestion inside Phase 3B itself.
+- Mindoro Phase 3: validation-focused and reportable; `Phase 3B Observation-Based Spatial Validation Using Public Mindoro Spill Extents` is now carried thesis-facing by the March 13 -> March 14 R1 primary validation row, the March 13 -> March 14 R0 archived baseline plus the preserved March-family rows remain repo-preserved archive-only provenance material, the promotion is tracked by amendment rather than by rewriting the frozen March 3 -> March 6 case file, and B1 now inherits its recipe provenance from the separate focused `2016-2023` Mindoro drifter rerun without claiming direct drifter ingestion inside Phase 3B itself.
 - DWH Phase 3C: frozen validation-only external rich-data transfer case kept separate from drifter-calibration governance.
 - Mindoro `phase4_oiltype_and_shoreline`: implemented as a support/context bundle outside the main thesis phase count; thesis-facing `Phase 4` labeling is reserved for `prototype_2016`.
 - Phase 4 cross-model comparison: no matched Mindoro Phase 4 PyGNOME package is stored yet; current PyGNOME branches remain comparator-only for transport/spatial work rather than matched Phase 4 fate-and-shoreline outputs.
@@ -66,7 +66,7 @@ What remains provisional:
 
 - the default Mindoro spill-case baseline file now selects `cmems_gfs`, but the broader upstream `2016-2022` regional/reference lane is still not frozen as the completed multi-year study
 - legacy `*_ncep` recipe-family drift still exists in config/runtime space, even though the dedicated Phase 1 production lane now evaluates only the Chapter 3 official family
-- the canonical March 13 -> March 14 B1 rerun and its curated final-output export were refreshed to `cmems_gfs`, but some older non-B1 support manifests may still predate the focused Mindoro provenance promotion
+- the canonical March 13 -> March 14 R1 primary-validation rerun and its curated final-output export were refreshed to `cmems_gfs`, but some older archive/support manifests may still predate the focused Mindoro provenance promotion
 - `prototype_2021` remains a debug/demo lane rather than the final Chapter 3 regional evidence base
 
 ## Legacy Prototype 2016 Support Lane
@@ -91,9 +91,9 @@ Promotion and provenance control:
 - Canonical primary launcher entry: `mindoro_phase3b_primary_public_validation`
 - Backward-compatible launcher alias: `mindoro_march13_14_noaa_reinit_stress_test`
 - Shared-imagery guardrail: both NOAA/NESDIS public products cite March 12 WorldView-3 imagery, so the promoted B1 row is reportable as a reinitialization-based public-validation pair, not as an independent day-to-day validation.
-- Track semantics: `B1` is the only main-text primary Mindoro validation row; `A` is the same-case comparator-support track attached to `B1`; `B2` is the March 6 legacy honesty row; `B3` is the March 3-6 broader-support legacy row.
+- Track semantics: `B1` is the only main-text primary Mindoro validation row; `A` is the same-case comparator-support track attached to `B1`; `archive_r0` is the March 13 -> March 14 R0 archived baseline; `B2` is the March 6 archive-only sparse-reference row; `B3` is the March 3-6 archive-only broader-support row.
 - Spatial semantics: focused Phase 1 validation box `[118.751, 124.305, 10.620, 16.026]`; broad `mindoro_case_domain` fallback transport/overview extent `[115.0, 122.0, 6.0, 14.5]`; current scoring-grid display bounds `[120.90964677179262, 122.0621541786303, 12.249384840763462, 13.783655303175253]`.
-- Presentation note: `output/figure_package_publication/` now also carries a shared thesis study-box reference figure plus separate per-box geography panels so the focused Mindoro Phase 1 box, `mindoro_case_domain`, the scoring-grid display bounds, and the prototype_2016 first-code search box remain explicit and separate in the thesis-facing UI/package layer.
+- Presentation note: `output/figure_package_publication/` now also carries a shared thesis study-box reference figure that foregrounds `mindoro_case_domain` plus the prototype_2016 historical-origin box, while preserving the focused Mindoro Phase 1 box and the scoring-grid display bounds as archived secondary geography references in the thesis-facing UI/package layer.
 
 ### Phase 3A Benchmark Comparator Support
 
@@ -115,17 +115,17 @@ Promotion and provenance control:
 
 ### Phase 3B2 Legacy March 6 Sparse Reference
 
-- Plain-language status: preserved legacy sparse-reference honesty track.
+- Plain-language status: preserved archive-only sparse-reference provenance track.
 - Reportable: `true`
 - Frozen: `false`
-- Guardrail: keep it visible in methods/limitations discussion, but do not present it as the canonical Mindoro result or call it primary anywhere.
+- Guardrail: keep it repo-preserved for provenance, audit, and reproducibility, but do not present it as the canonical Mindoro result or call it primary anywhere.
 
 ### Phase 3B3 Legacy Broader Public Support
 
-- Plain-language status: reportable legacy broader public-validation support track.
+- Plain-language status: reportable archive-only broader public-validation support track.
 - Reportable: `true`
 - Frozen: `false`
-- Guardrail: keep it separate from both the promoted March 13 -> March 14 primary row and from DWH transfer validation.
+- Guardrail: keep it separate from both the promoted March 13 -> March 14 primary row and from DWH transfer validation, and surface it through archive/provenance handling rather than through the main thesis-facing Mindoro page.
 
 ## DWH Phase 3C
 
@@ -236,7 +236,7 @@ What is already in place:
 
 - panel-friendly mode that defaults to publication-grade figures and recommended defense boards
 - advanced mode that exposes panel/raw figures, manifests, logs, and lower-level artifact inspection
-- dedicated pages for Mindoro validation, DWH transfer validation, cross-model comparison, Phase 4 support/context interpretation, and Phase 4 cross-model deferred status
+- dedicated pages for Mindoro validation, the Mindoro validation archive, DWH transfer validation, cross-model comparison, Phase 4 support/context interpretation, and Phase 4 cross-model deferred status
 - an explicit read-only Phase 4 cross-model status page that states the comparison is deferred and links to blocker/next-step artifacts
 
 What remains deferred:
@@ -285,7 +285,6 @@ Recommended main-presentation boards:
 - Mindoro March 13 -> March 14 primary validation board
 - Mindoro March 13 -> March 14 cross-model comparator board
 - Mindoro trajectory board
-- Mindoro legacy March 6 honesty / limitations board
 - DWH deterministic forecast-vs-observation board
 - DWH deterministic vs ensemble board
 - DWH OpenDrift vs PyGNOME comparison board
@@ -313,7 +312,6 @@ Recommended main-presentation figures:
 
 - Mindoro March 13 -> March 14 primary validation board
 - Mindoro March 13 -> March 14 cross-model comparator board
-- Mindoro legacy March 6 honesty / limitations board
 - Mindoro trajectory publication board
 - DWH deterministic forecast-vs-observation board
 - DWH deterministic versus ensemble publication board

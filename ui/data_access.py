@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import hashlib
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -26,8 +27,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 FINAL_REPRO_DIR = Path("output") / "final_reproducibility_package"
 FINAL_VALIDATION_DIR = Path("output") / "final_validation_package"
 MINDORO_FINAL_DIR = Path("output") / "Phase 3B March13-14 Final Output"
+MINDORO_FINAL_ARCHIVE_DIR = Path("output") / "Phase 3B March13-14 Final Output Archive R0 Legacy"
 DWH_FINAL_DIR = Path("output") / "Phase 3C DWH Final Output"
 LEGACY_2016_FINAL_DIR = Path("output") / "2016 Legacy Runs FINAL Figures"
+MINDORO_ARCHIVE_DECISION_PATH = FINAL_VALIDATION_DIR / "mindoro_validation_archive_decision.md"
 RAW_GALLERY_DIR = Path("output") / "trajectory_gallery"
 PANEL_GALLERY_DIR = Path("output") / "trajectory_gallery_panel"
 PUBLICATION_DIR = Path("output") / "figure_package_publication"
@@ -38,9 +41,99 @@ PHASE1_REFERENCE_DIR = Path("output") / "phase1_production_rerun"
 MINDORO_DIR = Path("output") / "CASE_MINDORO_RETRO_2023"
 DWH_DIR = Path("output") / "CASE_DWH_RETRO_2010_72H"
 
+MINDORO_ARCHIVE_STATUS_KEYS: tuple[str, ...] = (
+    "mindoro_b1_r0_archive",
+    "mindoro_legacy_march6",
+    "mindoro_legacy_support",
+)
+
+DASHBOARD_STATE_PATHS: tuple[Path, ...] = (
+    FINAL_REPRO_DIR / "final_phase_status_registry.csv",
+    FINAL_REPRO_DIR / "final_case_registry.csv",
+    FINAL_REPRO_DIR / "final_output_catalog.csv",
+    FINAL_REPRO_DIR / "final_manifest_index.csv",
+    FINAL_REPRO_DIR / "final_log_index.csv",
+    FINAL_REPRO_DIR / "final_reproducibility_summary.md",
+    FINAL_VALIDATION_DIR / "final_validation_manifest.json",
+    FINAL_VALIDATION_DIR / "final_validation_case_registry.csv",
+    FINAL_VALIDATION_DIR / "final_validation_limitations.csv",
+    PUBLICATION_DIR / "publication_figure_registry.csv",
+    PUBLICATION_DIR / "publication_figure_manifest.json",
+    PUBLICATION_DIR / "publication_figure_captions.md",
+    PUBLICATION_DIR / "publication_talking_points.md",
+    MINDORO_ARCHIVE_DECISION_PATH,
+    PANEL_GALLERY_DIR / "panel_figure_registry.csv",
+    RAW_GALLERY_DIR / "trajectory_gallery_index.csv",
+    MINDORO_FINAL_DIR / "manifests" / "final_output_manifest.json",
+    MINDORO_FINAL_DIR / "README.md",
+    MINDORO_FINAL_DIR / "manifests" / "phase3b_final_output_registry.csv",
+    MINDORO_FINAL_ARCHIVE_DIR / "README.md",
+    MINDORO_FINAL_ARCHIVE_DIR / "manifests" / "phase3b_final_output_registry.csv",
+    MINDORO_FINAL_DIR / "summary" / "opendrift_primary" / "march13_14_reinit_summary.csv",
+    MINDORO_FINAL_DIR / "summary" / "opendrift_primary" / "march13_14_reinit_fss_by_window.csv",
+    MINDORO_FINAL_DIR / "summary" / "comparator_pygnome" / "march13_14_reinit_crossmodel_summary.csv",
+    MINDORO_FINAL_DIR / "summary" / "comparator_pygnome" / "march13_14_reinit_crossmodel_model_ranking.csv",
+    MINDORO_DIR / "phase3b" / "phase3b_summary.csv",
+    MINDORO_DIR / "pygnome_public_comparison" / "pygnome_public_comparison_model_ranking.csv",
+    PHASE1_FOCUSED_DIR / "phase1_production_manifest.json",
+    PHASE1_FOCUSED_DIR / "phase1_recipe_ranking.csv",
+    PHASE1_FOCUSED_DIR / "phase1_recipe_summary.csv",
+    PHASE1_FOCUSED_DIR / "phase1_accepted_segment_registry.csv",
+    PHASE1_FOCUSED_DIR / "phase1_ranking_subset_registry.csv",
+    PHASE1_FOCUSED_DIR / "phase1_loading_audit.csv",
+    PHASE1_FOCUSED_DIR / "phase1_baseline_selection_candidate.yaml",
+    PHASE1_FOCUSED_DIR / "phase1_ranking_subset_report.md",
+    PHASE1_REFERENCE_DIR / "phase1_production_manifest.json",
+    PHASE1_REFERENCE_DIR / "phase1_recipe_ranking.csv",
+    PHASE1_REFERENCE_DIR / "phase1_recipe_summary.csv",
+    PHASE1_REFERENCE_DIR / "phase1_baseline_selection_candidate.yaml",
+    DWH_FINAL_DIR / "manifests" / "phase3c_final_output_manifest.json",
+    DWH_FINAL_DIR / "README.md",
+    DWH_FINAL_DIR / "manifests" / "phase3c_final_output_registry.csv",
+    DWH_FINAL_DIR / "summary" / "deterministic" / "phase3c_summary.csv",
+    DWH_FINAL_DIR / "summary" / "ensemble" / "phase3c_ensemble_summary.csv",
+    DWH_FINAL_DIR / "summary" / "comparator_pygnome" / "phase3c_dwh_pygnome_summary.csv",
+    DWH_FINAL_DIR / "summary" / "comparator_pygnome" / "phase3c_dwh_all_results_table.csv",
+    DWH_FINAL_DIR / "summary" / "comparison" / "phase3c_main_scorecard.csv",
+    DWH_FINAL_DIR / "summary" / "comparison" / "phase3c_interpretation_note.md",
+    DWH_FINAL_DIR / "summary" / "comparison" / "phase3c_output_matrix_decision_note.md",
+    DWH_DIR / "phase3c_external_case_run" / "phase3c_summary.csv",
+    DWH_DIR / "phase3c_dwh_pygnome_comparator" / "phase3c_dwh_all_results_table.csv",
+    LEGACY_2016_FINAL_DIR / "manifests" / "legacy_final_output_manifest.json",
+    LEGACY_2016_FINAL_DIR / "README.md",
+    LEGACY_2016_FINAL_DIR / "manifests" / "prototype_2016_provenance_metadata.json",
+    LEGACY_2016_FINAL_DIR / "manifests" / "prototype_2016_final_output_registry.csv",
+    LEGACY_2016_FINAL_DIR / "summary" / "phase4" / "prototype_2016_phase4_registry.csv",
+    LEGACY_2016_FINAL_DIR / "summary" / "phase4_comparator" / "prototype_2016_phase4_pygnome_comparator_registry.csv",
+    LEGACY_2016_FINAL_DIR / "summary" / "phase4_comparator" / "prototype_2016_phase4_pygnome_decision_note.md",
+    LEGACY_2016_FINAL_DIR / "summary" / "phase3a" / "prototype_pygnome_similarity_by_case.csv",
+    LEGACY_2016_FINAL_DIR / "summary" / "phase3a" / "prototype_pygnome_fss_by_case_window.csv",
+    LEGACY_2016_FINAL_DIR / "phase5" / "prototype_2016_packaging_summary.md",
+    PHASE4_DIR / "phase4_oil_budget_summary.csv",
+    PHASE4_DIR / "phase4_oiltype_comparison.csv",
+    PHASE4_DIR / "phase4_shoreline_arrival.csv",
+    PHASE4_DIR / "phase4_shoreline_segments.csv",
+    PHASE4_AUDIT_DIR / "phase4_crossmodel_comparability_matrix.csv",
+    PHASE4_AUDIT_DIR / "phase4_crossmodel_final_verdict.md",
+    PHASE4_AUDIT_DIR / "phase4_crossmodel_blockers.md",
+    PHASE4_AUDIT_DIR / "phase4_crossmodel_minimal_next_steps.md",
+)
+
 
 def _root(repo_root: str | Path | None = None) -> Path:
     return Path(repo_root).resolve() if repo_root else REPO_ROOT
+
+
+def _path_cache_signature(path: str | Path, repo_root: str | Path | None = None) -> tuple[str, str, int, int]:
+    root_text = str(_root(repo_root))
+    resolved = resolve_repo_path(path, repo_root)
+    if resolved is None:
+        return str(path), root_text, -1, -1
+    try:
+        stat = resolved.stat()
+    except OSError:
+        return str(resolved), root_text, -1, -1
+    return str(resolved), root_text, int(stat.st_mtime_ns), int(stat.st_size)
 
 
 def resolve_repo_path(value: str | Path | None, repo_root: str | Path | None = None) -> Path | None:
@@ -98,8 +191,10 @@ def _drop_repeated_header_rows(df: pd.DataFrame) -> pd.DataFrame:
 
 
 @lru_cache(maxsize=128)
-def _cached_csv(path_text: str, repo_root_text: str) -> pd.DataFrame:
-    path = resolve_repo_path(path_text, repo_root_text)
+def _cached_csv(path_text: str, repo_root_text: str, _mtime_ns: int, _size: int) -> pd.DataFrame:
+    path = Path(path_text)
+    if not path.is_absolute():
+        path = resolve_repo_path(path_text, repo_root_text)
     if path is None or not path.exists():
         return pd.DataFrame()
     df = pd.read_csv(path)
@@ -110,12 +205,14 @@ def _cached_csv(path_text: str, repo_root_text: str) -> pd.DataFrame:
 
 
 def read_csv(path: str | Path, repo_root: str | Path | None = None) -> pd.DataFrame:
-    return _cached_csv(str(path), str(_root(repo_root))).copy()
+    return _cached_csv(*_path_cache_signature(path, repo_root)).copy()
 
 
 @lru_cache(maxsize=128)
-def _cached_json(path_text: str, repo_root_text: str) -> dict[str, Any]:
-    path = resolve_repo_path(path_text, repo_root_text)
+def _cached_json(path_text: str, repo_root_text: str, _mtime_ns: int, _size: int) -> dict[str, Any]:
+    path = Path(path_text)
+    if not path.is_absolute():
+        path = resolve_repo_path(path_text, repo_root_text)
     if path is None or not path.exists():
         return {}
     with open(path, "r", encoding="utf-8") as handle:
@@ -123,19 +220,32 @@ def _cached_json(path_text: str, repo_root_text: str) -> dict[str, Any]:
 
 
 def read_json(path: str | Path, repo_root: str | Path | None = None) -> dict[str, Any]:
-    return copy.deepcopy(_cached_json(str(path), str(_root(repo_root))))
+    return copy.deepcopy(_cached_json(*_path_cache_signature(path, repo_root)))
 
 
 @lru_cache(maxsize=128)
-def _cached_text(path_text: str, repo_root_text: str) -> str:
-    path = resolve_repo_path(path_text, repo_root_text)
+def _cached_text(path_text: str, repo_root_text: str, _mtime_ns: int, _size: int) -> str:
+    path = Path(path_text)
+    if not path.is_absolute():
+        path = resolve_repo_path(path_text, repo_root_text)
     if path is None or not path.exists():
         return ""
     return path.read_text(encoding="utf-8")
 
 
 def read_text(path: str | Path, repo_root: str | Path | None = None) -> str:
-    return _cached_text(str(path), str(_root(repo_root)))
+    return _cached_text(*_path_cache_signature(path, repo_root))
+
+
+def dashboard_state_signature(repo_root: str | Path | None = None) -> str:
+    root = _root(repo_root)
+    payload = "\n".join(
+        f"{path_text}|{mtime_ns}|{size}"
+        for path_text, _repo_root_text, mtime_ns, size in (
+            _path_cache_signature(path, root) for path in DASHBOARD_STATE_PATHS
+        )
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _attach_resolved_paths(df: pd.DataFrame, repo_root: str | Path | None = None) -> pd.DataFrame:
@@ -263,6 +373,14 @@ def final_validation_case_registry(repo_root: str | Path | None = None) -> pd.Da
     return read_csv(FINAL_VALIDATION_DIR / "final_validation_case_registry.csv", repo_root)
 
 
+def final_validation_limitations(repo_root: str | Path | None = None) -> pd.DataFrame:
+    return read_csv(FINAL_VALIDATION_DIR / "final_validation_limitations.csv", repo_root)
+
+
+def mindoro_validation_archive_decision(repo_root: str | Path | None = None) -> str:
+    return read_text(MINDORO_ARCHIVE_DECISION_PATH, repo_root)
+
+
 def mindoro_final_manifest(repo_root: str | Path | None = None) -> dict[str, Any]:
     return read_json(MINDORO_FINAL_DIR / "manifests" / "final_output_manifest.json", repo_root)
 
@@ -285,13 +403,47 @@ def mindoro_final_registry(repo_root: str | Path | None = None) -> pd.DataFrame:
         "A",
         "B1",
     )
-    status_rows = []
-    for track_id in payload["track_id"].astype(str):
-        status_key = "mindoro_crossmodel_comparator" if track_id == "A" else "mindoro_primary_validation"
-        status_rows.append(artifact_status_columns_for_key(status_key))
-    status_df = pd.DataFrame(status_rows, index=payload.index)
+    status_df = pd.DataFrame(
+        [artifact_status_columns(record) for record in payload.to_dict(orient="records")],
+        index=payload.index,
+    )
     for column in status_df.columns:
         payload[column] = status_df[column]
+    return payload
+
+
+def mindoro_final_archive_registry(repo_root: str | Path | None = None) -> pd.DataFrame:
+    root = _root(repo_root)
+    payload = _prepare_curated_registry(
+        read_csv(MINDORO_FINAL_ARCHIVE_DIR / "manifests" / "phase3b_final_output_registry.csv", root),
+        repo_root=root,
+        default_case_id=MINDORO_CASE_ID,
+    )
+    if payload.empty:
+        return payload
+    current_prefix = f"{MINDORO_FINAL_DIR.as_posix()}/"
+    archive_prefix = f"{MINDORO_FINAL_ARCHIVE_DIR.as_posix()}/"
+    for column in ("final_relative_path", "relative_path", "file_path"):
+        if column in payload.columns:
+            payload[column] = (
+                payload[column]
+                .fillna("")
+                .astype(str)
+                .str.replace(current_prefix, archive_prefix, regex=False)
+            )
+    if "source_paths" in payload.columns:
+        payload["source_paths"] = (
+            payload["source_paths"]
+            .fillna("")
+            .astype(str)
+            .str.replace(current_prefix, archive_prefix, regex=False)
+        )
+    payload = _attach_resolved_paths(payload, root)
+    payload["track_id"] = np.where(
+        payload.get("artifact_group", pd.Series(dtype=str)).astype(str).eq("publication/comparator_pygnome"),
+        "A",
+        "B1",
+    )
     return payload
 
 
@@ -441,24 +593,43 @@ def curated_package_roots(repo_root: str | Path | None = None) -> list[dict[str,
     legacy_registry = legacy_2016_final_registry(root)
     publication_registry_df = publication_registry(root)
     output_catalog = final_output_catalog(root)
+    mindoro_primary_artifacts = mindoro_registry.loc[
+        mindoro_registry.get("status_key", pd.Series(dtype=str)).astype(str).eq("mindoro_primary_validation")
+    ]
+    mindoro_comparator_artifacts = mindoro_registry.loc[
+        mindoro_registry.get("status_key", pd.Series(dtype=str)).astype(str).eq("mindoro_crossmodel_comparator")
+    ]
+    mindoro_archive_artifacts = publication_registry_df.loc[
+        publication_registry_df.get("case_id", pd.Series(dtype=str)).astype(str).eq(MINDORO_CASE_ID)
+        & publication_registry_df.get("status_key", pd.Series(dtype=str)).astype(str).isin(MINDORO_ARCHIVE_STATUS_KEYS)
+    ]
     return [
         {
             "package_id": "mindoro_b1_final",
             "label": "Mindoro B1 final package",
             "page_label": "Mindoro B1 Primary Validation",
             "relative_path": str(MINDORO_FINAL_DIR),
-            "description": "Curated B1 primary-validation package built from stored March 13 -> March 14 outputs only.",
-            "secondary_note": "B1 is the only primary Mindoro validation row.",
-            "artifact_count": int(len(mindoro_registry.loc[mindoro_registry["track_id"].astype(str).eq("B1")])),
+            "description": "Curated thesis-facing package for the Mindoro March 13 -> March 14 R1 primary validation row built from stored outputs only.",
+            "secondary_note": "Main paper uses March 13 -> March 14 R1 only.",
+            "artifact_count": int(len(mindoro_primary_artifacts)),
         },
         {
             "package_id": "mindoro_comparator",
             "label": "Mindoro comparator package",
             "page_label": "Mindoro Cross-Model Comparator",
             "relative_path": str(MINDORO_FINAL_DIR / "publication" / "comparator_pygnome"),
-            "description": "Curated comparator-only subgroup for the same-case March 14 OpenDrift-vs-PyGNOME comparison.",
-            "secondary_note": "Track A is comparator-only and never truth.",
-            "artifact_count": int(len(mindoro_registry.loc[mindoro_registry["track_id"].astype(str).eq("A")])),
+            "description": "Curated comparator-only subgroup for the thesis-facing March 14 Track A support view after archived R0-only materials were moved out of the main story.",
+            "secondary_note": "Track A is comparator-only; archived R0 outputs live on the archive page.",
+            "artifact_count": int(len(mindoro_comparator_artifacts)),
+        },
+        {
+            "package_id": "mindoro_validation_archive",
+            "label": "Mindoro validation archive",
+            "page_label": "Mindoro Validation Archive",
+            "relative_path": str(FINAL_VALIDATION_DIR),
+            "description": "Archived March13-14 R0 baseline, older R0-including March13-14 outputs, and preserved March-family legacy rows retained for provenance only.",
+            "secondary_note": "Archive-only; not thesis-facing evidence.",
+            "artifact_count": int(len(mindoro_archive_artifacts)),
         },
         {
             "package_id": "dwh_phase3c_final",
@@ -615,11 +786,29 @@ def _preferred_defense_patterns() -> list[tuple[str, str]]:
     return [
         ("CASE_MINDORO_RETRO_2023", "mindoro_primary_validation_board"),
         ("CASE_MINDORO_RETRO_2023", "mindoro_crossmodel_board"),
+        ("CASE_MINDORO_RETRO_2023", "march14_r1_previous_overlay"),
+        ("CASE_MINDORO_RETRO_2023", "march14_crossmodel_r1_overlay"),
         ("CASE_MINDORO_RETRO_2023", "oil_budget_board"),
         ("CASE_MINDORO_RETRO_2023", "shoreline_impact_board"),
         ("CASE_DWH_RETRO_2010_72H", "daily_deterministic_board"),
         ("CASE_DWH_RETRO_2010_72H", "deterministic_vs_ensemble_board"),
         ("CASE_DWH_RETRO_2010_72H", "opendrift_vs_pygnome_board"),
+    ]
+
+
+def _home_overview_featured_patterns() -> list[str]:
+    return [
+        "legacy_2016_drifter_track_triptych_board",
+        "legacy_2016_drifter_vs_mask_p50_mask_p90_triptych_board",
+        "legacy_2016_mask_p50_mask_p90_vs_pygnome_triptych_board",
+        "mindoro_observed_masks_ensemble_pygnome_board",
+        "mindoro_observed_masks_ensemble_pygnome_overlay",
+        "24h_48h_72h_mask_p50_footprint_overview_board",
+        "24h_48h_72h_mask_p90_footprint_overview_board",
+        "24h_48h_72h_mask_p50_mask_p90_dual_threshold_overview_board",
+        "24h_48h_72h_mask_p50_vs_pygnome_overview_board",
+        "24h_48h_72h_mask_p90_vs_pygnome_overview_board",
+        "24h_48h_72h_mask_p50_mask_p90_dual_threshold_vs_pygnome_overview_board",
     ]
 
 
@@ -646,6 +835,9 @@ def curated_recommended_figures(repo_root: str | Path | None = None) -> pd.DataF
     recommended = registry.loc[registry["figure_id"].isin(recommended_ids)].copy()
     if recommended.empty:
         recommended = registry.loc[registry.get("recommended_for_main_defense", pd.Series(dtype=bool)).fillna(False)].copy()
+    recommended = recommended.loc[
+        ~recommended.get("status_key", pd.Series(dtype=str)).astype(str).isin(MINDORO_ARCHIVE_STATUS_KEYS)
+    ].copy()
     ordered_frames: list[pd.DataFrame] = []
     used_ids: set[str] = set()
     for case_id, token in _preferred_defense_patterns():
@@ -659,6 +851,26 @@ def curated_recommended_figures(repo_root: str | Path | None = None) -> pd.DataF
     remainder = recommended.loc[~recommended["figure_id"].astype(str).isin(used_ids)].copy()
     frames = ordered_frames + ([remainder] if not remainder.empty else [])
     return pd.concat(frames, ignore_index=True) if frames else recommended
+
+
+def home_featured_publication_figures(repo_root: str | Path | None = None) -> pd.DataFrame:
+    registry = publication_registry(repo_root)
+    if registry.empty:
+        return registry
+    selected_frames: list[pd.DataFrame] = []
+    used_ids: set[str] = set()
+    for token in _home_overview_featured_patterns():
+        match = registry.loc[
+            registry["figure_id"].astype(str).str.contains(token, case=False, na=False)
+            & ~registry["figure_id"].astype(str).isin(used_ids)
+        ]
+        if match.empty:
+            continue
+        selected_frames.append(match.iloc[[0]].copy())
+        used_ids.add(str(match.iloc[0]["figure_id"]))
+    if selected_frames:
+        return pd.concat(selected_frames, ignore_index=True)
+    return curated_recommended_figures(repo_root)
 
 
 def figure_subset(
@@ -796,15 +1008,18 @@ def build_dashboard_state(repo_root: str | Path | None = None) -> dict[str, Any]
         "final_reproducibility_summary": final_reproducibility_summary(root),
         "final_validation_manifest": final_validation_manifest(root),
         "final_validation_case_registry": final_validation_case_registry(root),
+        "final_validation_limitations": final_validation_limitations(root),
         "publication_registry": publication_registry(root),
         "publication_manifest": publication_manifest(root),
         "publication_captions": publication_captions(root),
         "publication_talking_points": publication_talking_points(root),
         "panel_registry": panel_registry(root),
         "raw_gallery_index": raw_gallery_index(root),
+        "mindoro_validation_archive_decision": mindoro_validation_archive_decision(root),
         "mindoro_final_manifest": mindoro_final_manifest(root),
         "mindoro_final_readme": mindoro_final_readme(root),
         "mindoro_final_registry": mindoro_final_registry(root),
+        "mindoro_final_archive_registry": mindoro_final_archive_registry(root),
         "mindoro_b1_summary": mindoro_b1_summary(root),
         "mindoro_b1_fss": mindoro_b1_fss(root),
         "mindoro_comparator_summary": mindoro_comparator_summary(root),
@@ -854,5 +1069,6 @@ def build_dashboard_state(repo_root: str | Path | None = None) -> dict[str, Any]
         "phase4_crossmodel_blockers": phase4_crossmodel_blockers(root),
         "phase4_crossmodel_next_steps": phase4_crossmodel_next_steps(root),
         "curated_recommended_figures": curated_recommended_figures(root),
+        "home_featured_publication_figures": home_featured_publication_figures(root),
         "curated_package_roots": curated_package_roots(root),
     }
