@@ -604,6 +604,13 @@ def get_prepared_input_manifest_path(run_name: str | None = None) -> Path:
     return Path("data") / "prepared" / active_run_name / "prepared_input_manifest.csv"
 
 
+def get_prepared_input_manifest_json_path(run_name: str | None = None) -> Path:
+    """Return the case-local prepared-input manifest JSON path."""
+    case = get_case_context()
+    active_run_name = run_name or case.run_name
+    return Path("data") / "prepared" / active_run_name / "prepared_input_manifest.json"
+
+
 def get_download_manifest_path() -> Path:
     """Return the shared ingestion download manifest path."""
     return Path("data") / "download_manifest.json"

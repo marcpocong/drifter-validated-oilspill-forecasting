@@ -221,6 +221,9 @@ class FinalValidationPackageTests(unittest.TestCase):
             & (case_registry["main_text_priority"] == "primary")
         ]
         self.assertEqual(mindoro_primary_rows["track_id"].tolist(), ["B1"])
+        archive_r0 = case_registry.loc[case_registry["track_id"] == "archive_r0"].iloc[0]
+        self.assertEqual(archive_r0["status_key"], "mindoro_b1_r0_archive")
+        self.assertEqual(archive_r0["surface_key"], "archive_only")
         b1 = main_table.loc[main_table["track_id"] == "B1"].iloc[0]
         self.assertEqual(b1["track_label"], "Mindoro March 13 -> March 14 NOAA reinit primary validation")
         self.assertAlmostEqual(float(b1["mean_fss"]), 0.1075, places=4)
@@ -314,8 +317,12 @@ class FinalValidationPackageTests(unittest.TestCase):
             self.assertTrue((export_root / "manifests" / "phase3b_final_output_registry.json").exists())
             self.assertTrue((export_root / "final_output_manifest.json").exists())
             manifest = json.loads((export_root / "manifests" / "final_output_manifest.json").read_text(encoding="utf-8"))
+            registry_df = pd.read_csv(export_root / "manifests" / "phase3b_final_output_registry.csv")
             self.assertEqual(manifest["registry_path"], "output/Phase 3B March13-14 Final Output/manifests/phase3b_final_output_registry.csv")
             self.assertEqual(export["manifest_path"], "output/Phase 3B March13-14 Final Output/manifests/final_output_manifest.json")
+            self.assertIn("surface_key", registry_df.columns)
+            self.assertTrue(registry_df["surface_key"].astype(str).isin(["thesis_main", "comparator_support"]).all())
+            self.assertFalse((registry_df["surface_key"].astype(str) == "archive_only").any())
 
     def test_build_dwh_final_output_export_writes_curated_tree_and_registry(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -370,9 +377,12 @@ class FinalValidationPackageTests(unittest.TestCase):
             self.assertTrue((export_root / "manifests" / "phase3c_final_output_registry.csv").exists())
             self.assertTrue((export_root / "manifests" / "phase3c_final_output_registry.json").exists())
             manifest = json.loads((export_root / "manifests" / "phase3c_final_output_manifest.json").read_text(encoding="utf-8"))
+            registry_df = pd.read_csv(export_root / "manifests" / "phase3c_final_output_registry.csv")
             self.assertEqual(manifest["registry_path"], "output/Phase 3C DWH Final Output/manifests/phase3c_final_output_registry.csv")
             self.assertFalse(manifest["scientific_rerun_triggered"])
             self.assertEqual(export["manifest_path"], "output/Phase 3C DWH Final Output/manifests/phase3c_final_output_manifest.json")
+            self.assertIn("surface_key", registry_df.columns)
+            self.assertTrue({"thesis_main", "comparator_support", "advanced_only"}.issuperset(set(registry_df["surface_key"].astype(str))))
 
 
 if __name__ == "__main__":

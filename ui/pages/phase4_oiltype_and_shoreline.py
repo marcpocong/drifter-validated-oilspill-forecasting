@@ -33,7 +33,7 @@ def render(state: dict, ui_state: dict) -> None:
     render_page_intro(
         "Phase 4 Oil-Type and Shoreline Context",
         "This page presents the current Mindoro Phase 4 interpretation layer as it exists now: OpenDrift/OpenOil scenario context for oil-type and shoreline interpretation. It does not present a matched Mindoro Phase 4 PyGNOME package because no such package is currently stored.",
-        badge="Mindoro Phase 4 context | OpenDrift/OpenOil-only",
+        badge="Comparator support | Phase 4 context",
     )
 
     if export_mode:

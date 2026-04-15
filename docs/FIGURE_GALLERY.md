@@ -59,6 +59,7 @@ docker-compose exec -T -e WORKFLOW_MODE=prototype_2016 -e PIPELINE_PHASE=prototy
 - `output/figure_package_publication/publication_figure_registry.csv`
 - `output/figure_package_publication/publication_figure_captions.md`
 - `output/figure_package_publication/publication_figure_talking_points.md`
+- `output/figure_package_publication/publication_figure_inventory.md`
 - publication-grade `.png` single figures and side-by-side boards with case/phase/model/run/date/scenario/view/variant tokens in the filename
 
 ## Prototype 2016 Final Figure Outputs
@@ -84,20 +85,28 @@ docker-compose exec -T -e WORKFLOW_MODE=prototype_2016 -e PIPELINE_PHASE=prototy
 ## Recommended First-Look Defense Figures
 
 - A. Mindoro March 13 -> March 14 primary validation board
-- B. Mindoro March 13 -> March 14 cross-model comparator board
-- D. Mindoro trajectory board
-- G. DWH deterministic forecast-vs-observation board
-- H. DWH deterministic vs ensemble board
-- I. DWH OpenDrift vs PyGNOME comparison board
+- B. Mindoro March 14 promoted OpenDrift R1 overlay
+- C. Mindoro March 13 -> March 14 cross-model comparator board
+- D. DWH deterministic transfer-validation board
+- E. DWH deterministic vs ensemble event-corridor board
+- F. DWH OpenDrift vs PyGNOME event-corridor board
 
 Optional support/context figures:
 
-- E. Mindoro Phase 4 oil-budget board
-- F. Mindoro Phase 4 shoreline-arrival / shoreline-impact board
+- G. Mindoro Phase 4 oil-budget board
+- H. Mindoro Phase 4 shoreline-arrival / shoreline-impact board
 - Archive-only provenance figures: Mindoro March 13 -> March 14 R0 archived baseline and preserved March-family legacy boards on the `Mindoro Validation Archive` page
 - Supporting honesty figure: Mindoro Phase 4 deferred-comparison note figure
+- Phase 1 study-context figures: the shared Study Boxes `2` and `4` overview plus the per-box `mindoro_case_domain` and prototype-origin geography references
 
-These are the clearest figures for a main defense presentation. Use the publication package first, the panel gallery second, and the raw gallery only when the panel needs the technical archive behind a polished board. Keep the Phase 4 boards as support/context figures rather than as main-phase claims outside `prototype_2016`.
+Study-box numbering is now fixed across the package:
+
+- Study Box `1`: focused Mindoro Phase 1 validation box. Archive/advanced/support only.
+- Study Box `2`: `mindoro_case_domain` overview extent. Thesis-facing.
+- Study Box `3`: scoring-grid display bounds. Archive/advanced/support only.
+- Study Box `4`: `prototype_2016` first-code search box. Thesis-facing as historical-origin support.
+
+These are the clearest figures for a main defense presentation. Use the publication package first, the panel gallery second, and the raw gallery only when the panel needs the technical archive behind a polished board. Keep the Phase 4 boards as support/context figures rather than as main-phase claims outside `prototype_2016`, and use the inventory/manifest metadata to distinguish thesis-surface figures from archive/support-only rows.
 
 ## Panel-Ready Board Families
 
@@ -136,17 +145,19 @@ The polished board layer adds:
 - I. DWH OpenDrift vs PyGNOME singles plus comparison board
 - J. DWH trajectory singles plus trajectory board
 - K. Prototype 2021 accepted-segment support-only OpenDrift vs PyGNOME singles plus per-case side-by-side boards
-- L. Shared thesis study-box reference figure set built from stored box metadata only, now with a 2/4 thesis-default overview plus an archived full-context overview
+- L. Shared thesis study-box reference figure set built from stored box metadata only, now with a Study Boxes 2/4 thesis-default overview plus a Study Boxes 1/2/3/4 archived full-context overview
 
 The publication package adds:
 
 - separate paper-ready single-image figures
 - explicit side-by-side comparison boards
 - plain-language captions and defense talking points
+- a registry-driven inventory layer with `thesis_surface`, `archive_only`, `legacy_support`, `comparator_support`, `display_order`, `page_target`, `study_box_id`, and `recommended_scope`
 - a promoted March 13 -> March 14 Mindoro validation presentation lane for `Phase 3B Observation-Based Spatial Validation Using Public Mindoro Spill Extents`, with the shared March 12 imagery caveat kept explicit and the separate focused Mindoro Phase 1 drifter-based provenance note carried as provenance rather than rewritten run history
 - an explicit publication-grade note figure explaining why Phase 4 OpenDrift-versus-PyGNOME comparison is still deferred
 - support-only prototype family `K`, which now republishes the preferred accepted-segment 2021 deterministic OpenDrift-vs-PyGNOME forecast figures without elevating them into the default main-defense list
-- a shared thesis study-box reference figure that now foregrounds `mindoro_case_domain` plus the prototype_2016 historical-origin box, an archived full-context overview, and separate per-box geography panels that keep the focused Mindoro Phase 1 box and the scoring-grid display bounds available as secondary references in panel-ready WGS84 images with geography shown
+- a shared thesis study-box reference figure that now foregrounds Study Box `2` (`mindoro_case_domain`) plus Study Box `4` (the prototype_2016 historical-origin box), an archived full-context overview, and separate per-box geography panels that keep Study Box `1` (focused Mindoro Phase 1 validation box) and Study Box `3` (scoring-grid display bounds) available as secondary references in panel-ready WGS84 images with geography shown
+- archive/support classification for R0 material, stale study-box references, duplicate boards, and raw technical panels that are preserved in the package but are no longer part of the thesis-facing surface
 - the canonical presentation layer for defense and manuscript use
 
 ## Curated B1 Final Output Export
@@ -191,6 +202,7 @@ These figures remain:
 - The publication package redraws from the stored rasters, tracks, and Phase 4 tables, but it still does not fabricate trajectories or relabel score products.
 - The publication package includes Phase 3 OpenDrift-versus-PyGNOME comparison boards, but it does not generate fake Phase 4 cross-model figures; instead it writes a deferred-comparison note figure grounded in `output/phase4_crossmodel_comparability_audit/`.
 - Mindoro validation figures now report the promoted March 13 -> March 14 R1 primary validation row while explicitly inheriting recipe provenance from the separate focused 2016-2023 Mindoro drifter rerun; the Phase 4 figures remain support/context material outside `prototype_2016`.
+- Archive/support classification is explicit: preserved files stay indexed in the registry and inventory instead of being silently promoted into the thesis-facing surface.
 - DWH figures remain reportable transfer-validation/support visuals, not a replacement for the Mindoro thesis case.
 
 ## Still Optional

@@ -22,6 +22,7 @@ from src.core.artifact_status import (
     artifact_status_columns_for_key,
     record_matches_artifact_status,
 )
+from src.core.publication_figure_governance import publication_figure_governance_columns
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FINAL_REPRO_DIR = Path("output") / "final_reproducibility_package"
@@ -41,11 +42,7 @@ PHASE1_REFERENCE_DIR = Path("output") / "phase1_production_rerun"
 MINDORO_DIR = Path("output") / "CASE_MINDORO_RETRO_2023"
 DWH_DIR = Path("output") / "CASE_DWH_RETRO_2010_72H"
 
-MINDORO_ARCHIVE_STATUS_KEYS: tuple[str, ...] = (
-    "mindoro_b1_r0_archive",
-    "mindoro_legacy_march6",
-    "mindoro_legacy_support",
-)
+MINDORO_ARCHIVE_SURFACE_KEYS: tuple[str, ...] = ("archive_only",)
 
 DASHBOARD_STATE_PATHS: tuple[Path, ...] = (
     FINAL_REPRO_DIR / "final_phase_status_registry.csv",
@@ -60,6 +57,7 @@ DASHBOARD_STATE_PATHS: tuple[Path, ...] = (
     PUBLICATION_DIR / "publication_figure_registry.csv",
     PUBLICATION_DIR / "publication_figure_manifest.json",
     PUBLICATION_DIR / "publication_figure_captions.md",
+    PUBLICATION_DIR / "publication_figure_inventory.md",
     PUBLICATION_DIR / "publication_talking_points.md",
     MINDORO_ARCHIVE_DECISION_PATH,
     PANEL_GALLERY_DIR / "panel_figure_registry.csv",
@@ -267,10 +265,28 @@ def _attach_status_fields(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df.copy()
     payload = df.copy()
-    status_rows = [artifact_status_columns(row) for row in payload.to_dict(orient="records")]
+    status_rows = []
+    for row in payload.to_dict(orient="records"):
+        raw_status_key = row.get("status_key")
+        status_key = "" if pd.isna(raw_status_key) else str(raw_status_key or "").strip()
+        if status_key:
+            status_rows.append(artifact_status_columns_for_key(status_key, row))
+        else:
+            status_rows.append(artifact_status_columns(row))
     status_df = pd.DataFrame(status_rows, index=payload.index)
     for column in status_df.columns:
         payload[column] = status_df[column]
+    return payload
+
+
+def _attach_publication_governance_fields(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df.copy()
+    payload = df.copy()
+    governance_rows = [publication_figure_governance_columns(row) for row in payload.to_dict(orient="records")]
+    governance_df = pd.DataFrame(governance_rows, index=payload.index)
+    for column in governance_df.columns:
+        payload[column] = governance_df[column]
     return payload
 
 
@@ -282,6 +298,33 @@ def _apply_status_key(df: pd.DataFrame, status_key: str) -> pd.DataFrame:
     for column, value in status_columns.items():
         payload[column] = value
     return payload
+
+
+def _filter_surface_rows(
+    df: pd.DataFrame,
+    *,
+    surface_keys: list[str] | tuple[str, ...] | None = None,
+    require_home_visible: bool = False,
+    require_panel_visible: bool = False,
+    require_archive_visible: bool = False,
+    require_advanced_visible: bool = False,
+    require_recommended_visible: bool = False,
+) -> pd.DataFrame:
+    if df.empty:
+        return df.copy()
+    payload = df.copy()
+    if surface_keys and "surface_key" in payload.columns:
+        payload = payload.loc[payload["surface_key"].fillna("").astype(str).isin([str(value) for value in surface_keys])].copy()
+    for column, required in (
+        ("surface_home_visible", require_home_visible),
+        ("surface_panel_visible", require_panel_visible),
+        ("surface_archive_visible", require_archive_visible),
+        ("surface_advanced_visible", require_advanced_visible),
+        ("surface_recommended_visible", require_recommended_visible),
+    ):
+        if required and column in payload.columns:
+            payload = payload.loc[payload[column].fillna(False).astype(bool)].copy()
+    return payload.reset_index(drop=True)
 
 
 def _prepare_curated_registry(
@@ -322,9 +365,42 @@ def _prepare_curated_registry(
     return _attach_resolved_paths(payload, repo_root)
 
 
+def _ensure_mindoro_archive_case_row(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty or "track_id" not in df.columns:
+        return df.copy()
+    payload = df.copy()
+    track_ids = set(payload["track_id"].fillna("").astype(str))
+    if "archive_r0" in track_ids or "B1" not in track_ids:
+        return payload
+    archive_row = {
+        "case_id": MINDORO_CASE_ID,
+        "track_id": "archive_r0",
+        "track_label": "Mindoro March 13 -> March 14 R0 archived baseline",
+        "status": "complete",
+        "truth_source": "accepted March 14 NOAA/NESDIS observation mask with March 13 NOAA seed polygon",
+        "primary_output_dir": str(MINDORO_DIR / "phase3b_extended_public_scored_march13_14_reinit" / "R0"),
+        "case_definition_path": "config/case_mindoro_retro_2023.yaml",
+        "case_freeze_amendment_path": "config/case_mindoro_retro_2023_phase3b_primary_validation_amendment.yaml",
+        "launcher_entry_id": "mindoro_phase3b_primary_public_validation",
+        "launcher_alias_entry_id": "mindoro_march13_14_noaa_reinit_stress_test",
+        "row_role": "archive_only",
+        "reporting_role": "archive / provenance only",
+        "main_text_priority": "archive",
+        "notes": "Backfilled archive-only R0 row for older validation registries that predate the thesis-surface governance sync.",
+    }
+    archive_row.update(artifact_status_columns(archive_row))
+    return pd.concat([payload, pd.DataFrame([archive_row])], ignore_index=True)
+
+
 def publication_registry(repo_root: str | Path | None = None) -> pd.DataFrame:
     root = _root(repo_root)
-    return _attach_status_fields(_attach_resolved_paths(read_csv(PUBLICATION_DIR / "publication_figure_registry.csv", root), root))
+    payload = _attach_status_fields(
+        _attach_resolved_paths(read_csv(PUBLICATION_DIR / "publication_figure_registry.csv", root), root)
+    )
+    payload = _attach_publication_governance_fields(payload)
+    if "display_order" in payload.columns:
+        payload = payload.sort_values(["display_order", "figure_id"], na_position="last").reset_index(drop=True)
+    return payload
 
 
 def publication_manifest(repo_root: str | Path | None = None) -> dict[str, Any]:
@@ -370,11 +446,13 @@ def final_reproducibility_summary(repo_root: str | Path | None = None) -> str:
 
 
 def final_validation_case_registry(repo_root: str | Path | None = None) -> pd.DataFrame:
-    return read_csv(FINAL_VALIDATION_DIR / "final_validation_case_registry.csv", repo_root)
+    return _attach_status_fields(
+        _ensure_mindoro_archive_case_row(read_csv(FINAL_VALIDATION_DIR / "final_validation_case_registry.csv", repo_root))
+    )
 
 
 def final_validation_limitations(repo_root: str | Path | None = None) -> pd.DataFrame:
-    return read_csv(FINAL_VALIDATION_DIR / "final_validation_limitations.csv", repo_root)
+    return _attach_status_fields(read_csv(FINAL_VALIDATION_DIR / "final_validation_limitations.csv", repo_root))
 
 
 def mindoro_validation_archive_decision(repo_root: str | Path | None = None) -> str:
@@ -403,13 +481,7 @@ def mindoro_final_registry(repo_root: str | Path | None = None) -> pd.DataFrame:
         "A",
         "B1",
     )
-    status_df = pd.DataFrame(
-        [artifact_status_columns(record) for record in payload.to_dict(orient="records")],
-        index=payload.index,
-    )
-    for column in status_df.columns:
-        payload[column] = status_df[column]
-    return payload
+    return _attach_status_fields(payload)
 
 
 def mindoro_final_archive_registry(repo_root: str | Path | None = None) -> pd.DataFrame:
@@ -444,28 +516,36 @@ def mindoro_final_archive_registry(repo_root: str | Path | None = None) -> pd.Da
         "A",
         "B1",
     )
-    return payload
+    return _attach_status_fields(payload)
 
 
 def mindoro_b1_summary(repo_root: str | Path | None = None) -> pd.DataFrame:
-    return read_csv(MINDORO_FINAL_DIR / "summary" / "opendrift_primary" / "march13_14_reinit_summary.csv", repo_root)
+    return _attach_status_fields(
+        read_csv(MINDORO_FINAL_DIR / "summary" / "opendrift_primary" / "march13_14_reinit_summary.csv", repo_root)
+    )
 
 
 def mindoro_b1_fss(repo_root: str | Path | None = None) -> pd.DataFrame:
-    return read_csv(MINDORO_FINAL_DIR / "summary" / "opendrift_primary" / "march13_14_reinit_fss_by_window.csv", repo_root)
+    return _attach_status_fields(
+        read_csv(MINDORO_FINAL_DIR / "summary" / "opendrift_primary" / "march13_14_reinit_fss_by_window.csv", repo_root)
+    )
 
 
 def mindoro_comparator_summary(repo_root: str | Path | None = None) -> pd.DataFrame:
-    return read_csv(
-        MINDORO_FINAL_DIR / "summary" / "comparator_pygnome" / "march13_14_reinit_crossmodel_summary.csv",
-        repo_root,
+    return _attach_status_fields(
+        read_csv(
+            MINDORO_FINAL_DIR / "summary" / "comparator_pygnome" / "march13_14_reinit_crossmodel_summary.csv",
+            repo_root,
+        )
     )
 
 
 def mindoro_comparator_ranking(repo_root: str | Path | None = None) -> pd.DataFrame:
-    return read_csv(
-        MINDORO_FINAL_DIR / "summary" / "comparator_pygnome" / "march13_14_reinit_crossmodel_model_ranking.csv",
-        repo_root,
+    return _attach_status_fields(
+        read_csv(
+            MINDORO_FINAL_DIR / "summary" / "comparator_pygnome" / "march13_14_reinit_crossmodel_model_ranking.csv",
+            repo_root,
+        )
     )
 
 
@@ -601,7 +681,7 @@ def curated_package_roots(repo_root: str | Path | None = None) -> list[dict[str,
     ]
     mindoro_archive_artifacts = publication_registry_df.loc[
         publication_registry_df.get("case_id", pd.Series(dtype=str)).astype(str).eq(MINDORO_CASE_ID)
-        & publication_registry_df.get("status_key", pd.Series(dtype=str)).astype(str).isin(MINDORO_ARCHIVE_STATUS_KEYS)
+        & publication_registry_df.get("surface_key", pd.Series(dtype=str)).astype(str).isin(MINDORO_ARCHIVE_SURFACE_KEYS)
     ]
     return [
         {
@@ -782,6 +862,33 @@ def publication_talking_points(repo_root: str | Path | None = None) -> str:
     return read_text(PUBLICATION_DIR / "publication_figure_talking_points.md", repo_root)
 
 
+HOME_STORY_PAGE_ORDER: dict[str, int] = {
+    "phase1_recipe_selection": 10,
+    "mindoro_validation": 20,
+    "cross_model_comparison": 30,
+    "dwh_transfer_validation": 40,
+    "phase4_oiltype_and_shoreline": 50,
+    "legacy_2016_support": 60,
+}
+
+
+def _sort_home_story_rows(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df.copy()
+    payload = df.copy()
+    page_targets = payload.get("page_target", pd.Series("", index=payload.index)).fillna("").astype(str)
+    payload["_story_page_order"] = page_targets.map(HOME_STORY_PAGE_ORDER).fillna(999).astype(int)
+    if "display_order" in payload.columns:
+        payload["_display_order"] = pd.to_numeric(payload["display_order"], errors="coerce").fillna(9999).astype(int)
+        sort_columns = ["_story_page_order", "_display_order", "figure_id"]
+    else:
+        sort_columns = ["_story_page_order", "figure_id"]
+    payload = payload.sort_values(sort_columns, na_position="last").drop(
+        columns=[column for column in ("_story_page_order", "_display_order") if column in payload.columns]
+    )
+    return payload.reset_index(drop=True)
+
+
 def _preferred_defense_patterns() -> list[tuple[str, str]]:
     return [
         ("CASE_MINDORO_RETRO_2023", "mindoro_primary_validation_board"),
@@ -835,42 +942,44 @@ def curated_recommended_figures(repo_root: str | Path | None = None) -> pd.DataF
     recommended = registry.loc[registry["figure_id"].isin(recommended_ids)].copy()
     if recommended.empty:
         recommended = registry.loc[registry.get("recommended_for_main_defense", pd.Series(dtype=bool)).fillna(False)].copy()
-    recommended = recommended.loc[
-        ~recommended.get("status_key", pd.Series(dtype=str)).astype(str).isin(MINDORO_ARCHIVE_STATUS_KEYS)
-    ].copy()
-    ordered_frames: list[pd.DataFrame] = []
-    used_ids: set[str] = set()
-    for case_id, token in _preferred_defense_patterns():
-        match = recommended.loc[
-            recommended["case_id"].astype(str).eq(case_id)
-            & recommended["figure_id"].astype(str).str.contains(token, case=False, na=False)
-        ]
-        if not match.empty:
-            ordered_frames.append(match.iloc[[0]].copy())
-            used_ids.add(str(match.iloc[0]["figure_id"]))
-    remainder = recommended.loc[~recommended["figure_id"].astype(str).isin(used_ids)].copy()
-    frames = ordered_frames + ([remainder] if not remainder.empty else [])
-    return pd.concat(frames, ignore_index=True) if frames else recommended
+    recommended = _filter_surface_rows(recommended, require_recommended_visible=True)
+    if "thesis_surface" in recommended.columns:
+        recommended = recommended.loc[recommended["thesis_surface"].fillna(False).astype(bool)].copy()
+    if "display_order" in recommended.columns:
+        recommended = recommended.sort_values(["display_order", "figure_id"], na_position="last").reset_index(drop=True)
+    return recommended.reset_index(drop=True)
 
 
 def home_featured_publication_figures(repo_root: str | Path | None = None) -> pd.DataFrame:
+    featured = _filter_surface_rows(curated_recommended_figures(repo_root), require_home_visible=True)
     registry = publication_registry(repo_root)
-    if registry.empty:
-        return registry
-    selected_frames: list[pd.DataFrame] = []
-    used_ids: set[str] = set()
-    for token in _home_overview_featured_patterns():
-        match = registry.loc[
-            registry["figure_id"].astype(str).str.contains(token, case=False, na=False)
-            & ~registry["figure_id"].astype(str).isin(used_ids)
-        ]
-        if match.empty:
-            continue
-        selected_frames.append(match.iloc[[0]].copy())
-        used_ids.add(str(match.iloc[0]["figure_id"]))
-    if selected_frames:
-        return pd.concat(selected_frames, ignore_index=True)
-    return curated_recommended_figures(repo_root)
+    phase1_context = registry.loc[
+        (
+            registry.get("page_target", pd.Series("", index=registry.index))
+            .fillna("")
+            .astype(str)
+            .eq("phase1_recipe_selection")
+        )
+        & (
+            registry.get("recommended_scope", pd.Series("", index=registry.index))
+            .fillna("")
+            .astype(str)
+            .eq("main_text")
+        )
+    ].copy()
+    phase1_context = _filter_surface_rows(phase1_context, require_home_visible=True)
+    if "thesis_surface" in phase1_context.columns:
+        phase1_context = phase1_context.loc[phase1_context["thesis_surface"].fillna(False).astype(bool)].copy()
+    featured = pd.concat([phase1_context, featured], ignore_index=True)
+    if featured.empty:
+        return featured
+    if "archive_only" in featured.columns:
+        featured = featured.loc[~featured["archive_only"].fillna(False).astype(bool)].copy()
+    if "legacy_support" in featured.columns:
+        featured = featured.loc[~featured["legacy_support"].fillna(False).astype(bool)].copy()
+    if "figure_id" in featured.columns:
+        featured = featured.drop_duplicates(subset=["figure_id"], keep="first")
+    return _sort_home_story_rows(featured)
 
 
 def figure_subset(
@@ -880,6 +989,7 @@ def figure_subset(
     case_id: str = "",
     family_codes: list[str] | None = None,
     status_keys: list[str] | None = None,
+    surface_keys: list[str] | None = None,
     recommended_only: bool = False,
     text_filter: str = "",
 ) -> pd.DataFrame:
@@ -909,6 +1019,8 @@ def figure_subset(
             records = df.to_dict(orient="records")
             mask = [any(record_matches_artifact_status(record, key) for key in status_keys) for record in records]
             df = df.loc[mask].copy()
+    if surface_keys:
+        df = _filter_surface_rows(df, surface_keys=surface_keys)
     if text_filter:
         lowered = text_filter.lower()
         searchable_columns = [column for column in df.columns if column in {"figure_id", "figure_family_label", "board_family_label", "figure_group_label", "model_names", "model_name", "notes", "short_plain_language_interpretation", "plain_language_interpretation"}]
@@ -917,6 +1029,8 @@ def figure_subset(
             for column in searchable_columns:
                 mask |= df[column].astype(str).str.lower().str.contains(lowered, na=False)
             df = df.loc[mask].copy()
+    if "display_order" in df.columns:
+        df = df.sort_values(["display_order", "figure_id"], na_position="last").copy()
     return df.reset_index(drop=True)
 
 

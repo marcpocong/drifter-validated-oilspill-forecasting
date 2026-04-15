@@ -55,13 +55,21 @@ class UiDataAccessTests(unittest.TestCase):
 
         self.assertFalse(featured.empty)
         figure_ids = featured["figure_id"].astype(str).tolist()
-        self.assertTrue(any("legacy_2016_drifter_track_triptych_board" in figure_id for figure_id in figure_ids))
-        self.assertTrue(any("mindoro_observed_masks_ensemble_pygnome_board" in figure_id for figure_id in figure_ids))
-        self.assertTrue(any("mindoro_observed_masks_ensemble_pygnome_overlay" in figure_id for figure_id in figure_ids))
-        self.assertTrue(any("24h_48h_72h_mask_p50_footprint_overview_board" in figure_id for figure_id in figure_ids))
-        self.assertTrue(any("24h_48h_72h_mask_p50_mask_p90_dual_threshold_vs_pygnome_overview_board" in figure_id for figure_id in figure_ids))
-        first_three = figure_ids[:3]
-        self.assertTrue(all("legacy_2016" in figure_id for figure_id in first_three))
+        page_targets = featured["page_target"].astype(str).tolist()
+        self.assertIn("thesis_study_boxes_reference", figure_ids[0])
+        self.assertEqual(page_targets[0], "phase1_recipe_selection")
+        self.assertIn("mindoro_primary_validation_board", figure_ids[1])
+        self.assertIn("march14_r1_previous_overlay", figure_ids[2])
+        self.assertTrue(any("mindoro_crossmodel_board" in figure_id for figure_id in figure_ids))
+        self.assertTrue(any("daily_deterministic_footprint_overview_board" in figure_id for figure_id in figure_ids))
+        self.assertTrue(any("observed_deterministic_mask_p50_mask_p90_board" in figure_id for figure_id in figure_ids))
+        self.assertTrue(any("observed_deterministic_mask_p50_pygnome_board" in figure_id for figure_id in figure_ids))
+        self.assertTrue(any(page_target == "mindoro_validation" for page_target in page_targets))
+        self.assertTrue(any(page_target == "cross_model_comparison" for page_target in page_targets))
+        self.assertTrue(any(page_target == "dwh_transfer_validation" for page_target in page_targets))
+        self.assertTrue(any(page_target == "phase4_oiltype_and_shoreline" for page_target in page_targets))
+        self.assertFalse((featured["surface_key"].astype(str) == "archive_only").any())
+        self.assertFalse((featured["surface_key"].astype(str) == "legacy_support").any())
 
     def test_publication_registry_contains_thesis_study_box_reference(self):
         registry = data_access.publication_registry(REPO_ROOT)
@@ -78,6 +86,15 @@ class UiDataAccessTests(unittest.TestCase):
         self.assertTrue(
             thesis_boxes["figure_id"].astype(str).str.contains("prototype_first_code_search_box_geography_reference").any()
         )
+        self.assertIn("study_box_numbers", thesis_boxes.columns)
+        thesis_surface_numbers = set(
+            thesis_boxes.loc[thesis_boxes["thesis_surface"] == True, "study_box_numbers"].astype(str)  # noqa: E712
+        )
+        archive_numbers = set(
+            thesis_boxes.loc[thesis_boxes["archive_only"] == True, "study_box_numbers"].astype(str)  # noqa: E712
+        )
+        self.assertEqual(thesis_surface_numbers, {"2", "4", "2,4"})
+        self.assertEqual(archive_numbers, {"1", "3", "1,2,3,4"})
 
     def test_legacy_2016_provenance_metadata_records_union_and_source_boxes(self):
         metadata = data_access.legacy_2016_provenance_metadata(REPO_ROOT)
@@ -104,9 +121,10 @@ class UiDataAccessTests(unittest.TestCase):
         official_recipe = str(manifest.get("official_b1_recipe") or "").strip()
         if not winning_recipe and not ranking.empty and "recipe" in ranking.columns:
             winning_recipe = str(ranking.iloc[0]["recipe"])
-        self.assertIn(official_recipe or winning_recipe, {"cmems_era5", "cmems_gfs"})
-        self.assertIn(winning_recipe or official_recipe, {"cmems_era5", "cmems_gfs"})
+        self.assertEqual(official_recipe or winning_recipe, "cmems_gfs")
+        self.assertEqual(winning_recipe or official_recipe, "cmems_gfs")
         self.assertFalse(ranking.empty)
+        self.assertEqual(str(ranking.iloc[0]["recipe"]).strip(), "cmems_gfs")
         self.assertFalse(accepted.empty)
         self.assertIn("start_time_utc", accepted.columns)
 
@@ -116,6 +134,27 @@ class UiDataAccessTests(unittest.TestCase):
         self.assertFalse(registry.empty)
         scenario_keys = {value for value in registry["scenario_key"].fillna("").astype(str) if value}
         self.assertEqual(scenario_keys, {"light", "heavy"})
+
+    def test_final_validation_case_registry_exposes_archive_r0_surface(self):
+        registry = data_access.final_validation_case_registry(REPO_ROOT)
+
+        archive_r0 = registry.loc[registry["track_id"].astype(str).eq("archive_r0")].iloc[0]
+        self.assertEqual(archive_r0["status_key"], "mindoro_b1_r0_archive")
+        self.assertEqual(archive_r0["surface_key"], "archive_only")
+
+    def test_mindoro_summary_tables_split_r1_and_r0_by_surface(self):
+        summary = data_access.mindoro_b1_summary(REPO_ROOT)
+        comparator = data_access.mindoro_comparator_summary(REPO_ROOT)
+
+        r1 = summary.loc[summary["branch_id"].astype(str).eq("R1_previous")].iloc[0]
+        r0 = summary.loc[summary["branch_id"].astype(str).eq("R0")].iloc[0]
+        promoted_comparator = comparator.loc[comparator["track_id"].astype(str).eq("R1_previous_reinit_p50")].iloc[0]
+        archive_comparator = comparator.loc[comparator["track_id"].astype(str).eq("R0_reinit_p50")].iloc[0]
+
+        self.assertEqual(r1["surface_key"], "thesis_main")
+        self.assertEqual(r0["surface_key"], "archive_only")
+        self.assertEqual(promoted_comparator["surface_key"], "comparator_support")
+        self.assertEqual(archive_comparator["surface_key"], "archive_only")
 
     def test_figure_subset_uses_status_keys_for_ambiguous_dwh_rows(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -154,6 +193,9 @@ class UiDataAccessTests(unittest.TestCase):
             self.assertEqual(by_id.loc["mindoro_primary_validation_board", "status_key"], "mindoro_primary_validation")
             self.assertEqual(by_id.loc["deterministic_vs_ensemble_board", "status_key"], "dwh_ensemble_transfer")
             self.assertEqual(by_id.loc["ensemble_sampled_trajectory", "status_key"], "dwh_trajectory_context")
+            self.assertTrue(bool(by_id.loc["mindoro_primary_validation_board", "thesis_surface"]))
+            self.assertFalse(bool(by_id.loc["ensemble_sampled_trajectory", "thesis_surface"]))
+            self.assertEqual(by_id.loc["mindoro_primary_validation_board", "recommended_scope"], "main_text")
 
             ensemble = data_access.figure_subset(
                 "publication",
@@ -174,6 +216,40 @@ class UiDataAccessTests(unittest.TestCase):
             recommended = data_access.curated_recommended_figures(root)
             self.assertEqual(recommended.iloc[0]["figure_id"], "mindoro_primary_validation_board")
             self.assertEqual(recommended.iloc[1]["figure_id"], "mindoro_crossmodel_board")
+            self.assertTrue((recommended["thesis_surface"] == True).all())  # noqa: E712
+
+    def test_curated_recommended_figures_ignore_archive_only_rows_even_with_stale_manifest_flags(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            publication_dir = root / "output" / "figure_package_publication"
+            publication_dir.mkdir(parents=True, exist_ok=True)
+            (publication_dir / "publication_figure_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "recommended_main_defense_figures": [
+                            "mindoro_primary_validation_board",
+                            "march14_r0_overlay",
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (publication_dir / "publication_figure_registry.csv").write_text(
+                "\n".join(
+                    [
+                        "figure_id,case_id,phase_or_track,run_type,figure_slug,relative_path,recommended_for_main_defense",
+                        "mindoro_primary_validation_board,CASE_MINDORO_RETRO_2023,phase3b_reinit_primary,comparison_board,mindoro_primary_validation_board,output/figure_package_publication/mindoro_primary_validation_board.png,true",
+                        "march14_r0_overlay,CASE_MINDORO_RETRO_2023,phase3b_reinit_primary,single_model,march14_r0_overlay,output/figure_package_publication/march14_r0_overlay.png,true",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            recommended = data_access.curated_recommended_figures(root)
+
+            self.assertEqual(recommended["figure_id"].tolist(), ["mindoro_primary_validation_board"])
+            self.assertTrue((recommended["surface_key"].astype(str) == "thesis_main").all())
 
 
 if __name__ == "__main__":

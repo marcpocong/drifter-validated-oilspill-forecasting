@@ -24,6 +24,94 @@ class ArtifactStatus:
     dashboard_summary: str
 
 
+@dataclass(frozen=True)
+class ArtifactSurfacePolicy:
+    key: str
+    label: str
+    description: str
+    home_visible: bool
+    panel_visible: bool
+    archive_visible: bool
+    advanced_visible: bool
+    recommended_visible: bool
+
+
+SURFACE_REGISTRY: dict[str, ArtifactSurfacePolicy] = {
+    "thesis_main": ArtifactSurfacePolicy(
+        key="thesis_main",
+        label="Thesis-facing main surface",
+        description="Eligible for thesis-facing home and main presentation surfaces.",
+        home_visible=True,
+        panel_visible=True,
+        archive_visible=False,
+        advanced_visible=True,
+        recommended_visible=True,
+    ),
+    "comparator_support": ArtifactSurfacePolicy(
+        key="comparator_support",
+        label="Support / comparator surface",
+        description="Support, comparator, or context material kept separate from the primary thesis claim.",
+        home_visible=True,
+        panel_visible=True,
+        archive_visible=False,
+        advanced_visible=True,
+        recommended_visible=True,
+    ),
+    "archive_only": ArtifactSurfacePolicy(
+        key="archive_only",
+        label="Archive-only surface",
+        description="Preserved for archive, provenance, reproducibility, or audit only.",
+        home_visible=False,
+        panel_visible=False,
+        archive_visible=True,
+        advanced_visible=True,
+        recommended_visible=False,
+    ),
+    "legacy_support": ArtifactSurfacePolicy(
+        key="legacy_support",
+        label="Legacy / prototype support surface",
+        description="Legacy or prototype support material kept visible as support only.",
+        home_visible=True,
+        panel_visible=True,
+        archive_visible=False,
+        advanced_visible=True,
+        recommended_visible=True,
+    ),
+    "advanced_only": ArtifactSurfacePolicy(
+        key="advanced_only",
+        label="Advanced-only surface",
+        description="Visible only through advanced or lower-level inspection surfaces.",
+        home_visible=False,
+        panel_visible=False,
+        archive_visible=False,
+        advanced_visible=True,
+        recommended_visible=False,
+    ),
+}
+
+
+STATUS_SURFACE_KEY_MAP: dict[str, str] = {
+    "mindoro_primary_validation": "thesis_main",
+    "mindoro_crossmodel_comparator": "comparator_support",
+    "mindoro_b1_r0_archive": "archive_only",
+    "mindoro_legacy_march6": "archive_only",
+    "mindoro_legacy_support": "archive_only",
+    "mindoro_trajectory_context": "advanced_only",
+    "thesis_study_box_reference": "thesis_main",
+    "mindoro_phase4_oil_budget": "comparator_support",
+    "mindoro_phase4_shoreline": "comparator_support",
+    "mindoro_phase4_deferred": "comparator_support",
+    "dwh_deterministic_transfer": "thesis_main",
+    "dwh_observation_truth_context": "thesis_main",
+    "dwh_ensemble_transfer": "thesis_main",
+    "dwh_crossmodel_comparator": "comparator_support",
+    "dwh_cross_track_summary": "thesis_main",
+    "dwh_trajectory_context": "advanced_only",
+    "prototype_2021_support": "legacy_support",
+    "prototype_2016_support": "legacy_support",
+}
+
+
 STATUS_REGISTRY: dict[str, ArtifactStatus] = {
     "mindoro_primary_validation": ArtifactStatus(
         key="mindoro_primary_validation",
@@ -159,9 +247,10 @@ STATUS_REGISTRY: dict[str, ArtifactStatus] = {
             "scoring-grid display bounds, and the curated prototype_2016 first-code search-box provenance metadata."
         ),
         panel_text=(
-            "Shared study-area reference only. Use these figures to distinguish the focused Mindoro Phase 1 box, the "
-            "broader Mindoro case domain, the scoring-grid display bounds, and the prototype_2016 first-code search "
-            "box without implying that they are one operative scientific domain."
+            "Shared study-area reference only. Use these figures to distinguish Study Box 1, the focused Mindoro "
+            "Phase 1 validation box; Study Box 2, the broader Mindoro case domain; Study Box 3, the scoring-grid "
+            "display bounds; and Study Box 4, the prototype_2016 first-code search box without implying that they are "
+            "one operative scientific domain. Only Study Boxes 2 and 4 are thesis-facing."
         ),
         dashboard_summary=(
             "Panel-ready thesis study-box reference figures built from stored config, manifest, and provenance "
@@ -276,6 +365,24 @@ STATUS_REGISTRY: dict[str, ArtifactStatus] = {
         panel_text="Cross-model comparison only; PyGNOME is not truth and does not replace the OpenDrift DWH story.",
         dashboard_summary="Frozen DWH cross-model comparator; PyGNOME not truth.",
     ),
+    "dwh_cross_track_summary": ArtifactStatus(
+        key="dwh_cross_track_summary",
+        label="DWH cross-track summary and interpretation",
+        panel_label="DWH cross-track summary",
+        role="transfer_validation_summary",
+        reportability="reportable_now_frozen",
+        official_status="cross_track_summary_from_frozen_dwh_package",
+        frozen_status="frozen",
+        provenance_label=(
+            "Read-only summary and interpretation artifacts built from the frozen DWH deterministic, ensemble, "
+            "and comparator tracks."
+        ),
+        panel_text=(
+            "Cross-track summary tables and notes that synthesize the frozen DWH deterministic, ensemble, and "
+            "PyGNOME comparator lanes without rerunning science."
+        ),
+        dashboard_summary="Frozen DWH cross-track summary and interpretation layer.",
+    ),
     "dwh_trajectory_context": ArtifactStatus(
         key="dwh_trajectory_context",
         label="DWH trajectory context",
@@ -342,6 +449,7 @@ TRACK_ID_TO_STATUS_KEY = {
     "C1": "dwh_deterministic_transfer",
     "C2": "dwh_ensemble_transfer",
     "C3": "dwh_crossmodel_comparator",
+    "C1/C2/C3": "dwh_cross_track_summary",
     "prototype_2021": "prototype_2021_support",
     "prototype_2016": "prototype_2016_support",
 }
@@ -357,6 +465,7 @@ PRIMARY_STATUS_PRIORITY = [
     "mindoro_legacy_march6",
     "mindoro_legacy_support",
     "mindoro_trajectory_context",
+    "dwh_cross_track_summary",
     "dwh_crossmodel_comparator",
     "dwh_ensemble_transfer",
     "dwh_deterministic_transfer",
@@ -388,12 +497,18 @@ def _combined_text(record: Mapping[str, Any]) -> str:
     keys = (
         "case_id",
         "track_id",
+        "branch_id",
+        "track_name",
         "phase_or_track",
         "run_type",
         "figure_id",
         "figure_slug",
+        "artifact_group",
+        "model_name",
         "relative_path",
         "file_path",
+        "forecast_path",
+        "observation_path",
         "source_paths",
         "notes",
         "short_plain_language_interpretation",
@@ -423,16 +538,114 @@ def _is_trajectory_artifact(record: Mapping[str, Any]) -> bool:
     return any(token in identity for token in ("trajectory", "track", "corridor", "hull", "centroid", "path"))
 
 
+def get_artifact_surface(key: str) -> ArtifactSurfacePolicy:
+    return SURFACE_REGISTRY[key]
+
+
+def _surface_key_override_for_record(record: Mapping[str, Any], status_key: str) -> str:
+    combined = _combined_text(record)
+    identity = _identity_text(record)
+    track_id = str(record.get("track_id") or "").strip()
+    branch_id = str(record.get("branch_id") or "").strip()
+
+    if status_key in {
+        "mindoro_primary_validation",
+        "mindoro_crossmodel_comparator",
+        "mindoro_b1_r0_archive",
+    }:
+        if (
+            branch_id == "R0"
+            or track_id in {"archive_r0", "B1_archive_r0", "R0_reinit_p50"}
+            or any(
+                token in combined
+                for token in (
+                    "march14_r0_overlay",
+                    "crossmodel_r0_overlay",
+                    "qa_march14_reinit_r0_overlay",
+                    "qa_march14_crossmodel_r0",
+                    "r0_reinit_p50",
+                )
+            )
+        ):
+            return "archive_only"
+        if track_id in {"A", "R1_previous_reinit_p50", "pygnome_reinit_deterministic"}:
+            return "comparator_support"
+        if branch_id == "R1_previous" or track_id == "B1":
+            return "thesis_main"
+
+    if status_key == "thesis_study_box_reference":
+        if any(
+            token in identity or token in combined
+            for token in (
+                "focused_phase1_box_geography_reference",
+                "scoring_grid_bounds_geography_reference",
+                "archived_reference_map",
+                "full_context_overview",
+            )
+        ):
+            return "advanced_only"
+        return "thesis_main"
+
+    return ""
+
+
+def surface_key_for_status(status_key: str, record: Mapping[str, Any] | None = None) -> str:
+    if not status_key:
+        return ""
+    if record is not None:
+        override = _surface_key_override_for_record(record, status_key)
+        if override:
+            return override
+    return STATUS_SURFACE_KEY_MAP.get(status_key, "")
+
+
+def surface_key_for_record(record: Mapping[str, Any]) -> str:
+    return surface_key_for_status(status_key_for_record(record), record)
+
+
+def artifact_surface_columns_for_key(
+    status_key: str,
+    record: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    surface_key = surface_key_for_status(status_key, record)
+    if not surface_key:
+        return {
+            "surface_key": "",
+            "surface_label": "",
+            "surface_description": "",
+            "surface_home_visible": False,
+            "surface_panel_visible": False,
+            "surface_archive_visible": False,
+            "surface_advanced_visible": False,
+            "surface_recommended_visible": False,
+        }
+    surface = SURFACE_REGISTRY[surface_key]
+    return {
+        "surface_key": surface.key,
+        "surface_label": surface.label,
+        "surface_description": surface.description,
+        "surface_home_visible": surface.home_visible,
+        "surface_panel_visible": surface.panel_visible,
+        "surface_archive_visible": surface.archive_visible,
+        "surface_advanced_visible": surface.advanced_visible,
+        "surface_recommended_visible": surface.recommended_visible,
+    }
+
+
 def record_matches_artifact_status(record: Mapping[str, Any], status_key: str) -> bool:
     case_id = str(record.get("case_id") or "").strip().upper()
     track_id = str(record.get("track_id") or "").strip()
+    branch_id = str(record.get("branch_id") or "").strip()
     phase_or_track = str(record.get("phase_or_track") or "").strip().lower()
     combined = _combined_text(record)
     trajectory_artifact = _is_trajectory_artifact(record)
 
     if status_key == "mindoro_b1_r0_archive":
         return (
-            case_id == MINDORO_CASE_ID
+            (
+                case_id == MINDORO_CASE_ID
+                or branch_id == "R0"
+            )
             and (
                 "march14_r0_overlay" in combined
                 or "crossmodel_r0_overlay" in combined
@@ -440,12 +653,20 @@ def record_matches_artifact_status(record: Mapping[str, Any], status_key: str) -
                 or "qa_march14_crossmodel_r0" in combined
                 or "r0 reinit p50" in combined
                 or "r0_reinit_p50" in combined
+                or "/r0/" in combined
             )
-        ) or track_id in {"archive_r0", "B1_archive_r0"}
+        ) or track_id in {"archive_r0", "B1_archive_r0", "R0_reinit_p50"}
     if status_key == "mindoro_primary_validation":
-        return (case_id == MINDORO_CASE_ID and phase_or_track == "phase3b_reinit_primary") or track_id == "B1"
+        return (
+            (case_id == MINDORO_CASE_ID and phase_or_track == "phase3b_reinit_primary")
+            or track_id == "B1"
+            or branch_id == "R1_previous"
+        )
     if status_key == "mindoro_crossmodel_comparator":
-        return (case_id == MINDORO_CASE_ID and phase_or_track == "phase3a_reinit_crossmodel") or track_id == "A"
+        return (
+            (case_id == MINDORO_CASE_ID and phase_or_track == "phase3a_reinit_crossmodel")
+            or track_id in {"A", "R1_previous_reinit_p50", "pygnome_reinit_deterministic"}
+        )
     if status_key == "mindoro_legacy_march6":
         return (case_id == MINDORO_CASE_ID and phase_or_track == "phase3b_legacy_strict") or track_id == "B2"
     if status_key == "mindoro_legacy_support":
@@ -493,6 +714,15 @@ def record_matches_artifact_status(record: Mapping[str, Any], status_key: str) -
             and phase_or_track in {"phase3c_pygnome_comparator", "phase3c_dwh_pygnome_comparator"}
             and not trajectory_artifact
         ) or track_id == "C3"
+    if status_key == "dwh_cross_track_summary":
+        return (
+            case_id == DWH_CASE_ID
+            and (
+                track_id == "C1/C2/C3"
+                or "summary/comparison" in combined
+                or "cross-track comparison summary" in combined
+            )
+        )
     if status_key == "dwh_trajectory_context":
         return case_id == DWH_CASE_ID and trajectory_artifact
     if status_key == "prototype_2021_support":
@@ -524,10 +754,10 @@ def status_key_for_record(record: Mapping[str, Any]) -> str:
     return ""
 
 
-def artifact_status_columns(record: Mapping[str, Any]) -> dict[str, str]:
+def artifact_status_columns(record: Mapping[str, Any]) -> dict[str, Any]:
     status_key = status_key_for_record(record)
     if not status_key:
-        return {
+        empty_status = {
             "status_key": "",
             "status_label": "",
             "status_role": "",
@@ -538,8 +768,10 @@ def artifact_status_columns(record: Mapping[str, Any]) -> dict[str, str]:
             "status_panel_text": "",
             "status_dashboard_summary": "",
         }
+        empty_status.update(artifact_surface_columns_for_key("", record))
+        return empty_status
     status = STATUS_REGISTRY[status_key]
-    return {
+    payload = {
         "status_key": status.key,
         "status_label": status.label,
         "status_role": status.role,
@@ -550,11 +782,16 @@ def artifact_status_columns(record: Mapping[str, Any]) -> dict[str, str]:
         "status_panel_text": status.panel_text,
         "status_dashboard_summary": status.dashboard_summary,
     }
+    payload.update(artifact_surface_columns_for_key(status_key, record))
+    return payload
 
 
-def artifact_status_columns_for_key(status_key: str) -> dict[str, str]:
+def artifact_status_columns_for_key(
+    status_key: str,
+    record: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     status = STATUS_REGISTRY[status_key]
-    return {
+    payload = {
         "status_key": status.key,
         "status_label": status.label,
         "status_role": status.role,
@@ -565,3 +802,5 @@ def artifact_status_columns_for_key(status_key: str) -> dict[str, str]:
         "status_panel_text": status.panel_text,
         "status_dashboard_summary": status.dashboard_summary,
     }
+    payload.update(artifact_surface_columns_for_key(status_key, record))
+    return payload

@@ -2,69 +2,67 @@
 
 ## Purpose
 
-`start.ps1` is now the honest current entrypoint for this repo. It reads `config/launcher_matrix.json` and separates:
+`start.ps1` is the current user-facing workflow entrypoint for this repo. It reads `config/launcher_matrix.json` and groups launcher entries into:
 
-- scientific/reportable rerun tracks
-- sensitivity/appendix tracks
-- read-only packaging/help utilities
-- legacy prototype tracks
+- reportable workflows
+- support and archive workflows
+- read-only audit and packaging workflows
+- legacy support workflows
 
-It no longer hides everything behind one stale "Mindoro full workflow" story.
+The launcher is the primary path for interactive runs. The Streamlit UI stays separate and launches directly.
 
-## Safe First Steps
+## Current Startup Paths
+
+List the current launcher entries:
 
 ```powershell
 .\start.ps1 -List -NoPause
 .\start.ps1 -Help -NoPause
-.\start.ps1 -Entry phase5_sync -NoPause
-.\start.ps1 -Entry trajectory_gallery -NoPause
-.\start.ps1 -Entry trajectory_gallery_panel -NoPause
-.\start.ps1 -Entry figure_package_publication -NoPause
-.\start.ps1 -Entry prototype_legacy_final_figures -NoPause
 ```
 
-These commands are the safest starting point because they do not trigger full scientific reruns by default.
+Run one workflow interactively through the launcher:
 
-## Read-Only Dashboard
+```powershell
+.\start.ps1 -Entry <entry_id>
+```
 
-The local dashboard is implemented, but it is intentionally kept outside the launcher entry catalog in this first version. Launch it directly:
+Use `-NoPause` only when you intentionally want the launcher to finish without the final pause.
+
+Run one phase prompt-free inside the container:
+
+```bash
+docker-compose exec -T -e WORKFLOW_MODE=<workflow_mode> -e PIPELINE_PHASE=<phase> <pipeline|gnome> python -m src
+```
+
+Launch the read-only UI directly:
 
 ```bash
 docker-compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501
 ```
 
-This keeps the launcher honest: it remains a matrix-driven workflow launcher, while the UI remains a separate read-only exploration surface over the packaged outputs.
-
 ## Main Parameters
 
 - `-List`: print the current launcher catalog grouped by category
-- `-Help`: print usage guidance and current project guardrails
+- `-Help`: print usage guidance and current guardrails
 - `-Entry <entry_id>`: run one launcher entry from the matrix
-- `-NoPause`: skip the final pause so the command can be used in scripted or CI-style runs
+- `-NoPause`: skip the final pause after the launcher finishes
 
-Important runtime env override:
+Runtime environment controls:
 
 - `FORCING_OUTAGE_POLICY=default|continue_degraded|fail_hard`
-- `FORCING_SOURCE_BUDGET_SECONDS=<seconds>` with default `300`; set `0` only to disable the fail-fast forcing timeout for debugging
+- `FORCING_SOURCE_BUDGET_SECONDS=<seconds>` with default `300`
 - `INPUT_CACHE_POLICY=default|reuse_if_valid|force_refresh`
 
-Interactive launcher runs now ask once per entry for:
+Interactive launcher runs ask once per entry for:
 
 - the forcing wait budget, when the entry can hit forcing providers
-- whether to reuse validated local input caches or force refresh, but only when eligible input caches already exist
+- whether to reuse validated local input caches or force refresh, when eligible caches already exist
 
-Non-interactive launcher runs such as `-NoPause` default silently to:
+Prompt-free container runs with `-T` do not ask those questions. They resolve the startup policy silently and print it at process start for promptable phases.
 
-- `FORCING_SOURCE_BUDGET_SECONDS=300`
-- `INPUT_CACHE_POLICY=reuse_if_valid`
+## Entry Groups
 
-Direct interactive `python -m src` runs in the container follow the same one-time prompt flow when you omit `-T` from `docker-compose exec`. Prompt-free direct runs keep the same silent defaults and now print the resolved startup policy at process start for promptable phases.
-
-For the dedicated historical Phase 1 reruns, those reusable local inputs now live under `data/historical_validation_inputs/<workflow_mode>/...` for the monthly drifter and forcing store. The older `output/.../_scratch` monthly files are treated as legacy backfill sources rather than the primary persisted store.
-
-## Important Entry IDs
-
-Read-only utilities:
+Read-only audit and packaging entries:
 
 - `phase1_audit`
 - `phase2_audit`
@@ -75,73 +73,94 @@ Read-only utilities:
 - `figure_package_publication`
 - `prototype_legacy_final_figures`
 
-Intentional scientific reruns:
+Reportable entries:
 
 - `phase1_production_rerun`
 - `mindoro_phase3b_primary_public_validation`
 - `mindoro_reportable_core`
-- `mindoro_phase4_only`
 - `dwh_reportable_bundle`
 
-`phase1_production_rerun` is intentionally expensive and stages `output/phase1_production_rerun/phase1_baseline_selection_candidate.yaml` only. It does not auto-overwrite `config/phase1_baseline_selection.yaml`.
-`mindoro_phase3b_primary_public_validation` is the canonical March 13 -> March 14 Phase 3B public-validation entry. It preserves the original March 3 -> March 6 case YAML and relies on the separate amendment file `config/case_mindoro_retro_2023_phase3b_primary_validation_amendment.yaml`. Track `A` remains outside this builder as same-case comparator-support only.
-`mindoro_reportable_core` rebuilds the main Mindoro spill-case validation chain around official Phase 2 and the B1 primary-validation row while preserving B2/B3 as archive-only outputs and keeping the support-only Mindoro Phase 4 layer explicit. The separate `phase1_mindoro_focus_pre_spill_experiment` Mindoro-specific provenance lane stays outside this entry by design.
+Support and archive entries:
 
-Appendix and sensitivity:
-
+- `mindoro_phase4_only`
 - `mindoro_appendix_sensitivity_bundle`
 - `phase1_mindoro_focus_pre_spill_experiment`
-- `mindoro_march13_14_noaa_reinit_stress_test` remains available only as a backward-compatible alias for the promoted B1 bundle plus the same-case comparator-support A lane.
+- `mindoro_march13_14_phase1_focus_trial`
+- `mindoro_march6_recovery_sensitivity`
+- `mindoro_march23_extended_public_stress_test`
 
-`phase1_mindoro_focus_pre_spill_experiment` is the preferred interactive path for the separate Mindoro-focused Phase 1 provenance rerun. Use `.\start.ps1 -Entry phase1_mindoro_focus_pre_spill_experiment` if you want the launcher to ask once about cache reuse and forcing wait budget, or run `docker-compose exec -e WORKFLOW_MODE=phase1_mindoro_focus_pre_spill_2016_2023 -e PIPELINE_PHASE=phase1_production_rerun pipeline python -m src` if you want the same prompt flow directly in the container. This lane now supplies the active Mindoro-specific B1 recipe-provenance story, stays separate from the broader regional reference lane, and does not rewrite the stored March 13 -> March 14 R1 raw-generation history.
-
-Legacy/debug:
+Legacy support entries:
 
 - `prototype_2021_bundle`
 - `prototype_legacy_bundle`
 
-`prototype_2021_bundle` is now the preferred debug/demo lane. It is frozen from the two accepted 2021 strict-gate drifter segments, uses only the official four-recipe Phase 1 family, and stops at the transport-core bundle: `prep -> 1_2 -> benchmark -> prototype_pygnome_similarity_summary`.
+Compatibility note:
 
-`prototype_legacy_bundle` remains available for backward-compatible regression work. It preserves the earliest prototype stage of the study. The very first prototype code used the shared first-code search box `[108.6465, 121.3655, 6.1865, 20.3515]` on the west coast of the Philippines (Palawan-side western Philippine context). Because the ingestion-and-validation pipeline was still in its early stage, that first code surfaced the first three 2016 drifter cases, and the team then intentionally kept those three as the first study focus to build the workflow and prove the pipeline was working. Its visible thesis-facing support flow is now `prep -> 1_2 -> benchmark -> prototype_pygnome_similarity_summary -> prototype_legacy_phase4_weathering -> prototype_legacy_final_figures`, which corresponds to legacy `Phase 1 -> Phase 2 -> Phase 3A -> Phase 4 -> Phase 5`. In methodological terms, that lane carries the early pipeline from drifter-driven Phase 1 and Phase 2 validation into a Phase 3A OpenDrift-versus-deterministic-PyGNOME comparator check using fraction skill score, then into legacy Phase 4 weathering/fate work and the legacy Phase 5 figure/package story. A non-zero FSS there means only that the ensemble footprint was not completely disjoint from the deterministic PyGNOME forecast; it does not make PyGNOME truth or elevate this lane into final proof. This historical-origin note does not replace the stored per-case local extents, which remain the operative scientific/display extents. It still attempts the modern GFS-backed prototype recipes as a best-effort legacy extension, but there is no thesis-facing `Phase 3B` or `Phase 3C` in this 2016 lane.
-Within that legacy lane, the spill origin comes from the selected drifter-of-record start in `data/drifters/CASE_2016-*/drifters_noaa.csv`. If a saved audit or manifest still mentions `data/arcgis/CASE_2016-*/source_point_metadata.geojson`, treat that as compatibility/provenance residue rather than as the actual release point used by the run.
+- `mindoro_march13_14_noaa_reinit_stress_test` is still supported, but only as a legacy alias. Use `mindoro_phase3b_primary_public_validation` as the primary Mindoro B1 command.
 
-The preferred similarity package now writes to `output/prototype_2021_pygnome_similarity/`. The older `output/prototype_2016_pygnome_similarity/` package is preserved as a legacy artifact. The curated prototype_2016 paper set now writes separately to `output/2016 Legacy Runs FINAL Figures/`, while `output/figure_package_publication/` remains the canonical generic publication package.
+## Recommended First Commands
 
-If you only need to rebuild that consolidated summary from existing benchmark outputs, run it directly:
+Use these first when you want status, packaging, or UI-refresh work rather than a new scientific rerun:
 
-```bash
-docker-compose exec -T -e WORKFLOW_MODE=prototype_2021 -e PIPELINE_PHASE=prototype_pygnome_similarity_summary pipeline python -m src
-docker-compose exec -T -e WORKFLOW_MODE=prototype_2016 -e PIPELINE_PHASE=prototype_legacy_final_figures pipeline python -m src
+```powershell
+.\start.ps1 -Entry phase1_audit
+.\start.ps1 -Entry phase2_audit
+.\start.ps1 -Entry final_validation_package
+.\start.ps1 -Entry phase5_sync
+.\start.ps1 -Entry trajectory_gallery
+.\start.ps1 -Entry trajectory_gallery_panel
+.\start.ps1 -Entry figure_package_publication
 ```
 
-## Current Guardrails
+Use these only when you intentionally want reportable reruns:
 
-- Phase 1 now has a dedicated `phase1_production_rerun` entry that stages the 2016-2022 regional rerun outputs and a candidate baseline artifact without auto-overwriting `config/phase1_baseline_selection.yaml`.
-- Forcing-only outages now follow one shared policy surface. Reportable/scientific lanes fail hard by default; appendix, legacy prototype, and explicitly experimental lanes can continue in degraded mode with explicit honesty fields and rerun-required flags.
-- The launcher now surfaces fail-fast forcing budget details when a degraded skip happens, including the budget, elapsed time, whether the budget was exhausted, and the provider failure stage.
-- Startup prompting now resolves the run-level wait budget and input-cache policy once per entry, then passes those values to every child phase so the pipeline does not re-prompt mid-run.
-- Direct `docker-compose exec -T ...` runs stay non-interactive by design. They now print the resolved startup policy and point to the matching launcher entry or non-`-T` direct form when you would rather be asked.
-- Direct truth inputs stay strict. Remote drifter inputs and ArcGIS/observation truth inputs do not use degraded continuation.
-- The launcher now treats the standardized degraded forcing-skip exit as non-fatal for allowed appendix/legacy/experimental entries and continues to the next step after printing the skip reason.
-- Phase 2 is scientifically usable, but not scientifically frozen.
-- `Phase 3B` and `Phase 3C` are validation-purpose lanes: public-observation validation for Mindoro and external transfer validation for DWH.
+```powershell
+.\start.ps1 -Entry phase1_production_rerun
+.\start.ps1 -Entry mindoro_phase3b_primary_public_validation
+.\start.ps1 -Entry mindoro_reportable_core
+.\start.ps1 -Entry dwh_reportable_bundle
+```
+
+## How The UI Fits
+
+The Streamlit UI is intentionally not a launcher entry. It is a read-only exploration surface over packaged outputs.
+
+If you want the freshest read-only surfaces before opening it, refresh one or more of these first:
+
+```powershell
+.\start.ps1 -Entry phase5_sync
+.\start.ps1 -Entry trajectory_gallery
+.\start.ps1 -Entry trajectory_gallery_panel
+.\start.ps1 -Entry figure_package_publication
+```
+
+Then launch the UI directly:
+
+```bash
+docker-compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501
+```
+
+## Runtime Behavior
+
+- Non-interactive launcher runs default to `FORCING_SOURCE_BUDGET_SECONDS=300` and `INPUT_CACHE_POLICY=reuse_if_valid`.
+- Persistent local input store means validated reusable inputs under `data/drifters`, `data/forcing`, `data/arcgis`, `data/historical_validation_inputs`, and `data/local_input_store`.
+- Output-local forcing and raw folders are staging or legacy scratch areas, not the canonical reuse source.
+- `INPUT_CACHE_POLICY=force_refresh` bypasses validated local reuse, fetches fresh copies, and rewrites the persistent local store for that run.
+- Inventories record reuse action, provider/source URL, persistent local storage path, and validation status.
+
+## Guardrails
+
+- `phase1_production_rerun` stages `output/phase1_production_rerun/phase1_baseline_selection_candidate.yaml` only. It does not auto-overwrite `config/phase1_baseline_selection.yaml`.
+- `mindoro_phase3b_primary_public_validation` is the canonical Mindoro March 13 -> March 14 B1 entry. It preserves the frozen March 3 -> March 6 case YAML and uses the separate amendment file.
+- `mindoro_reportable_core` is the full Mindoro validation-chain rerun. The separate `phase1_mindoro_focus_pre_spill_experiment` provenance lane stays outside it by design.
+- `Phase 3B` and `Phase 3C` remain validation-only lanes.
 - Outside `prototype_2016`, `phase4_oiltype_and_shoreline`, `phase5_sync`, the galleries, and the UI are support layers rather than main thesis phases.
-- The frozen Mindoro base case remains `config/case_mindoro_retro_2023.yaml`; promoting March 13 -> March 14 does not silently rewrite March 3 -> March 6 provenance.
-- Thesis-facing Mindoro sequencing is separate focused drifter-based Phase 1 provenance -> Phase 2 -> Phase 3B primary validation.
-- Mindoro track semantics are locked as B1 only-primary, A same-case comparator-support, B2 March 6 archive-only sparse reference, and B3 March 3-6 archive-only broader-support reference.
-- The March 13 -> March 14 R0 archived baseline plus the preserved March-family legacy rows stay repo-preserved for archive/provenance handling and should never be treated as the primary Mindoro validation row.
-- March 13 -> March 14 must keep the shared-imagery caveat explicit, and the same-case PyGNOME lane remains comparator-only support evidence rather than truth or the main validation claim.
-- `prototype_2021` is the preferred accepted-segment debug lane, but it is still not the final Phase 1 study.
-- `prototype_2016` remains backward-compatible and keeps the preserved `+/- 3 h` ensemble jitter by padding its prep window.
-- `prototype_2016` is thesis-facing only as legacy `Phase 1 / 2 / 3A / 4 / 5`, with no thesis-facing `3B` or `3C`.
-- `prototype_2016` release origin is the selected drifter-of-record start, not the stale `source_point_metadata.geojson` point that can still appear in some compatibility fields.
-- `Phase 3A` is the transport comparator lane, `Phase 3B` is public-observation validation, and `Phase 3C` is external transfer validation. Outside `prototype_2016`, do not describe `phase4_oiltype_and_shoreline`, `phase5_sync`, the galleries, or the UI as if they were additional thesis phases.
-- The legacy prototype similarity summary is comparator-only: deterministic plus support-only `p50`/`p90` OpenDrift tracks versus deterministic PyGNOME transport footprints and densities. It is not a truth lane and not final Chapter 3 evidence.
+- DWH Phase 3C stays a separate external transfer-validation story with readiness-gated HYCOM GOFS 3.1 + ERA5 + CMEMS wave/Stokes forcing; observed masks remain truth and PyGNOME remains comparator-only.
+- `prototype_2021` is the preferred debug lane, but it is still not the final Phase 1 study.
+- `prototype_2016` remains legacy support only as `Phase 1 / 2 / 3A / 4 / 5`.
 
-## Not Implemented Yet
+## Where To Look Next
 
-- interactive UI run controls
-- deeper artifact filtering inside the UI
-- DWH Phase 4 appendix pilot
-
-The raw technical trajectory gallery, the polished panel-ready gallery, the publication-grade figure package, and the read-only local dashboard are all implemented. The remaining items above are still recorded as future work.
+- [docs/COMMAND_MATRIX.md](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/docs/COMMAND_MATRIX.md) for phase-level prompt-free mappings
+- [docs/QUICKSTART.md](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/docs/QUICKSTART.md) for the shortest current run path
+- [docs/UI_GUIDE.md](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/docs/UI_GUIDE.md) for the Streamlit surface

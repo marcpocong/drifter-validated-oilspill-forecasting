@@ -20,6 +20,7 @@ class ArtifactStatusTests(unittest.TestCase):
         )
 
         self.assertEqual(status["status_key"], "mindoro_primary_validation")
+        self.assertEqual(status["surface_key"], "thesis_main")
         self.assertIn("March 13 -> March 14", status["status_label"])
 
     def test_dwh_long_form_ensemble_phase_maps_to_ensemble_status(self):
@@ -46,7 +47,28 @@ class ArtifactStatusTests(unittest.TestCase):
 
         self.assertEqual(status["status_key"], "mindoro_crossmodel_comparator")
         self.assertEqual(status["status_role"], "comparator_only")
+        self.assertEqual(status["surface_key"], "comparator_support")
         self.assertIn("support", status["status_dashboard_summary"].lower())
+
+    def test_mindoro_raw_r0_summary_row_maps_to_archive_surface(self):
+        status = artifact_status_columns(
+            {
+                "branch_id": "R0",
+                "forecast_path": "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit/R0/forecast_datecomposites/mask_p50_2023-03-14_localdate.tif",
+            }
+        )
+
+        self.assertEqual(status["status_key"], "mindoro_b1_r0_archive")
+        self.assertEqual(status["surface_key"], "archive_only")
+
+    def test_mindoro_raw_crossmodel_rows_split_comparator_and_archive_surfaces(self):
+        promoted = artifact_status_columns({"track_id": "R1_previous_reinit_p50"})
+        archive = artifact_status_columns({"track_id": "R0_reinit_p50"})
+
+        self.assertEqual(promoted["status_key"], "mindoro_crossmodel_comparator")
+        self.assertEqual(promoted["surface_key"], "comparator_support")
+        self.assertEqual(archive["status_key"], "mindoro_b1_r0_archive")
+        self.assertEqual(archive["surface_key"], "archive_only")
 
     def test_dwh_trajectory_artifact_does_not_inherit_deterministic_status(self):
         record = {

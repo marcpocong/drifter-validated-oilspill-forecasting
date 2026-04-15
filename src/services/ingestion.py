@@ -67,7 +67,14 @@ from src.utils.io import (
     find_wave_vars,
     find_wind_vars,
     get_prepared_input_manifest_path,
+    get_prepared_input_manifest_json_path,
     get_prepared_input_specs,
+)
+from src.utils.local_input_store import (
+    PERSISTENT_LOCAL_INPUT_STORE,
+    classify_reuse_action,
+    validation_status_from_record,
+    write_json,
 )
 
 # Setup logging
@@ -75,6 +82,16 @@ logger = logging.getLogger(__name__)
 OFFICIAL_FORCING_HALO_DEGREES_DEFAULT = 0.5
 PROTOTYPE_FORCING_HALO_HOURS_DEFAULT = 3.0
 PROTOTYPE_GFS_ANALYSIS_DELTA_HOURS = 6
+NOAA_DRIFTER_ERDDAP_URL = "https://osmc.noaa.gov/erddap/tabledap/drifter_6hour_qc"
+HYCOM_THREDDS_CATALOG_URL = "https://tds.hycom.org/thredds/catalog.html"
+NCEP_REANALYSIS_SURFACE_URL = "https://psl.noaa.gov/data/gridded/data.ncep.reanalysis.surface.html"
+ERA5_DATASET_URL = "https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels"
+CMEMS_CURRENT_MULTIYEAR_URL = "https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_PHY_001_030/description"
+CMEMS_CURRENT_FORECAST_URL = "https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_PHY_001_024/description"
+CMEMS_WAVE_MULTIYEAR_URL = "https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_WAV_001_032/description"
+CMEMS_WAVE_FORECAST_URL = "https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_WAV_001_027/description"
+GFS_PRIMARY_URL = "https://www.ncei.noaa.gov/products/weather-climate-models/global-forecast"
+GFS_SECONDARY_URL = "https://gdex.ucar.edu/datasets/d084001/"
 
 def derive_bbox_from_display_bounds(
     display_bounds_wgs84: list[float],
@@ -425,31 +442,37 @@ class DataIngestionService(BaseService):
             if normalized.get("path") is not None:
                 normalized["path"] = str(normalized["path"])
             normalized.setdefault("source_id", source_id)
-            return normalized
+            return self._enrich_download_record(source_id, normalized)
 
         if isinstance(result, Path):
-            return {
+            return self._enrich_download_record(
+                source_id,
+                {
                 "status": "downloaded",
                 "path": str(result),
                 "source_id": source_id,
-            }
+                },
+            )
 
         text = str(result)
         uppercase = text.upper()
         if uppercase.startswith("SKIPPED_"):
-            return {"status": uppercase.lower(), "source_id": source_id}
+            return self._enrich_download_record(source_id, {"status": uppercase.lower(), "source_id": source_id})
         if uppercase == "FAILED":
-            return {"status": "failed", "source_id": source_id}
+            return self._enrich_download_record(source_id, {"status": "failed", "source_id": source_id})
 
         candidate_path = Path(text)
         if candidate_path.exists() or candidate_path.suffix:
-            return {
+            return self._enrich_download_record(
+                source_id,
+                {
                 "status": "downloaded",
                 "path": str(candidate_path),
                 "source_id": source_id,
-            }
+                },
+            )
 
-        return {"status": text.lower(), "source_id": source_id}
+        return self._enrich_download_record(source_id, {"status": text.lower(), "source_id": source_id})
 
     def _record_download(self, manifest: IngestionManifest, source_id: str, result: Any) -> dict[str, Any]:
         record = self._normalize_download_record(source_id, result)
@@ -471,6 +494,101 @@ class DataIngestionService(BaseService):
         if source_id not in mapping:
             raise KeyError(f"Unsupported cache source id: {source_id}")
         return mapping[source_id]
+
+    def _forcing_source_urls(self) -> dict[str, str]:
+        request_year = datetime.strptime(self.start_date, "%Y-%m-%d").year
+        return {
+            "drifters": NOAA_DRIFTER_ERDDAP_URL,
+            "hycom": HYCOM_THREDDS_CATALOG_URL,
+            "cmems": CMEMS_CURRENT_MULTIYEAR_URL if request_year < 2022 else CMEMS_CURRENT_FORECAST_URL,
+            "cmems_wave": CMEMS_WAVE_MULTIYEAR_URL if request_year < 2022 else CMEMS_WAVE_FORECAST_URL,
+            "era5": ERA5_DATASET_URL,
+            "gfs": GFS_PRIMARY_URL,
+            "ncep": NCEP_REANALYSIS_SURFACE_URL,
+            "arcgis": ";".join(sorted({str(layer.service_url) for layer in self.case_context.arcgis_layers if str(layer.service_url).strip()})),
+        }
+
+    def _source_metadata_for(self, source_id: str) -> dict[str, str]:
+        source_urls = self._forcing_source_urls()
+        mapping = {
+            "drifters": {"provider": "NOAA GDP ERDDAP", "source_url": source_urls["drifters"]},
+            "hycom": {"provider": "HYCOM", "source_url": source_urls["hycom"]},
+            "cmems": {"provider": "Copernicus Marine", "source_url": source_urls["cmems"]},
+            "cmems_wave": {"provider": "Copernicus Marine", "source_url": source_urls["cmems_wave"]},
+            "era5": {"provider": "ECMWF/Copernicus Climate Data Store", "source_url": source_urls["era5"]},
+            "gfs": {"provider": "NOAA GFS archive", "source_url": source_urls["gfs"]},
+            "ncep": {"provider": "NOAA PSL", "source_url": source_urls["ncep"]},
+            "arcgis": {"provider": "ArcGIS FeatureServer", "source_url": source_urls["arcgis"]},
+        }
+        return dict(mapping.get(str(source_id), {}))
+
+    def _validation_summary_text(self, validation: dict[str, Any] | None) -> str:
+        validation = dict(validation or {})
+        if validation.get("summary"):
+            return str(validation["summary"])
+        if validation.get("reason"):
+            return str(validation["reason"])
+        coverage_start = str(validation.get("coverage_start_utc") or "").strip()
+        coverage_end = str(validation.get("coverage_end_utc") or "").strip()
+        if coverage_start or coverage_end:
+            return " -> ".join(part for part in (coverage_start, coverage_end) if part)
+        return ""
+
+    def _enrich_download_record(self, source_id: str, record: dict[str, Any]) -> dict[str, Any]:
+        enriched = dict(record or {})
+        metadata = self._source_metadata_for(source_id)
+        for key, value in metadata.items():
+            enriched.setdefault(key, value)
+        enriched.setdefault("source_id", source_id)
+        enriched.setdefault("storage_tier", PERSISTENT_LOCAL_INPUT_STORE)
+        enriched.setdefault("local_storage_path", str(enriched.get("path") or self._canonical_cache_path(source_id)))
+        enriched.setdefault("reuse_action", classify_reuse_action(enriched.get("status")))
+        validation = dict(enriched.get("validation") or {})
+        if not validation and str(enriched.get("status") or "").strip().lower() not in {
+            "failed",
+            "skipped_no_creds",
+            "skipped_no_lib",
+            "skipped_no_data_found",
+            "best_effort_failed",
+            "cancelled_no_cache",
+            "failed_after_reuse_prompt",
+            "awaiting_cache_reuse_decision",
+        }:
+            candidate_validation = self._validate_cached_source(source_id)
+            if candidate_validation.get("path"):
+                validation = candidate_validation
+        if validation:
+            enriched["validation"] = validation
+            enriched["validation_summary"] = self._validation_summary_text(validation)
+            enriched["validation_status"] = "validated" if validation.get("valid") else f"invalid:{validation.get('reason', '')}".rstrip(":")
+        else:
+            enriched.setdefault("validation_summary", "")
+            enriched.setdefault("validation_status", validation_status_from_record(enriched))
+        return enriched
+
+    def _source_id_for_prepared_spec(self, spec: dict[str, Any]) -> str:
+        label = str(spec.get("label") or "")
+        path = Path(str(spec.get("path") or ""))
+        if "drifter" in label:
+            return "drifters"
+        if "arcgis" in label or "shoreline" in label or "scoring_grid" in label or "land_mask" in label or "sea_mask" in label:
+            return "arcgis"
+        filename = path.name.lower()
+        if filename == "hycom_curr.nc":
+            return "hycom"
+        if filename == "cmems_curr.nc":
+            return "cmems"
+        if filename == "cmems_wave.nc":
+            return "cmems_wave"
+        if filename == "era5_wind.nc":
+            return "era5"
+        if filename == "gfs_wind.nc":
+            return "gfs"
+        if filename == "ncep_wind.nc":
+            return "ncep"
+        if label in {"prepared_input_manifest", "download_manifest"}:
+            return ""
+        return ""
 
     def _dataset_time_bounds(self, ds: xr.Dataset) -> tuple[pd.Timestamp, pd.Timestamp]:
         time_name = next((name for name in ("time", "valid_time") if name in ds.coords or name in ds.variables), None)
@@ -984,8 +1102,17 @@ class DataIngestionService(BaseService):
             raise
 
     def write_prepared_input_manifest(self) -> Path:
-        """Write a case-local manifest of the prepared inputs currently on disk."""
+        """Write case-local CSV and JSON manifests of the prepared inputs currently on disk."""
         manifest_path = get_prepared_input_manifest_path(RUN_NAME)
+        manifest_json_path = get_prepared_input_manifest_json_path(RUN_NAME)
+        download_payload: dict[str, Any] = {}
+        if self._download_manifest_path().exists():
+            try:
+                with open(self._download_manifest_path(), "r", encoding="utf-8") as handle:
+                    download_payload = json.load(handle) or {}
+            except Exception:
+                download_payload = {}
+        download_records = dict((download_payload.get(RUN_NAME) or {}).get("downloads") or {})
         records = []
         for spec in get_prepared_input_specs(
             require_drifter=self.case_context.drifter_required,
@@ -997,24 +1124,71 @@ class DataIngestionService(BaseService):
                 continue
 
             created_at = datetime.fromtimestamp(path.stat().st_mtime).isoformat()
+            source_id = self._source_id_for_prepared_spec(spec)
+            download_record = dict(download_records.get(source_id) or {})
+            record = {
+                "label": str(spec["label"]),
+                "source_id": source_id,
+                "file_path": str(path),
+                "workflow_mode": self.case_context.workflow_mode,
+                "source_description": str(spec["source"]),
+                "provider": str(download_record.get("provider") or ""),
+                "source_url": str(download_record.get("source_url") or ""),
+                "storage_tier": str(download_record.get("storage_tier") or PERSISTENT_LOCAL_INPUT_STORE),
+                "local_storage_path": str(download_record.get("local_storage_path") or path),
+                "download_status": str(download_record.get("status") or ("generated" if source_id == "" else "")),
+                "reuse_action": str(download_record.get("reuse_action") or ("generated_manifest" if source_id == "" else "")),
+                "validation_status": str(download_record.get("validation_status") or ("generated_from_validated_inputs" if source_id == "" else "")),
+                "validation_summary": str(download_record.get("validation_summary") or ""),
+                "creation_time": created_at,
+            }
+            if source_id == "arcgis" and not record["provider"]:
+                record.update(self._source_metadata_for(source_id))
+            if source_id == "drifters" and not record["provider"]:
+                record.update(self._source_metadata_for(source_id))
             records.append(
-                {
-                    "file_path": str(path),
-                    "source": spec["source"],
-                    "creation_time": created_at,
-                    "workflow_mode": self.case_context.workflow_mode,
-                }
+                record
             )
 
-        records.append(
-            {
-                "file_path": str(manifest_path),
-                "source": "Generated prepared-input manifest",
-                "creation_time": datetime.now().isoformat(),
-                "workflow_mode": self.case_context.workflow_mode,
-            }
+        generated_at = datetime.now().isoformat()
+        records.extend(
+            [
+                {
+                    "label": "prepared_input_manifest_csv",
+                    "source_id": "",
+                    "file_path": str(manifest_path),
+                    "workflow_mode": self.case_context.workflow_mode,
+                    "source_description": "Generated prepared-input manifest (CSV)",
+                    "provider": "",
+                    "source_url": "",
+                    "storage_tier": PERSISTENT_LOCAL_INPUT_STORE,
+                    "local_storage_path": str(manifest_path),
+                    "download_status": "generated",
+                    "reuse_action": "generated_manifest",
+                    "validation_status": "generated_from_validated_inputs",
+                    "validation_summary": "",
+                    "creation_time": generated_at,
+                },
+                {
+                    "label": "prepared_input_manifest_json",
+                    "source_id": "",
+                    "file_path": str(manifest_json_path),
+                    "workflow_mode": self.case_context.workflow_mode,
+                    "source_description": "Generated prepared-input manifest (JSON)",
+                    "provider": "",
+                    "source_url": "",
+                    "storage_tier": PERSISTENT_LOCAL_INPUT_STORE,
+                    "local_storage_path": str(manifest_json_path),
+                    "download_status": "generated",
+                    "reuse_action": "generated_manifest",
+                    "validation_status": "generated_from_validated_inputs",
+                    "validation_summary": "",
+                    "creation_time": generated_at,
+                },
+            ]
         )
         pd.DataFrame(records).to_csv(manifest_path, index=False)
+        write_json(manifest_json_path, records)
         return manifest_path
 
     def download_drifters(self) -> str:
@@ -1636,7 +1810,12 @@ class DataIngestionService(BaseService):
         pd.DataFrame(report_rows).to_csv(get_arcgis_processing_report_path(RUN_NAME), index=False)
 
         records = [layer_result.name for layer_result in prepared_layers]
-        return ",".join(records) if records else "SKIPPED_NO_DATA"
+        return {
+            "status": "downloaded" if records else "skipped_no_data",
+            "path": str(get_arcgis_registry_path(RUN_NAME)),
+            "layer_names": records,
+            "source_url": ";".join(sorted({str(layer.service_url) for layer in workflow_layers if str(layer.service_url).strip()})),
+        }
 
 if __name__ == "__main__":
     # Setup basic console logging for standalone run

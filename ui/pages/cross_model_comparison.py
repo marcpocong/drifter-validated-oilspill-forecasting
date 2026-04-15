@@ -30,11 +30,13 @@ from ui.pages.common import (
 )
 
 
-def _filter_table(df, *, blocked_values: set[str]) -> object:
-    if df is None or df.empty or "track_id" not in df.columns:
+def _filter_table(df, *, surface_key: str) -> object:
+    if df is None or df.empty:
         return df
     payload = df.copy()
-    return payload.loc[~payload["track_id"].fillna("").astype(str).isin(sorted(blocked_values))].reset_index(drop=True)
+    if "surface_key" not in payload.columns:
+        return payload.reset_index(drop=True)
+    return payload.loc[payload["surface_key"].fillna("").astype(str).eq(surface_key)].reset_index(drop=True)
 
 
 def render(state: dict, ui_state: dict) -> None:
@@ -42,10 +44,10 @@ def render(state: dict, ui_state: dict) -> None:
     registry = state["mindoro_final_registry"]
     figures = registry.loc[
         registry.get("artifact_group", "").astype(str).eq("publication/comparator_pygnome")
-        & registry.get("status_key", "").astype(str).eq("mindoro_crossmodel_comparator")
+        & registry.get("surface_key", "").astype(str).eq("comparator_support")
     ].reset_index(drop=True)
-    comparator_ranking = _filter_table(state["mindoro_comparator_ranking"], blocked_values={"R0_reinit_p50"})
-    comparator_summary = _filter_table(state["mindoro_comparator_summary"], blocked_values={"R0_reinit_p50"})
+    comparator_ranking = _filter_table(state["mindoro_comparator_ranking"], surface_key="comparator_support")
+    comparator_summary = _filter_table(state["mindoro_comparator_summary"], surface_key="comparator_support")
     archive_package = next(
         (package for package in state.get("curated_package_roots", []) if package.get("package_id") == "mindoro_validation_archive"),
         None,
@@ -54,7 +56,7 @@ def render(state: dict, ui_state: dict) -> None:
     render_page_intro(
         "Mindoro Cross-Model Comparator",
         "This page is the dedicated home for the thesis-facing Mindoro Track A support comparison. It stays comparator-only, uses the same March 14 target as the March 13 -> March 14 R1 primary validation row, and never lets PyGNOME read like truth or a co-primary validation row.",
-        badge="Mindoro A | comparator-only",
+        badge="Comparator support | Mindoro Track A",
     )
 
     if export_mode:

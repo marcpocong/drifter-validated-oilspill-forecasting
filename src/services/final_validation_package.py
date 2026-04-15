@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from src.core.artifact_status import artifact_status_columns, artifact_status_columns_for_key
 from src.services.mindoro_primary_validation_metadata import (
     MINDORO_BASE_CASE_CONFIG_PATH,
     MINDORO_LEGACY_MARCH6_TRACK_ID,
@@ -140,9 +141,10 @@ MINDORO_MARCH14_TARGET_MASK_PATH = (
 MINDORO_MARCH13_SOURCE_KEY = "8f8e3944748c4772910efc9829497e20"
 MINDORO_MARCH14_SOURCE_KEY = "10b37c42a9754363a5f7b14199b077e6"
 
-TRACK_SEQUENCE = {"A": 1, "B1": 2, "B2": 3, "B3": 4, "C1": 5, "C2": 6, "C3": 7}
+TRACK_SEQUENCE = {"A": 1, "B1": 2, "archive_r0": 3, "B2": 4, "B3": 5, "C1": 6, "C2": 7, "C3": 8}
 FSS_WINDOWS_KM = (1, 3, 5, 10)
 MINDORO_COMPARATOR_TRACK_ID = "A"
+MINDORO_ARCHIVE_TRACK_ID = "archive_r0"
 MINDORO_COMPARATOR_TRACK_LABEL = "Mindoro March 13 -> March 14 cross-model comparator"
 MINDORO_COMPARATOR_SUPPORT_CONTEXT = "Mindoro March 13 -> March 14 same-case comparator support"
 DWH_TRACK_LABELS = {
@@ -961,16 +963,31 @@ class FinalValidationPackageService:
             comparator_only: bool,
             provenance_note: str,
         ) -> None:
+            track_id = MINDORO_COMPARATOR_TRACK_ID if comparator_only else MINDORO_PRIMARY_VALIDATION_TRACK_ID
+            governance = artifact_status_columns(
+                {
+                    "case_id": MINDORO_CASE_ID,
+                    "track_id": track_id,
+                    "artifact_group": artifact_group,
+                    "relative_path": _relative_to_repo(self.repo_root, destination),
+                    "source_paths": _relative_to_repo(self.repo_root, source),
+                    "notes": provenance_note,
+                }
+            )
+            if str(governance.get("surface_key") or "") == "archive_only":
+                raise ValueError(f"Archive-only artifact leaked into the thesis-facing Mindoro export: {destination}")
             copied_files.append(
                 {
                     "group": artifact_group,
                     "file_name": destination.name,
                     "relative_path": _relative_to_repo(self.repo_root, destination),
                     "source_path": _relative_to_repo(self.repo_root, source),
+                    "track_id": track_id,
                     "scientific_vs_display_only": scientific_vs_display_only,
                     "primary_vs_secondary": primary_vs_secondary,
                     "comparator_only": comparator_only,
                     "provenance_note": provenance_note,
+                    **governance,
                 }
             )
             registry_rows.append(
@@ -978,10 +995,12 @@ class FinalValidationPackageService:
                     "final_relative_path": _relative_to_repo(self.repo_root, destination),
                     "source_relative_path": _relative_to_repo(self.repo_root, source),
                     "artifact_group": artifact_group,
+                    "track_id": track_id,
                     "scientific_vs_display_only": scientific_vs_display_only,
                     "primary_vs_secondary": primary_vs_secondary,
                     "comparator_only": comparator_only,
                     "provenance_note": provenance_note,
+                    **governance,
                 }
             )
 
@@ -1436,6 +1455,17 @@ class FinalValidationPackageService:
                 "packaging_action": packaging_action,
                 "provenance_note": provenance_note,
             }
+            status_override = {
+                "truth_context": "dwh_observation_truth_context",
+                "context_optional": "dwh_trajectory_context",
+                "C1/C2/C3": "dwh_cross_track_summary",
+            }.get(track_id, "")
+            governance = (
+                artifact_status_columns_for_key(status_override, row)
+                if status_override
+                else artifact_status_columns({**row, "case_id": DWH_CASE_ID})
+            )
+            row.update(governance)
             copied_files.append(
                 {
                     "group": artifact_group,
@@ -1970,6 +2000,7 @@ class FinalValidationPackageService:
         required_track_ids = {
             MINDORO_COMPARATOR_TRACK_ID,
             MINDORO_PRIMARY_VALIDATION_TRACK_ID,
+            MINDORO_ARCHIVE_TRACK_ID,
             MINDORO_LEGACY_MARCH6_TRACK_ID,
             MINDORO_LEGACY_SUPPORT_TRACK_ID,
         }
@@ -2052,6 +2083,25 @@ class FinalValidationPackageService:
                     "Mindoro spill extents. The stored B1 run remains sourced from the completed R1_previous reinit "
                     "branch under the frozen base case. "
                     f"{self._mindoro_phase1_provenance_statement(confirmation, include_raw_provenance_clause=True)}"
+                ),
+            },
+            {
+                "case_id": MINDORO_CASE_ID,
+                "track_id": MINDORO_ARCHIVE_TRACK_ID,
+                "track_label": "Mindoro March 13 -> March 14 R0 archived baseline",
+                "status": "complete",
+                "truth_source": "accepted March 14 NOAA/NESDIS observation mask with March 13 NOAA seed polygon",
+                "primary_output_dir": str(MINDORO_REINIT_DIR / "R0"),
+                "case_definition_path": str(MINDORO_BASE_CASE_CONFIG_PATH),
+                "case_freeze_amendment_path": str(MINDORO_PRIMARY_VALIDATION_AMENDMENT_PATH),
+                "launcher_entry_id": MINDORO_PRIMARY_VALIDATION_LAUNCHER_ENTRY_ID,
+                "launcher_alias_entry_id": MINDORO_PRIMARY_VALIDATION_LAUNCHER_ALIAS_ENTRY_ID,
+                "row_role": "archive_only",
+                "reporting_role": "archive / provenance only",
+                "main_text_priority": "archive",
+                "notes": (
+                    "Preserved March 13 -> March 14 R0 baseline for provenance and reproducibility only. "
+                    "It is intentionally excluded from home, main Mindoro, and thesis-facing recommended surfaces."
                 ),
             },
             {
@@ -2170,7 +2220,12 @@ class FinalValidationPackageService:
                 "notes": "Sensitivity branches remain informative but do not replace the main thesis tracks.",
             },
         ]
-        return pd.DataFrame(rows)
+        enriched_rows: list[dict[str, Any]] = []
+        for row in rows:
+            enriched_row = dict(row)
+            enriched_row.update(artifact_status_columns(enriched_row))
+            enriched_rows.append(enriched_row)
+        return pd.DataFrame(enriched_rows)
 
     def _build_benchmark_table(self) -> pd.DataFrame:
         rows: list[dict[str, Any]] = []
@@ -2362,6 +2417,15 @@ class FinalValidationPackageService:
         extended_row = self.extended_public_summary.iloc[0]
 
         rows = [
+            {
+                "limitation_id": "M0",
+                "case_id": MINDORO_CASE_ID,
+                "track_id": MINDORO_ARCHIVE_TRACK_ID,
+                "category": "archived_r0_baseline",
+                "statement": "The March 13 -> March 14 R0 baseline is preserved as archive-only provenance material, not as the promoted B1 result.",
+                "implication": "Keep R0 available through archive/provenance surfaces only; do not route it into home or the main Mindoro page even if an older recommended flag still exists.",
+                "source_artifact": str(MINDORO_REINIT_DIR / "march13_14_reinit_summary.csv"),
+            },
             {
                 "limitation_id": "M1",
                 "case_id": MINDORO_CASE_ID,

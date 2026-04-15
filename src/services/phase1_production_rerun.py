@@ -51,9 +51,23 @@ from src.utils.gfs_wind import (
     wind_cache_has_reader_metadata as _wind_cache_has_reader_metadata,
 )
 from src.utils.io import get_official_phase1_recipe_family
+from src.utils.local_input_store import (
+    PERSISTENT_LOCAL_INPUT_STORE,
+    classify_reuse_action,
+    validation_status_from_record,
+    write_inventory,
+)
 from src.utils.startup_prompt_policy import input_cache_policy_force_refresh_enabled
 
 logger = logging.getLogger(__name__)
+NOAA_DRIFTER_ERDDAP_URL = "https://osmc.noaa.gov/erddap/tabledap/drifter_6hour_qc"
+HYCOM_THREDDS_CATALOG_URL = "https://tds.hycom.org/thredds/catalog.html"
+ERA5_DATASET_URL = "https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels"
+CMEMS_CURRENT_MULTIYEAR_URL = "https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_PHY_001_030/description"
+CMEMS_CURRENT_FORECAST_URL = "https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_PHY_001_024/description"
+CMEMS_WAVE_MULTIYEAR_URL = "https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_WAV_001_032/description"
+CMEMS_WAVE_FORECAST_URL = "https://data.marine.copernicus.eu/product/GLOBAL_ANALYSISFORECAST_WAV_001_027/description"
+GFS_PRIMARY_URL = "https://www.ncei.noaa.gov/products/weather-climate-models/global-forecast"
 
 
 def _json_default(value: Any) -> Any:
@@ -303,6 +317,7 @@ class Phase1ProductionRerunService(BaseService):
             "adoption_decision_json": self.output_root / "phase1_official_adoption_decision.json",
             "adoption_decision_md": self.output_root / "phase1_official_adoption_decision.md",
             "local_input_inventory": self.output_root / "phase1_local_input_inventory.csv",
+            "local_input_inventory_json": self.output_root / "phase1_local_input_inventory.json",
         }
 
     def _force_refresh_enabled(self) -> bool:
@@ -588,6 +603,24 @@ class Phase1ProductionRerunService(BaseService):
                 copy2(source_sidecar, self._gfs_provenance_sidecar_path(forcing_dir))
         return _relative(self.repo_root, source_path)
 
+    def _source_metadata_for_id(self, source_id: str, month_key: str = "") -> dict[str, str]:
+        request_year = int(str(month_key or "0000")[:4] or 0)
+        mapping = {
+            "drifters": {"provider": "NOAA GDP ERDDAP", "source_url": NOAA_DRIFTER_ERDDAP_URL},
+            "hycom": {"provider": "HYCOM", "source_url": HYCOM_THREDDS_CATALOG_URL},
+            "era5": {"provider": "ECMWF/Copernicus Climate Data Store", "source_url": ERA5_DATASET_URL},
+            "gfs": {"provider": "NOAA GFS archive", "source_url": GFS_PRIMARY_URL},
+            "cmems": {
+                "provider": "Copernicus Marine",
+                "source_url": CMEMS_CURRENT_MULTIYEAR_URL if request_year and request_year < 2022 else CMEMS_CURRENT_FORECAST_URL,
+            },
+            "cmems_wave": {
+                "provider": "Copernicus Marine",
+                "source_url": CMEMS_WAVE_MULTIYEAR_URL if request_year and request_year < 2022 else CMEMS_WAVE_FORECAST_URL,
+            },
+        }
+        return dict(mapping.get(str(source_id), {}))
+
     def _write_local_input_inventory(
         self,
         *,
@@ -597,18 +630,26 @@ class Phase1ProductionRerunService(BaseService):
         rows: list[dict[str, Any]] = []
 
         for chunk in drifter_chunk_status:
+            status = str(chunk.get("status") or "")
             rows.append(
                 {
                     "workflow_mode": self.case.workflow_mode,
                     "store_scope": "phase1_monthly_drifter_store",
+                    "storage_tier": PERSISTENT_LOCAL_INPUT_STORE,
                     "month_key": str(chunk.get("month_key") or ""),
                     "source_id": "drifters",
-                    "status": str(chunk.get("status") or ""),
+                    "status": status,
+                    "reuse_action": classify_reuse_action(status),
                     "path": str(chunk.get("cache_path") or ""),
+                    "local_storage_path": str(chunk.get("cache_path") or ""),
+                    "provider": "NOAA GDP ERDDAP",
+                    "source_url": NOAA_DRIFTER_ERDDAP_URL,
                     "chunk_start_utc": str(chunk.get("chunk_start_utc") or ""),
                     "chunk_end_utc": str(chunk.get("chunk_end_utc") or ""),
                     "row_count": int(chunk.get("row_count") or 0),
                     "staged_from_legacy_path": str(chunk.get("staged_from_legacy_path") or ""),
+                    "validation_status": "validated" if status in {"cached", "staged_legacy_cache", "downloaded", "no_data"} else "not_recorded",
+                    "validation_summary": "normalized monthly drifter chunk stored locally",
                     "source_system": "",
                     "source_tier": "",
                 }
@@ -618,25 +659,37 @@ class Phase1ProductionRerunService(BaseService):
             month_key = str(month_status.get("month_key") or "")
             for source_id in month_status.get("required_forcing_sources") or []:
                 source_record = dict(month_status.get(str(source_id)) or {})
+                status = str(source_record.get("status") or "")
+                metadata = self._source_metadata_for_id(str(source_id), month_key)
                 rows.append(
                     {
                         "workflow_mode": self.case.workflow_mode,
                         "store_scope": "phase1_monthly_forcing_store",
+                        "storage_tier": PERSISTENT_LOCAL_INPUT_STORE,
                         "month_key": month_key,
                         "source_id": str(source_id),
-                        "status": str(source_record.get("status") or ""),
+                        "status": status,
+                        "reuse_action": classify_reuse_action(status),
                         "path": str(source_record.get("path") or ""),
+                        "local_storage_path": str(source_record.get("path") or ""),
+                        "provider": str(source_record.get("provider") or metadata.get("provider") or ""),
+                        "source_url": str(source_record.get("source_url") or metadata.get("source_url") or ""),
                         "chunk_start_utc": str(month_status.get("start_time_utc") or ""),
                         "chunk_end_utc": str(month_status.get("end_time_utc") or ""),
                         "row_count": "",
                         "staged_from_legacy_path": str(source_record.get("staged_from_legacy_path") or ""),
+                        "validation_status": validation_status_from_record(source_record),
+                        "validation_summary": str(source_record.get("validation_summary") or ""),
                         "source_system": str(source_record.get("source_system") or ""),
                         "source_tier": str(source_record.get("source_tier") or ""),
                     }
                 )
 
-        inventory_df = pd.DataFrame(rows)
-        inventory_df.to_csv(self.paths["local_input_inventory"], index=False)
+        write_inventory(
+            self.paths["local_input_inventory"],
+            rows,
+            json_path=self.paths["local_input_inventory_json"],
+        )
         return self.paths["local_input_inventory"]
 
     def _inspect_gfs_cache(
@@ -1515,6 +1568,7 @@ class Phase1ProductionRerunService(BaseService):
             "recipe_ranking_csv": str(self.paths["recipe_ranking"]),
             "manifest_json": str(self.paths["manifest"]),
             "local_input_inventory_csv": str(self.paths["local_input_inventory"]),
+            "local_input_inventory_json": str(self.paths["local_input_inventory_json"]),
         }
 
     def _month_starts(self) -> list[pd.Timestamp]:
@@ -2592,6 +2646,7 @@ class Phase1ProductionRerunService(BaseService):
                     "ranking_subset_registry": _relative(self.repo_root, self.paths["ranking_subset_registry"]),
                     "ranking_subset_report": _relative(self.repo_root, self.paths["ranking_subset_report"]),
                     "local_input_inventory": _relative(self.repo_root, self.paths["local_input_inventory"]),
+                    "local_input_inventory_json": _relative(self.repo_root, self.paths["local_input_inventory_json"]),
                     "gfs_preflight": _relative(self.repo_root, self.paths["gfs_preflight"])
                     if self.paths["gfs_preflight"].exists()
                     else "",
@@ -2735,6 +2790,7 @@ class Phase1ProductionRerunService(BaseService):
                     "accepted_segment_registry": _relative(self.repo_root, self.paths["accepted_registry"]),
                     "rejected_segment_registry": _relative(self.repo_root, self.paths["rejected_registry"]),
                     "local_input_inventory": _relative(self.repo_root, self.paths["local_input_inventory"]),
+                    "local_input_inventory_json": _relative(self.repo_root, self.paths["local_input_inventory_json"]),
                     "segment_metrics": _relative(self.repo_root, self.paths["segment_metrics"]),
                     "recipe_summary": _relative(self.repo_root, self.paths["recipe_summary"]),
                     "recipe_ranking": _relative(self.repo_root, self.paths["recipe_ranking"]),
@@ -2850,8 +2906,13 @@ class Phase1ProductionRerunService(BaseService):
                 "drifter_chunk_root": _relative(self.repo_root, self.drifter_cache_root),
                 "forcing_month_root": _relative(self.repo_root, self.forcing_cache_root),
                 "inventory_csv": _relative(self.repo_root, self.paths["local_input_inventory"]),
+                "inventory_json": _relative(self.repo_root, self.paths["local_input_inventory_json"]),
                 "legacy_output_scratch_root": _relative(self.repo_root, self.scratch_root),
-                "policy": "persist_workflow_scoped_monthly_inputs_under_data_and_reuse_them_before_remote_refetch",
+                "policy": (
+                    "persist workflow-scoped monthly inputs under data/historical_validation_inputs, "
+                    "treat output/_scratch only as legacy backfill or temporary staging, reuse validated local "
+                    "store files before remote refetch, and bypass reuse only when INPUT_CACHE_POLICY=force_refresh"
+                ),
             },
             "forcing_cache_status": forcing_status,
             "baseline_candidate": {

@@ -621,7 +621,7 @@ class FigurePackagePublicationTests(unittest.TestCase):
                 spec["subtitle_box_lines"],
             )
             self.assertIn(
-                "The focused Phase 1 provenance box and the scoring-grid display bounds are still preserved as secondary archived references and are not deleted from the package.",
+                "Study Boxes 1 and 3 remain preserved as archive-only references and are not deleted from the package.",
                 spec["note_lines"],
             )
             self.assertEqual(spec["recommended_for_paper"], True)
@@ -638,12 +638,17 @@ class FigurePackagePublicationTests(unittest.TestCase):
             self.assertEqual(focused_spec["model_names"], "study_box_geography")
             self.assertEqual(len(focused_spec["study_boxes"]), 1)
             self.assertEqual(focused_spec["figure_slug"], "focused_phase1_box_geography_reference")
-            self.assertIn("Selected box: Focused Mindoro Phase 1 validation box", focused_spec["subtitle_box_lines"])
+            self.assertEqual(focused_spec["figure_title"], "Study Box 1 - Focused Mindoro Phase 1 box geography reference")
+            self.assertIn("Selected box: Study Box 1 - Focused Mindoro Phase 1 validation box", focused_spec["subtitle_box_lines"])
             self.assertIn(
-                "It is preserved here as a secondary archived reference rather than the default thesis overview image.",
+                "It is preserved here as an archive-only reference rather than a thesis-facing overview image.",
                 focused_spec["note_lines"],
             )
             self.assertEqual(prototype_spec["figure_slug"], "prototype_first_code_search_box_geography_reference")
+            self.assertEqual(
+                prototype_spec["figure_title"],
+                "Study Box 4 - prototype_2016 first-code search-box geography reference",
+            )
             self.assertIn(
                 "Role: historical-origin west-coast Philippines search box used by the earliest prototype code",
                 prototype_spec["subtitle_box_lines"],
@@ -762,6 +767,7 @@ class FigurePackagePublicationTests(unittest.TestCase):
             self.assertTrue(Path(results["manifest_json"]).exists())
             self.assertTrue(Path(results["captions_md"]).exists())
             self.assertTrue(Path(results["talking_points_md"]).exists())
+            self.assertTrue(Path(results["inventory_md"]).exists())
             self.assertTrue(Path(results["font_audit_csv"]).exists())
             self.assertTrue(Path(results["board_layout_audit_csv"]).exists())
             self.assertGreater(results["figure_count"], 0)
@@ -776,10 +782,18 @@ class FigurePackagePublicationTests(unittest.TestCase):
             self.assertIn("L", manifest["figure_families_generated"])
             self.assertIn("M", manifest["figure_families_generated"])
             self.assertIn("recommended_main_defense_figures", manifest)
+            self.assertIn("inventory", manifest)
             self.assertTrue(manifest["phase4_deferred_comparison_note_figure_produced"])
             self.assertIn("font_audit", manifest)
             self.assertEqual(manifest["font_audit"]["requested_font_family"], "Arial")
             self.assertGreater(manifest["board_layout_audit_row_count"], 0)
+            self.assertIn("inventory_markdown_path", manifest)
+            self.assertGreater(manifest["inventory"]["thesis_surface_count"], 0)
+            self.assertGreater(manifest["inventory"]["archive_only_count"], 0)
+            self.assertEqual(manifest["study_box_presentation_rule"]["thesis_surface_numbers"], ["2", "4"])
+            self.assertEqual(manifest["study_box_presentation_rule"]["archive_only_numbers"], ["1", "3"])
+            self.assertIn("2,4", manifest["inventory"]["study_box_figure_index"])
+            self.assertIn("1,2,3,4", manifest["inventory"]["study_box_figure_index"])
             self.assertGreaterEqual(int(manifest["figure_families_generated"]["H"]), 18)
             self.assertGreaterEqual(int(manifest["figure_families_generated"]["I"]), 13)
             registry_df = pd.read_csv(results["registry_csv"])
@@ -788,6 +802,18 @@ class FigurePackagePublicationTests(unittest.TestCase):
             self.assertIn("display_title", registry_df.columns)
             self.assertIn("status_key", registry_df.columns)
             self.assertIn("status_provenance", registry_df.columns)
+            self.assertIn("surface_key", registry_df.columns)
+            self.assertIn("surface_recommended_visible", registry_df.columns)
+            self.assertIn("thesis_surface", registry_df.columns)
+            self.assertIn("archive_only", registry_df.columns)
+            self.assertIn("legacy_support", registry_df.columns)
+            self.assertIn("comparator_support", registry_df.columns)
+            self.assertIn("display_order", registry_df.columns)
+            self.assertIn("page_target", registry_df.columns)
+            self.assertIn("study_box_id", registry_df.columns)
+            self.assertIn("study_box_numbers", registry_df.columns)
+            self.assertIn("study_box_label", registry_df.columns)
+            self.assertIn("recommended_scope", registry_df.columns)
             self.assertEqual(len(registry_df), len(manifest["figures"]))
             thesis_boxes_row = registry_df[
                 (registry_df["case_id"] == "THESIS_STUDY_CONTEXT")
@@ -802,12 +828,32 @@ class FigurePackagePublicationTests(unittest.TestCase):
                 & registry_df["run_type"].astype(str).eq("archived_reference_map")
             ].copy()
             self.assertEqual(thesis_boxes_row["status_key"], "thesis_study_box_reference")
+            self.assertEqual(thesis_boxes_row["surface_key"], "thesis_main")
+            self.assertEqual(thesis_boxes_row["study_box_id"], "thesis_study_boxes_reference")
+            self.assertEqual(thesis_boxes_row["study_box_numbers"], "2,4")
+            self.assertTrue(bool(thesis_boxes_row["thesis_surface"]))
             self.assertIn("local clipped land-context geography file", thesis_boxes_row["notes"])
             self.assertEqual(thesis_boxes_row["figure_family_code"], "L")
             self.assertEqual(len(thesis_detail_rows), 4)
             self.assertEqual(len(thesis_archive_rows), 1)
             self.assertTrue(thesis_detail_rows["figure_id"].astype(str).str.contains("focused_phase1_box_geography_reference", na=False).any())
             self.assertTrue(thesis_detail_rows["figure_id"].astype(str).str.contains("prototype_first_code_search_box_geography_reference", na=False).any())
+            focused_box_row = thesis_detail_rows[
+                thesis_detail_rows["figure_id"].astype(str).str.contains("focused_phase1_box_geography_reference", na=False)
+            ].iloc[0]
+            self.assertEqual(focused_box_row["surface_key"], "advanced_only")
+            self.assertEqual(focused_box_row["study_box_id"], "focused_phase1_validation_box")
+            self.assertEqual(focused_box_row["study_box_numbers"], "1")
+            self.assertTrue(bool(focused_box_row["archive_only"]))
+            self.assertFalse(bool(focused_box_row["thesis_surface"]))
+            thesis_box_numbers = set(
+                thesis_detail_rows.loc[thesis_detail_rows["thesis_surface"] == True, "study_box_numbers"].astype(str)  # noqa: E712
+            )
+            archive_box_numbers = set(
+                thesis_detail_rows.loc[thesis_detail_rows["archive_only"] == True, "study_box_numbers"].astype(str)  # noqa: E712
+            )
+            self.assertEqual(thesis_box_numbers, {"2", "4"})
+            self.assertEqual(archive_box_numbers, {"1", "3"})
 
             font_audit_df = pd.read_csv(results["font_audit_csv"])
             self.assertEqual(font_audit_df.iloc[0]["requested_font_family"], "Arial")
@@ -852,13 +898,28 @@ class FigurePackagePublicationTests(unittest.TestCase):
                 registry_df["figure_id"].str.contains("mindoro_observed_masks_ensemble_pygnome_overlay", na=False)
             ].iloc[0]
             self.assertEqual(mindoro_overlay["status_key"], "mindoro_crossmodel_comparator")
+            self.assertEqual(mindoro_overlay["surface_key"], "comparator_support")
+            self.assertFalse(bool(mindoro_overlay["thesis_surface"]))
+            self.assertTrue(bool(mindoro_overlay["comparator_support"]))
             self.assertIn("March 13-14 observed masks", str(mindoro_overlay["display_title"]))
+
+            archive_overlay = registry_df[
+                registry_df["figure_id"].str.contains("march14_r0_overlay", na=False)
+            ].iloc[0]
+            self.assertEqual(archive_overlay["status_key"], "mindoro_b1_r0_archive")
+            self.assertEqual(archive_overlay["surface_key"], "archive_only")
+            self.assertTrue(bool(archive_overlay["archive_only"]))
+            self.assertFalse(bool(archive_overlay["thesis_surface"]))
+            self.assertFalse(bool(archive_overlay["surface_recommended_visible"]))
 
             legacy_family_m = registry_df[registry_df["figure_family_code"].astype(str).eq("M")].copy()
             legacy_family_m_boards = legacy_family_m[legacy_family_m["view_type"].astype(str).eq("board")].copy()
             self.assertGreaterEqual(len(legacy_family_m), 12)
             self.assertEqual(len(legacy_family_m_boards), 3)
             self.assertTrue((legacy_family_m_boards["status_key"] == "prototype_2016_support").all())
+            self.assertTrue((legacy_family_m_boards["legacy_support"] == True).all())  # noqa: E712
+            self.assertTrue((legacy_family_m_boards["thesis_surface"] == True).all())  # noqa: E712
+            self.assertTrue((legacy_family_m_boards["recommended_scope"].astype(str) == "legacy_support").all())
             self.assertTrue(
                 legacy_family_m_boards["figure_id"].astype(str).str.contains("legacy_2016_drifter_track_triptych_board", na=False).any()
             )
@@ -894,10 +955,21 @@ class FigurePackagePublicationTests(unittest.TestCase):
             registry_text = Path(results["registry_csv"]).read_text(encoding="utf-8")
             self.assertIn("crossmodel_comparison_deferred", registry_text)
             self.assertNotIn("when the panel", registry_text.lower())
+            recommended_rows = registry_df[registry_df["figure_id"].isin(manifest["recommended_main_defense_figures"])].copy()
+            self.assertTrue((recommended_rows["surface_recommended_visible"] == True).all())
+            self.assertTrue((recommended_rows["thesis_surface"] == True).all())  # noqa: E712
+            self.assertFalse((recommended_rows["surface_key"].astype(str) == "archive_only").any())
             captions_text = Path(results["captions_md"]).read_text(encoding="utf-8")
             self.assertIn("Provenance:", captions_text)
+            self.assertIn("Study Box 2 - Mindoro case-domain geography reference", captions_text)
             talking_points_text = Path(results["talking_points_md"]).read_text(encoding="utf-8")
             self.assertNotIn("when the panel", talking_points_text.lower())
+            self.assertIn("Archive Index", talking_points_text)
+            self.assertIn("Study Box 1 - Focused Mindoro Phase 1 box geography reference", talking_points_text)
+            inventory_text = Path(results["inventory_md"]).read_text(encoding="utf-8")
+            self.assertIn("thesis_surface=true", inventory_text)
+            self.assertIn("page_target", inventory_text)
+            self.assertIn("study_box_numbers", inventory_text)
 
     def test_publication_package_surfaces_prototype_support_family_k_when_registry_exists(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -921,12 +993,13 @@ class FigurePackagePublicationTests(unittest.TestCase):
             self.assertTrue((singles["recommended_for_paper"] == True).all())
             self.assertTrue((boards["recommended_for_paper"] == False).all())
             self.assertTrue((family_k["status_key"] == "prototype_2016_support").all())
+            self.assertTrue((family_k["legacy_support"] == True).all())  # noqa: E712
+            self.assertTrue((family_k["thesis_surface"] == False).all())  # noqa: E712
+            self.assertTrue((family_k["recommended_scope"].astype(str) == "appendix_support").all())
             self.assertTrue((family_k["notes"].str.contains("Support-only publication copy")).all())
 
             talking_points = Path(results["talking_points_md"]).read_text(encoding="utf-8")
-            self.assertIn("Prototype Support Figures", talking_points)
-            self.assertIn("Legacy debug support only;", talking_points)
-            self.assertIn("Not final Phase 1 evidence.", talking_points)
+            self.assertNotIn("Prototype Support Figures", talking_points)
 
 
 if __name__ == "__main__":

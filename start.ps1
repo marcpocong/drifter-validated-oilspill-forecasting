@@ -9,13 +9,11 @@
     - read-only packaging / help utilities
     - legacy prototype tracks
 
-    Safe first commands:
+    Canonical paths:
         .\start.ps1 -List -NoPause
         .\start.ps1 -Help -NoPause
-        .\start.ps1 -Entry phase5_sync -NoPause
-        .\start.ps1 -Entry trajectory_gallery -NoPause
-        .\start.ps1 -Entry trajectory_gallery_panel -NoPause
-        .\start.ps1 -Entry figure_package_publication -NoPause
+        .\start.ps1 -Entry <entry_id>
+        docker-compose exec -T -e WORKFLOW_MODE=<workflow_mode> -e PIPELINE_PHASE=<phase> <pipeline|gnome> python -m src
 #>
 
 param(
@@ -386,9 +384,9 @@ function Read-StartupWaitBudgetChoice {
 
 function Read-StartupInputCacheChoice {
     Write-Host ""
-    Write-Host "Eligible local input data already exists for this run." -ForegroundColor Yellow
+    Write-Host "Eligible validated files already exist in the persistent local input store for this run." -ForegroundColor Yellow
     Write-Host "  1. Reuse validated local inputs when available (Recommended)" -ForegroundColor White
-    Write-Host "  2. Force refresh remote inputs" -ForegroundColor White
+    Write-Host "  2. Force refresh remote inputs and rewrite the persistent local store" -ForegroundColor White
 
     while ($true) {
         $choice = (Read-Host "Select input cache policy [1]").Trim().ToLowerInvariant()
@@ -725,6 +723,57 @@ function Invoke-LauncherEntry {
     }
 }
 
+function Invoke-ReadOnlyUi {
+    Write-Host "Starting Docker containers..." -ForegroundColor Yellow
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        # Docker may emit routine status lines to stderr even on success.
+        $ErrorActionPreference = "Continue"
+        docker-compose up -d pipeline 2>&1 | ForEach-Object { Write-ProcessLine $_ }
+        $composeExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($composeExitCode -ne 0) {
+        throw "docker-compose up -d pipeline failed with exit code $composeExitCode."
+    }
+
+    Write-Host ""
+    Write-Host "Launching read-only Streamlit UI..." -ForegroundColor Yellow
+    Write-Host "Open http://localhost:8501 while this process is running." -ForegroundColor DarkGray
+    Write-Host "Press Ctrl+C to stop the UI and return to the launcher." -ForegroundColor DarkGray
+
+    $uiArgs = @(
+        "exec",
+        "pipeline",
+        "python",
+        "-m",
+        "streamlit",
+        "run",
+        "ui/app.py",
+        "--server.address",
+        "0.0.0.0",
+        "--server.port",
+        "8501"
+    )
+
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        # Keep Streamlit attached to this terminal so Ctrl+C behaves as expected.
+        $ErrorActionPreference = "Continue"
+        & docker-compose @uiArgs 2>&1 | ForEach-Object { Write-ProcessLine $_ }
+        $uiExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    if ($uiExitCode -ne 0) {
+        throw "Read-only UI exited with code $uiExitCode."
+    }
+}
+
 function Show-LauncherList {
     $matrix = Get-LauncherMatrix
     $entries = Get-LauncherEntries
@@ -733,7 +782,11 @@ function Show-LauncherList {
     Write-Host ""
     Write-Host "Entrypoint: .\start.ps1" -ForegroundColor Green
     Write-Host "Catalog: $($matrix.catalog_version)" -ForegroundColor Yellow
-    Write-Host "Safe first commands: .\start.ps1 -Entry phase5_sync -NoPause ; .\start.ps1 -Entry trajectory_gallery -NoPause ; .\start.ps1 -Entry trajectory_gallery_panel -NoPause ; .\start.ps1 -Entry figure_package_publication -NoPause" -ForegroundColor Yellow
+    Write-Host "List entries: .\start.ps1 -List -NoPause" -ForegroundColor Yellow
+    Write-Host "Launcher help: .\start.ps1 -Help -NoPause" -ForegroundColor Yellow
+    Write-Host "Interactive run: .\start.ps1 -Entry <entry_id>" -ForegroundColor Yellow
+    Write-Host "Prompt-free container run: docker-compose exec -T -e WORKFLOW_MODE=<workflow_mode> -e PIPELINE_PHASE=<phase> <pipeline|gnome> python -m src" -ForegroundColor Yellow
+    Write-Host "Read-only UI: docker-compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501" -ForegroundColor Yellow
     Write-Host ""
 
     foreach ($category in Get-LauncherCategories) {
@@ -764,21 +817,37 @@ function Show-LauncherList {
 
 function Show-Help {
     $matrix = Get-LauncherMatrix
-    $safeEntries = @($matrix.entries | Where-Object { $_.safe_default } | Sort-Object menu_order)
+    $readOnlyEntries = @(
+        $matrix.entries |
+            Where-Object { $_.category_id -eq "read_only_packaging_help_utilities" -and $_.safe_default } |
+            Sort-Object menu_order
+    )
     Clear-Host
     Write-Section "LAUNCHER HELP"
     Write-Host ""
-    Write-Host "Recommended read-only commands:" -ForegroundColor Yellow
+    Write-Host "Canonical startup paths:" -ForegroundColor Yellow
     Write-Host "  .\start.ps1 -List -NoPause" -ForegroundColor Green
     Write-Host "  .\start.ps1 -Help -NoPause" -ForegroundColor Green
-    foreach ($entry in $safeEntries) {
-        Write-Host ("  .\start.ps1 -Entry {0} -NoPause" -f $entry.entry_id) -ForegroundColor Green
+    Write-Host "  .\start.ps1 -Entry <entry_id>" -ForegroundColor Green
+    Write-Host "  docker-compose exec -T -e WORKFLOW_MODE=<workflow_mode> -e PIPELINE_PHASE=<phase> <pipeline|gnome> python -m src" -ForegroundColor Green
+    Write-Host "  docker-compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "Recommended read-only launcher entries:" -ForegroundColor Yellow
+    foreach ($entry in $readOnlyEntries) {
+        Write-Host ("  .\start.ps1 -Entry {0}" -f $entry.entry_id) -ForegroundColor Green
     }
     Write-Host ""
-    Write-Host "Scientific rerun commands require explicit intent:" -ForegroundColor Yellow
-    Write-Host "  .\start.ps1 -Entry mindoro_reportable_core -NoPause" -ForegroundColor Gray
-    Write-Host "  .\start.ps1 -Entry dwh_reportable_bundle -NoPause" -ForegroundColor Gray
-    Write-Host "  .\start.ps1 -Entry phase1_mindoro_focus_pre_spill_experiment" -ForegroundColor Gray
+    Write-Host "Reportable launcher entries require explicit intent:" -ForegroundColor Yellow
+    Write-Host "  .\start.ps1 -Entry phase1_production_rerun" -ForegroundColor Gray
+    Write-Host "  .\start.ps1 -Entry mindoro_phase3b_primary_public_validation" -ForegroundColor Gray
+    Write-Host "  .\start.ps1 -Entry mindoro_reportable_core" -ForegroundColor Gray
+    Write-Host "  .\start.ps1 -Entry dwh_reportable_bundle" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "Support, archive, and legacy entries stay available through -List:" -ForegroundColor Yellow
+    Write-Host "  mindoro_phase4_only ; mindoro_appendix_sensitivity_bundle ; phase1_mindoro_focus_pre_spill_experiment" -ForegroundColor Gray
+    Write-Host "  mindoro_march13_14_phase1_focus_trial ; mindoro_march6_recovery_sensitivity ; mindoro_march23_extended_public_stress_test" -ForegroundColor Gray
+    Write-Host "  prototype_2021_bundle ; prototype_legacy_bundle" -ForegroundColor Gray
+    Write-Host "  Compatibility alias only: mindoro_march13_14_noaa_reinit_stress_test" -ForegroundColor Gray
     Write-Host ""
     Write-Host "Direct container runs only prompt when they have a TTY:" -ForegroundColor Yellow
     Write-Host "  docker-compose exec -e WORKFLOW_MODE=phase1_mindoro_focus_pre_spill_2016_2023 -e PIPELINE_PHASE=phase1_production_rerun pipeline python -m src" -ForegroundColor Gray
@@ -790,6 +859,9 @@ function Show-Help {
     Write-Host "  - Interactive launcher runs now ask once for the forcing wait budget and, when eligible caches already exist, whether to reuse validated inputs or force refresh." -ForegroundColor White
     Write-Host "  - Direct interactive docker-compose exec runs do the same once per run; no-TTY direct runs skip prompts and print the resolved policy instead." -ForegroundColor White
     Write-Host "  - Non-interactive launcher runs default silently to INPUT_CACHE_POLICY=reuse_if_valid and FORCING_SOURCE_BUDGET_SECONDS=300." -ForegroundColor White
+    Write-Host "  - Persistent local input store means validated reusable inputs under data/drifters, data/forcing, data/arcgis, data/historical_validation_inputs, and data/local_input_store; output-local forcing/raw folders are only staging or legacy scratch." -ForegroundColor White
+    Write-Host "  - INPUT_CACHE_POLICY=force_refresh bypasses validated local reuse, fetches fresh copies, and rewrites the persistent local input store for that run." -ForegroundColor White
+    Write-Host "  - Current inventories and manifests now record reuse-vs-refresh, provider/source URL, local storage path, and validation status for rerun-facing inputs." -ForegroundColor White
     Write-Host "  - Drifter truth and ArcGIS/observation truth inputs stay hard requirements even when degraded forcing continuation is enabled." -ForegroundColor White
     Write-Host "  - Phase 2 is scientifically usable, but not scientifically frozen." -ForegroundColor White
     Write-Host "  - Phase 3B and Phase 3C are validation-only lanes: public-observation validation for Mindoro and external transfer validation for DWH." -ForegroundColor White
@@ -816,7 +888,7 @@ function Show-Menu {
         Clear-Host
         Write-Section "DRIFTER-VALIDATED OIL SPILL FORECASTING"
         Write-Host ""
-        Write-Host "Choose a launcher entry. Read-only utilities are the safest first choice." -ForegroundColor Yellow
+        Write-Host "Choose a launcher entry. Read-only utilities are the safest first choice, or press U for the read-only UI." -ForegroundColor Yellow
         Write-Host ""
 
         foreach ($category in Get-LauncherCategories) {
@@ -832,6 +904,7 @@ function Show-Menu {
         }
 
         Write-Host "  L. List catalog only" -ForegroundColor Yellow
+        Write-Host "  U. Launch read-only UI" -ForegroundColor Yellow
         Write-Host "  H. Help" -ForegroundColor Yellow
         Write-Host "  Q. Exit" -ForegroundColor Yellow
         Write-Host ""
@@ -844,6 +917,17 @@ function Show-Menu {
         switch ($choice.ToUpperInvariant()) {
             "L" {
                 Show-LauncherList
+                continue
+            }
+            "U" {
+                Write-Section "READ-ONLY UI"
+                try {
+                    Invoke-ReadOnlyUi
+                }
+                catch {
+                    Pause-IfNeeded
+                }
+                Pause-IfNeeded
                 continue
             }
             "H" {
@@ -870,7 +954,7 @@ function Show-Menu {
             continue
         }
 
-        Write-Host "Invalid option. Use a menu number, L, H, or Q." -ForegroundColor Red
+        Write-Host "Invalid option. Use a menu number, U, L, H, or Q." -ForegroundColor Red
         Start-Sleep -Seconds 2
     }
 }

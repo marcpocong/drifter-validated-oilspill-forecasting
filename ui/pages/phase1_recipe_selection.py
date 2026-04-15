@@ -20,6 +20,7 @@ ensure_repo_root_on_path(__file__)
 import pandas as pd
 import streamlit as st
 
+from src.core.study_box_catalog import ARCHIVE_ONLY_STUDY_BOX_NUMBERS, THESIS_FACING_STUDY_BOX_NUMBERS
 from ui.pages.common import (
     render_export_note,
     render_figure_gallery,
@@ -50,20 +51,55 @@ def _format_recipe_family(values: object) -> str:
 
 
 def _filter_study_box_figures(df: pd.DataFrame, slugs: tuple[str, ...]) -> pd.DataFrame:
-    if df.empty or "figure_id" not in df.columns:
+    if df.empty:
         return pd.DataFrame()
-    figure_ids = df["figure_id"].astype(str)
-    mask = pd.Series(False, index=df.index)
-    for slug in slugs:
-        mask |= figure_ids.str.contains(slug, na=False)
-    payload = df.loc[mask].copy()
+    payload = df.copy()
+    if "study_box_numbers" in payload.columns:
+        payload["_study_box_sort"] = payload["study_box_numbers"].astype(str).str.split(",").apply(
+            lambda values: min(
+                [int(str(value).strip()) for value in values if str(value).strip().isdigit()] or [999]
+            )
+        )
+        return payload.sort_values(["_study_box_sort", "figure_id"]).drop(columns="_study_box_sort").reset_index(drop=True)
+    if "figure_id" not in payload.columns:
+        return pd.DataFrame()
     if payload.empty:
         return payload.reset_index(drop=True)
-    order = {slug: index for index, slug in enumerate(slugs)}
-    payload["_sort_order"] = payload["figure_id"].astype(str).apply(
-        lambda value: next((order[slug] for slug in slugs if slug in value), len(order))
-    )
-    return payload.sort_values(["_sort_order", "figure_id"]).drop(columns="_sort_order").reset_index(drop=True)
+    return payload.sort_values("figure_id").reset_index(drop=True)
+
+
+def _recipe_order_from_ranking(ranking: pd.DataFrame) -> list[str]:
+    if ranking.empty or "recipe" not in ranking.columns:
+        return []
+    payload = ranking.copy()
+    payload["_recipe_key"] = payload["recipe"].astype(str).str.strip()
+    payload = payload.loc[payload["_recipe_key"].ne("")]
+    if payload.empty:
+        return []
+    if "rank" in payload.columns:
+        payload["_rank_sort"] = pd.to_numeric(payload["rank"], errors="coerce")
+    else:
+        payload["_rank_sort"] = range(1, len(payload) + 1)
+    payload = payload.sort_values(["_rank_sort", "_recipe_key"], na_position="last")
+    return payload["_recipe_key"].tolist()
+
+
+def _sort_summary_by_rank(summary: pd.DataFrame, ranking: pd.DataFrame) -> pd.DataFrame:
+    if summary.empty or "recipe" not in summary.columns:
+        return summary.copy()
+    recipe_order = _recipe_order_from_ranking(ranking)
+    if not recipe_order:
+        return summary.reset_index(drop=True)
+    rank_map = {recipe: index + 1 for index, recipe in enumerate(recipe_order)}
+    payload = summary.copy()
+    payload["_recipe_key"] = payload["recipe"].astype(str).str.strip()
+    payload["_rank_sort"] = payload["_recipe_key"].map(rank_map)
+    if "rank" not in payload.columns:
+        payload.insert(0, "rank", payload["_rank_sort"])
+    else:
+        payload["rank"] = payload["_rank_sort"].combine_first(pd.to_numeric(payload["rank"], errors="coerce"))
+    payload = payload.sort_values(["_rank_sort", "_recipe_key"], na_position="last")
+    return payload.drop(columns=["_recipe_key", "_rank_sort"]).reset_index(drop=True)
 
 
 def render(state: dict, ui_state: dict) -> None:
@@ -83,32 +119,38 @@ def render(state: dict, ui_state: dict) -> None:
         publication_registry.get("status_key", pd.Series(dtype=str)).astype(str).eq("thesis_study_box_reference")
     ].reset_index(drop=True)
     study_box_overview_figures = study_box_figures.loc[
-        study_box_figures.get("run_type", pd.Series(dtype=str)).astype(str).eq("single_reference_map")
+        study_box_figures.get("study_box_id", pd.Series(dtype=str)).astype(str).eq("thesis_study_boxes_reference")
     ].reset_index(drop=True)
     study_box_detail_figures = study_box_figures.loc[
         study_box_figures.get("run_type", pd.Series(dtype=str)).astype(str).eq("single_box_reference_map")
     ].reset_index(drop=True)
     featured_study_box_detail_figures = _filter_study_box_figures(
-        study_box_detail_figures,
-        (
-            "mindoro_case_domain_geography_reference",
-            "prototype_first_code_search_box_geography_reference",
-        ),
+        study_box_detail_figures.loc[
+            study_box_detail_figures.get("thesis_surface", pd.Series(dtype=bool)).fillna(False).astype(bool)
+            & study_box_detail_figures.get("study_box_numbers", pd.Series(dtype=str)).astype(str).isin(
+                list(THESIS_FACING_STUDY_BOX_NUMBERS)
+            )
+        ].copy(),
+        THESIS_FACING_STUDY_BOX_NUMBERS,
     )
     archived_study_box_detail_figures = _filter_study_box_figures(
-        study_box_detail_figures,
-        (
-            "focused_phase1_box_geography_reference",
-            "scoring_grid_bounds_geography_reference",
-        ),
+        study_box_detail_figures.loc[
+            study_box_detail_figures.get("archive_only", pd.Series(dtype=bool)).fillna(False).astype(bool)
+            & study_box_detail_figures.get("study_box_numbers", pd.Series(dtype=str)).astype(str).isin(
+                list(ARCHIVE_ONLY_STUDY_BOX_NUMBERS)
+            )
+        ].copy(),
+        ARCHIVE_ONLY_STUDY_BOX_NUMBERS,
     )
 
     time_window = manifest.get("time_window") or {}
     subset_info = manifest.get("ranking_subset") or {}
-    selected_recipe = str(manifest.get("official_b1_recipe") or "").strip() or (
-        str(ranking.iloc[0]["recipe"]).strip() if not ranking.empty and "recipe" in ranking.columns else "Not available"
-    )
-    historical_winner = str(manifest.get("historical_four_recipe_winner") or manifest.get("winning_recipe") or "").strip() or selected_recipe
+    ranked_recipes = _recipe_order_from_ranking(ranking)
+    ranking_winner = ranked_recipes[0] if ranked_recipes else ""
+    ranking_runner_up = ranked_recipes[1] if len(ranked_recipes) > 1 else ""
+    focused_summary = _sort_summary_by_rank(summary, ranking)
+    selected_recipe = str(manifest.get("official_b1_recipe") or "").strip() or ranking_winner or "Not available"
+    historical_winner = ranking_winner or str(manifest.get("historical_four_recipe_winner") or manifest.get("winning_recipe") or "").strip() or selected_recipe
     gfs_historical_winner_not_adopted = bool(manifest.get("gfs_historical_winner_not_adopted", False))
     recipe_family = _format_recipe_family(manifest.get("official_recipe_family") or [])
     reference_recipe = (
@@ -119,7 +161,7 @@ def render(state: dict, ui_state: dict) -> None:
     render_page_intro(
         "Phase 1 Recipe Selection",
         "This page explains how the Mindoro transport recipe was chosen before the main validation step. It keeps the focused Mindoro provenance lane separate from the broader regional reference lane and shows how B1 inherits the selected recipe without directly ingesting drifters inside Phase 3B.",
-        badge="Phase 1 provenance | recipe selection before B1",
+        badge="Thesis-facing | workflow / provenance context",
     )
 
     if export_mode:
@@ -137,7 +179,15 @@ def render(state: dict, ui_state: dict) -> None:
     )
     render_status_callout(
         "Focused Mindoro result",
-        f"The focused Mindoro provenance lane now evaluates `{recipe_family}`. Official B1 currently inherits `{selected_recipe}` from that focused lane.",
+        f"The focused Mindoro provenance lane now evaluates `{recipe_family}`. The focused ranking table places `{historical_winner}` first, and official B1 currently inherits `{selected_recipe}` from that lane.",
+        "info",
+    )
+    selected_recipe_value = f"Selected Mindoro B1 recipe: `{selected_recipe}`."
+    if ranking_runner_up:
+        selected_recipe_value += f" The focused ranking table shows `{ranking_runner_up}` as the runner-up."
+    render_status_callout(
+        "Selected Mindoro B1 recipe",
+        selected_recipe_value,
         "info",
     )
     render_status_callout(
@@ -169,8 +219,8 @@ def render(state: dict, ui_state: dict) -> None:
 
     render_metric_row(
         [
-            ("Selected recipe", selected_recipe or "Not available"),
-            ("Focused recipes tested", str(len(summary)) if not summary.empty else "0"),
+            ("Selected Mindoro B1 recipe", selected_recipe or "Not available"),
+            ("Focused recipes tested", str(len(focused_summary)) if not focused_summary.empty else "0"),
             ("Accepted segments", str(manifest.get("accepted_segment_count", 0))),
             ("Ranking subset", str(subset_info.get("segment_count", len(subset)) or 0)),
             ("Study window", f"{str(time_window.get('start_utc', ''))[:10]} to {str(time_window.get('end_utc', ''))[:10]}"),
@@ -181,14 +231,14 @@ def render(state: dict, ui_state: dict) -> None:
     if not study_box_overview_figures.empty or not study_box_detail_figures.empty:
         render_status_callout(
             "Shared box reference",
-            "The main thesis-facing box set now uses only boxes 2 and 4: the broader `mindoro_case_domain` and the prototype-origin search box. Boxes 1 and 3 remain preserved as archive-only references for appendix and audit use.",
+            "Study Box 2 is the broader `mindoro_case_domain` overview extent and Study Box 4 is the prototype-origin first-code search box. Study Box 1, the focused Phase 1 validation box, and Study Box 3, the scoring-grid display bounds, remain archive-only references for appendix, advanced, and audit use.",
             "info",
         )
         if not study_box_overview_figures.empty:
             render_figure_gallery(
                 study_box_overview_figures,
-                title="Study boxes used by the thesis",
-                caption="This updated shared publication figure is built from stored config, manifest, provenance metadata, and a local geography context layer only. The main thesis-facing overview now shows only boxes 2 and 4, while boxes 1 and 3 stay preserved as archive-only references.",
+                title="Study boxes used by the thesis (Boxes 2 and 4)",
+                caption="This updated shared publication figure is built from stored config, manifest, provenance metadata, and a local geography context layer only. Study Box 2 is `mindoro_case_domain` and Study Box 4 is the prototype-origin first-code search box, while Study Boxes 1 and 3 stay preserved as archive-only references.",
                 limit=1,
                 columns_per_row=1,
                 export_mode=export_mode,
@@ -197,8 +247,8 @@ def render(state: dict, ui_state: dict) -> None:
         if not featured_study_box_detail_figures.empty:
             render_figure_gallery(
                 featured_study_box_detail_figures,
-                title="Thesis box geography references (Boxes 2 and 4)",
-                caption="These panel-ready geography references keep the two thesis-facing boxes visible individually on the main page without bringing archive-only boxes 1 and 3 back into the main thesis story.",
+                title="Per-box geography references for the thesis (Boxes 2 and 4)",
+                caption="These panel-ready geography references keep Study Box 2 (`mindoro_case_domain`) and Study Box 4 (the prototype-origin first-code search box) visible individually on the main page without bringing archive-only Study Boxes 1 and 3 back into the thesis-facing story.",
                 limit=2,
                 columns_per_row=2,
                 export_mode=export_mode,
@@ -207,8 +257,8 @@ def render(state: dict, ui_state: dict) -> None:
         if ui_state["advanced"] and not archived_study_box_detail_figures.empty:
             render_figure_gallery(
                 archived_study_box_detail_figures,
-                title="Archived box geography references (Boxes 1 and 3)",
-                caption="These preserved reference figures keep box 1, the focused Phase 1 provenance box, and box 3, the narrower scoring-grid bounds, available for archive, appendix, and audit use without making them part of the main thesis-facing box set.",
+                title="Archived per-box geography references (Boxes 1 and 3)",
+                caption="These preserved reference figures keep Study Box 1, the focused Phase 1 provenance box, and Study Box 3, the narrower scoring-grid bounds, available for archive, appendix, advanced, and audit use without making them part of the thesis-facing box set.",
                 limit=2,
                 columns_per_row=2,
                 export_mode=export_mode,
@@ -218,22 +268,14 @@ def render(state: dict, ui_state: dict) -> None:
     def _focused_lane() -> None:
         render_status_callout(
             "Focused lane role",
-            "This is the active Mindoro-specific provenance lane used to support the B1 recipe choice.",
+            "This is the active Mindoro-specific provenance lane used to support the B1 recipe choice. The ranking table below is the authority for which recipe ranks first in the focused lane.",
             "info",
         )
         render_table(
             "Focused recipe ranking",
             ranking,
             download_name="phase1_recipe_ranking.csv",
-            caption="Stored ranking for the focused Mindoro Phase 1 provenance lane.",
-            height=220,
-            export_mode=export_mode,
-        )
-        render_table(
-            "Focused recipe summary",
-            summary,
-            download_name="phase1_recipe_summary.csv",
-            caption="Stored summary of the recipe family actually tested for the focused Mindoro provenance lane.",
+            caption="Stored ranking for the focused Mindoro Phase 1 provenance lane. Use this table as the winner authority for the focused lane.",
             height=220,
             export_mode=export_mode,
         )
@@ -258,7 +300,7 @@ def render(state: dict, ui_state: dict) -> None:
     def _inheritance_story() -> None:
         render_status_callout(
             "Provenance chain",
-            f"Focused Phase 1 recorded `{historical_winner}` as the historical winner and `{selected_recipe}` as the official B1 recipe. The active Mindoro B1 package inherits the official recipe through the repo baseline-selection layer.",
+            f"The focused ranking table places `{historical_winner}` first, and the active Mindoro B1 package inherits `{selected_recipe}` through the repo baseline-selection layer.",
             "info",
         )
         st.markdown(
@@ -267,7 +309,7 @@ def render(state: dict, ui_state: dict) -> None:
                     "### Plain-language study chain",
                     "1. Historical drifter segments were screened in the focused Mindoro window.",
                     f"2. The focused ranking subset compared `{recipe_family}` on accepted February-April starts.",
-                    f"3. `{historical_winner}` ranked best in the stored focused lane.",
+                    f"3. The focused ranking table places `{historical_winner}` at rank 1.",
                     f"4. `{selected_recipe}` is the official B1 recipe that the March 13 -> March 14 primary validation row inherits.",
                 ]
             )
@@ -337,6 +379,14 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     def _source_tables() -> None:
+        render_table(
+            "Diagnostic recipe summary, not winner ranking",
+            focused_summary,
+            download_name="phase1_recipe_summary.csv",
+            caption="Diagnostic view of the recipe family tested in the focused Mindoro provenance lane. It is sorted by focused rank when rank data is available, but the focused ranking table remains the authority for winner display.",
+            height=220,
+            export_mode=export_mode,
+        )
         render_table(
             "Focused loading audit",
             loading_audit,

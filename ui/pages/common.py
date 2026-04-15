@@ -331,20 +331,30 @@ def _status_summary_text(row: pd.Series) -> tuple[str, str]:
 
 def _figure_badges(row: pd.Series) -> list[str]:
     badges: list[str] = []
+    surface_key = _clean_text_value(row.get("surface_key", "")).lower()
+    if surface_key == "archive_only" or _clean_text_value(row.get("archive_only", "")).lower() == "true":
+        badges.append("Archive only")
+    elif surface_key == "legacy_support" or _clean_text_value(row.get("legacy_support", "")).lower() == "true":
+        badges.append("Legacy support")
+    elif surface_key == "comparator_support" or _clean_text_value(row.get("comparator_support", "")).lower() == "true":
+        badges.append("Comparator support")
+    elif surface_key == "thesis_main" or _clean_text_value(row.get("thesis_surface", "")).lower() == "true":
+        badges.append("Thesis-facing")
+
     scientific_flag = str(row.get("scientific_vs_display_only") or "").strip()
-    if scientific_flag:
+    if scientific_flag and _humanize(scientific_flag) not in badges:
         badges.append(_humanize(scientific_flag))
     primary_flag = str(row.get("primary_vs_secondary") or "").strip()
-    if primary_flag:
+    if primary_flag and _humanize(primary_flag) not in badges:
         badges.append(_humanize(primary_flag))
-    if str(row.get("comparator_only") or "").strip().lower() == "true":
+    if str(row.get("comparator_only") or "").strip().lower() == "true" and "Comparator-only" not in badges:
         badges.append("Comparator-only")
-    if str(row.get("support_only") or "").strip().lower() == "true":
+    if str(row.get("support_only") or "").strip().lower() == "true" and "Support-only" not in badges:
         badges.append("Support-only")
-    if str(row.get("optional_context_only") or "").strip().lower() == "true":
+    if str(row.get("optional_context_only") or "").strip().lower() == "true" and "Context-only" not in badges:
         badges.append("Context-only")
     role = str(row.get("status_role") or "").strip()
-    if role:
+    if role and _humanize(role) not in badges:
         badges.append(_humanize(role))
     return badges[:4]
 

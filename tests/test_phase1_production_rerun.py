@@ -1641,6 +1641,10 @@ class Phase1ProductionRerunTests(unittest.TestCase):
                 ["phase1_monthly_drifter_store", "phase1_monthly_forcing_store"],
             )
             self.assertIn("staged_legacy_cache", inventory_df["status"].tolist())
+            self.assertIn("reuse_action", inventory_df.columns)
+            self.assertIn("provider", inventory_df.columns)
+            self.assertIn("source_url", inventory_df.columns)
+            self.assertTrue(service.paths["local_input_inventory_json"].exists())
 
     def test_apply_wind_cf_metadata_sets_reader_friendly_standard_names(self):
         ds = xr.Dataset(

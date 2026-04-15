@@ -46,6 +46,7 @@ from src.utils.forcing_outage_policy import (
     resolve_forcing_source_budget_seconds,
 )
 from src.utils.io import find_current_vars, find_wave_vars, find_wind_vars
+from src.utils.local_input_store import PERSISTENT_LOCAL_INPUT_STORE, persistent_local_input_dir
 from src.utils.startup_prompt_policy import input_cache_policy_force_refresh_enabled
 
 try:
@@ -56,7 +57,7 @@ except ImportError:  # pragma: no cover
 
 SCIENTIFIC_PHASE = "dwh_phase3c_scientific_forcing_ready"
 OUTPUT_DIR = Path("output") / CASE_ID / SCIENTIFIC_PHASE
-PREPARED_FORCING_DIR = OUTPUT_DIR / "prepared_forcing"
+PREPARED_FORCING_DIR = persistent_local_input_dir(CASE_ID, SCIENTIFIC_PHASE, "prepared_forcing")
 READER_CHECK_DIR = OUTPUT_DIR / "reader_check"
 
 HYCOM_GLBV31_OPENDAP_URL = "https://tds.hycom.org/thredds/dodsC/GLBv0.08/expt_53.X"
@@ -312,6 +313,10 @@ def _base_status_row(
         "dataset_product_id": dataset_product_id,
         "access_method": access_method,
         "local_file_path": str(local_file_path or ""),
+        "storage_tier": PERSISTENT_LOCAL_INPUT_STORE,
+        "reuse_action": "",
+        "validation_status": "",
+        "source_url": "",
         "variable_names_found": "",
         "actual_start_time_coverage_utc": "",
         "actual_end_time_coverage_utc": "",
@@ -350,9 +355,20 @@ def _blocked_status_row(
             "exact_reason_if_false": reason,
             "upstream_outage_detected": bool(upstream_outage_detected),
             "missing_forcing_factor": str(missing_forcing_factor or ""),
+            "validation_status": "not_validated",
         }
     )
     return row
+
+
+def _source_url_for_source_id(source_id: str) -> str:
+    mapping = {
+        "hycom": HYCOM_GLBV31_OPENDAP_URL,
+        "era5": "https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels",
+        "cmems_wave": "https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_WAV_001_032/description",
+        "cmems": "https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_PHY_001_030/description",
+    }
+    return str(mapping.get(str(source_id), ""))
 
 
 def validate_prepared_forcing_file(
@@ -372,6 +388,7 @@ def validate_prepared_forcing_file(
                 "scientific_ready": False,
                 "source_is_smoke_only": True,
                 "exact_reason_if_false": "prepared file path points to smoke/non-scientific forcing",
+                "validation_status": "invalid:smoke_path",
             }
         )
         return row
@@ -381,6 +398,7 @@ def validate_prepared_forcing_file(
                 "reader_compatibility_status": "missing_file",
                 "scientific_ready": False,
                 "exact_reason_if_false": f"file does not exist: {path}",
+                "validation_status": "invalid:missing_file",
             }
         )
         return row
@@ -394,6 +412,7 @@ def validate_prepared_forcing_file(
                         "scientific_ready": False,
                         "source_is_smoke_only": True,
                         "exact_reason_if_false": "dataset attributes mark it as smoke-only forcing",
+                        "validation_status": "invalid:smoke_attrs",
                     }
                 )
                 return row
@@ -454,6 +473,7 @@ def validate_prepared_forcing_file(
             and row["reader_compatibility_status"] == "reader_opened_required_variables_exposed"
             and not row["source_is_smoke_only"]
         )
+        row["validation_status"] = "validated" if row["scientific_ready"] else "invalid"
         if not row["scientific_ready"] and not row["exact_reason_if_false"]:
             if not row["coverage_spans_required_window"]:
                 row["exact_reason_if_false"] = "actual time coverage does not span the required DWH May 20-23 window"
@@ -467,6 +487,7 @@ def validate_prepared_forcing_file(
                 "reader_compatibility_status": "validation_failed",
                 "scientific_ready": False,
                 "exact_reason_if_false": f"{type(exc).__name__}: {exc}",
+                "validation_status": f"invalid:{type(exc).__name__}",
             }
         )
     return row
@@ -623,6 +644,7 @@ def _budgeted_dwh_forcing_acquire(
         "forcing_factor": forcing_factor_id_for_source(source_id),
         "path": str(path),
         "acquisition_status": str(note),
+        "reuse_action": "reused_valid_local_store" if "reused_existing" in str(note) else "downloaded_new_file",
     }
 
 
@@ -740,8 +762,7 @@ def _prepare_forcing_sources(
     for source_role, provider, product_id, access_method, forcing_kind, source_id, acquire in attempts:
         base = _base_status_row(source_role, provider, product_id, access_method, "")
         if not downloads_enabled:
-            rows.append(
-                _blocked_status_row(
+            blocked = _blocked_status_row(
                     source_role,
                     provider,
                     product_id,
@@ -749,7 +770,8 @@ def _prepare_forcing_sources(
                     f"download attempts disabled by {DOWNLOAD_ENV}=0",
                     missing_forcing_factor=forcing_factor_id_for_source(source_id),
                 )
-            )
+            blocked["source_url"] = _source_url_for_source_id(source_id)
+            rows.append(blocked)
             continue
 
         record = run_budgeted_forcing_provider_call(
@@ -764,8 +786,7 @@ def _prepare_forcing_sources(
             forcing_factor=forcing_factor_id_for_source(source_id),
         )
         if record.get("status") in {"failed", "failed_remote_outage"}:
-            rows.append(
-                _blocked_status_row(
+            blocked = _blocked_status_row(
                     source_role,
                     provider,
                     product_id,
@@ -774,11 +795,12 @@ def _prepare_forcing_sources(
                     upstream_outage_detected=bool(record.get("upstream_outage_detected", False)),
                     missing_forcing_factor=forcing_factor_id_for_source(source_id),
                 )
-            )
-            rows[-1]["forcing_source_budget_seconds"] = record.get("budget_seconds")
-            rows[-1]["elapsed_seconds"] = record.get("elapsed_seconds")
-            rows[-1]["budget_exhausted"] = bool(record.get("budget_exhausted", False))
-            rows[-1]["failure_stage"] = str(record.get("failure_stage") or "")
+            blocked["forcing_source_budget_seconds"] = record.get("budget_seconds")
+            blocked["elapsed_seconds"] = record.get("elapsed_seconds")
+            blocked["budget_exhausted"] = bool(record.get("budget_exhausted", False))
+            blocked["failure_stage"] = str(record.get("failure_stage") or "")
+            blocked["source_url"] = _source_url_for_source_id(source_id)
+            rows.append(blocked)
             continue
         row = validate_prepared_forcing_file(
             Path(str(record.get("path") or "")),
@@ -794,6 +816,8 @@ def _prepare_forcing_sources(
         row["budget_exhausted"] = bool(record.get("budget_exhausted", False))
         row["failure_stage"] = str(record.get("failure_stage") or "")
         row["missing_forcing_factor"] = forcing_factor_id_for_source(source_id)
+        row["source_url"] = _source_url_for_source_id(source_id)
+        row["reuse_action"] = str(record.get("reuse_action") or "")
         rows.append(row)
 
     current_ready = any(row["source_role"] == "current" and row["scientific_ready"] for row in rows)
@@ -813,8 +837,7 @@ def _prepare_forcing_sources(
             forcing_factor=forcing_factor_id_for_source("cmems"),
         )
         if record.get("status") in {"failed", "failed_remote_outage"}:
-            rows.append(
-                _blocked_status_row(
+            blocked = _blocked_status_row(
                     "current_fallback",
                     provider,
                     CMEMS_PHY_PRODUCT_ID,
@@ -823,11 +846,12 @@ def _prepare_forcing_sources(
                     upstream_outage_detected=bool(record.get("upstream_outage_detected", False)),
                     missing_forcing_factor=forcing_factor_id_for_source("cmems"),
                 )
-            )
-            rows[-1]["forcing_source_budget_seconds"] = record.get("budget_seconds")
-            rows[-1]["elapsed_seconds"] = record.get("elapsed_seconds")
-            rows[-1]["budget_exhausted"] = bool(record.get("budget_exhausted", False))
-            rows[-1]["failure_stage"] = str(record.get("failure_stage") or "")
+            blocked["forcing_source_budget_seconds"] = record.get("budget_seconds")
+            blocked["elapsed_seconds"] = record.get("elapsed_seconds")
+            blocked["budget_exhausted"] = bool(record.get("budget_exhausted", False))
+            blocked["failure_stage"] = str(record.get("failure_stage") or "")
+            blocked["source_url"] = _source_url_for_source_id("cmems")
+            rows.append(blocked)
         else:
             row = validate_prepared_forcing_file(
                 Path(str(record.get("path") or "")),
@@ -843,10 +867,11 @@ def _prepare_forcing_sources(
             row["budget_exhausted"] = bool(record.get("budget_exhausted", False))
             row["failure_stage"] = str(record.get("failure_stage") or "")
             row["missing_forcing_factor"] = forcing_factor_id_for_source("cmems")
+            row["source_url"] = _source_url_for_source_id("cmems")
+            row["reuse_action"] = str(record.get("reuse_action") or "")
             rows.append(row)
     elif current_ready:
-        rows.append(
-            _blocked_status_row(
+        blocked = _blocked_status_row(
                 "current_fallback",
                 "Copernicus Marine",
                 CMEMS_PHY_PRODUCT_ID,
@@ -854,7 +879,8 @@ def _prepare_forcing_sources(
                 "not attempted because primary HYCOM current source is scientific-ready",
                 missing_forcing_factor=forcing_factor_id_for_source("cmems"),
             )
-        )
+        blocked["source_url"] = _source_url_for_source_id("cmems")
+        rows.append(blocked)
     return rows
 
 
@@ -1148,6 +1174,7 @@ def run_dwh_phase3c_scientific_forcing_ready() -> dict:
         f"- forcing_outage_policy: {forcing_outage_policy}",
         f"- forcing_source_budget_seconds: {forcing_source_budget_seconds}",
         f"- upstream_outage_detected: {upstream_outage_detected}",
+        f"- persistent_local_input_store: {PREPARED_FORCING_DIR}",
         f"- selected_current_source: {stack['current']['dataset_product_id'] if stack['current'] else 'none scientific-ready'}",
         f"- selected_wind_source: {stack['wind']['dataset_product_id'] if stack['wind'] else 'none scientific-ready'}",
         f"- selected_wave_source: {stack['wave']['dataset_product_id'] if stack['wave'] else 'none scientific-ready'}",
@@ -1200,6 +1227,7 @@ def run_dwh_phase3c_scientific_forcing_ready() -> dict:
         "reader_check_manifest": str(reader_manifest_json),
         "loading_audit_csv": str(loading_csv),
         "loading_audit_json": str(loading_json),
+        "persistent_local_input_store": str(PREPARED_FORCING_DIR),
         "forcing_bbox": bbox,
         "required_start_utc": required_start,
         "required_end_utc": required_end,

@@ -18,6 +18,8 @@ import yaml
 from src.core.case_context import get_case_context
 from src.helpers.scoring import GEOGRAPHIC_CRS, ScoringGridSpec
 from src.services.arcgis import clean_arcgis_geometries, compute_vector_area, compute_vector_centroid
+from src.utils.local_input_store import PERSISTENT_LOCAL_INPUT_STORE, persistent_local_input_dir, write_inventory
+from src.utils.startup_prompt_policy import input_cache_policy_force_refresh_enabled
 
 try:
     import geopandas as gpd
@@ -540,14 +542,42 @@ class Phase3CExternalCaseSetupService:
         self.cfg = _load_yaml(self.config_path)
         self.case_id = str(self.cfg.get("case_id") or self.case.run_name)
         self.output_dir = Path(output_dir or Path("output") / self.case_id / PHASE3C_DIR_NAME)
-        self.raw_dir = self.output_dir / "raw"
-        self.processed_dir = self.output_dir / "processed"
+        self.store_dir = persistent_local_input_dir(self.case_id, PHASE3C_DIR_NAME)
+        self.raw_dir = self.store_dir / "raw"
+        self.processed_dir = self.store_dir / "processed"
         self.timeout = timeout
         self.session = requests.Session()
+        self.local_input_inventory_csv = self.output_dir / "external_case_local_input_inventory.csv"
+        self.local_input_inventory_json = self.output_dir / "external_case_local_input_inventory.json"
 
     @property
     def feature_server_url(self) -> str:
         return str((self.cfg.get("arcgis") or {}).get("feature_server_url") or DWH_FEATURE_SERVER_ROOT).rstrip("/")
+
+    @staticmethod
+    def _force_refresh_enabled() -> bool:
+        return input_cache_policy_force_refresh_enabled()
+
+    def _layer_store_paths(self, layer: ExternalCaseLayer) -> dict[str, Path]:
+        prefix = f"layer_{int(layer.layer_id or 0):02d}_{layer.local_name}"
+        return {
+            "bundle_root": self.raw_dir,
+            "metadata": self.raw_dir / f"{prefix}_metadata.json",
+            "raw_geojson": self.raw_dir / f"{prefix}_raw.geojson",
+            "processed_vector": self.processed_dir / f"{prefix}_processed.gpkg",
+        }
+
+    def _validated_layer_store(self, layer: ExternalCaseLayer) -> tuple[bool, dict[str, Path], str]:
+        paths = self._layer_store_paths(layer)
+        required = [paths["metadata"], paths["raw_geojson"], paths["processed_vector"]]
+        missing = [str(path) for path in required if not path.exists() or path.stat().st_size <= 0]
+        if missing:
+            return False, paths, f"missing stored external-case inputs: {', '.join(missing)}"
+        try:
+            gpd.read_file(paths["processed_vector"])
+        except Exception as exc:
+            return False, paths, f"stored external-case vector could not be read: {exc}"
+        return True, paths, "validated stored external-case layer bundle"
 
     def run(self) -> dict:
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -570,7 +600,7 @@ class Phase3CExternalCaseSetupService:
         selected_layers = [layer for layer in configured_layers if layer.selected_for_phase3c]
         registry_paths = self._write_selected_layer_registry(configured_layers)
 
-        root_metadata, service_layers = self._fetch_service_root_metadata()
+        root_metadata, service_layers, root_input_record = self._fetch_service_root_metadata()
         taxonomy = self._build_source_taxonomy(service_layers, configured_layers)
         taxonomy_csv = self.output_dir / "external_case_source_taxonomy.csv"
         taxonomy_json = self.output_dir / "external_case_source_taxonomy.json"
@@ -582,6 +612,7 @@ class Phase3CExternalCaseSetupService:
             [item["raw_gdf"] for item in raw_layers.values() if item["layer"].use_in_scoring_grid_extent]
         )
         processed_layers = self._write_processed_layers(raw_layers, target_crs)
+        local_input_inventory = self._write_local_input_inventory(root_input_record, processed_layers)
 
         source_paths = {
             row["layer"].layer_key: str(row["processed_vector_path"])
@@ -665,6 +696,8 @@ class Phase3CExternalCaseSetupService:
                 "methodology_memo": str(memo_path),
                 "claims_guardrails": str(guardrails_path),
                 "feature_server_root_metadata": str(self.raw_dir / "feature_server_root_metadata.json"),
+                "external_case_local_input_inventory_csv": str(local_input_inventory["csv"]),
+                "external_case_local_input_inventory_json": str(local_input_inventory["json"]),
                 **{record["mask_kind"] + "_" + record["event_date"]: record["mask_path"] for record in mask_records},
             },
             "raw_feature_server_layer_count": len(service_layers),
@@ -687,6 +720,8 @@ class Phase3CExternalCaseSetupService:
             "forcing_manifest_json": forcing_json,
             "taxonomy_csv": taxonomy_csv,
             "taxonomy_json": taxonomy_json,
+            "local_input_inventory_csv": local_input_inventory["csv"],
+            "local_input_inventory_json": local_input_inventory["json"],
             "processing_report_csv": report_paths["csv"],
             "masks": mask_records,
             "grid_manifest_csv": grid_manifest_paths["csv"],
@@ -700,10 +735,40 @@ class Phase3CExternalCaseSetupService:
         response.raise_for_status()
         return response.json()
 
-    def _fetch_service_root_metadata(self) -> tuple[dict, list[dict]]:
+    def _fetch_service_root_metadata(self) -> tuple[dict, list[dict], dict[str, Any]]:
+        metadata_path = self.raw_dir / "feature_server_root_metadata.json"
+        if metadata_path.exists() and metadata_path.stat().st_size > 0 and not self._force_refresh_enabled():
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8") or "{}")
+            return (
+                metadata,
+                list(metadata.get("layers") or []),
+                {
+                    "store_scope": "phase3c_feature_server_root_metadata",
+                    "source_id": "feature_server_root",
+                    "provider": "DWH FeatureServer",
+                    "source_url": self.feature_server_url,
+                    "local_storage_path": str(metadata_path),
+                    "storage_tier": PERSISTENT_LOCAL_INPUT_STORE,
+                    "reuse_action": "reused_valid_local_store",
+                    "validation_status": "validated",
+                },
+            )
         metadata = self._get_json(self.feature_server_url, {"f": "json"})
-        _write_json(self.raw_dir / "feature_server_root_metadata.json", metadata)
-        return metadata, list(metadata.get("layers") or [])
+        _write_json(metadata_path, metadata)
+        return (
+            metadata,
+            list(metadata.get("layers") or []),
+            {
+                "store_scope": "phase3c_feature_server_root_metadata",
+                "source_id": "feature_server_root",
+                "provider": "DWH FeatureServer",
+                "source_url": self.feature_server_url,
+                "local_storage_path": str(metadata_path),
+                "storage_tier": PERSISTENT_LOCAL_INPUT_STORE,
+                "reuse_action": "force_refreshed_file" if self._force_refresh_enabled() else "downloaded_new_file",
+                "validation_status": "validated",
+            },
+        )
 
     def _fetch_selected_layers(self, selected_layers: list[ExternalCaseLayer]) -> dict[int, dict]:
         raw_layers: dict[int, dict] = {}
@@ -712,6 +777,26 @@ class Phase3CExternalCaseSetupService:
                 continue
             metadata_url = f"{self.feature_server_url}/{layer.layer_id}"
             query_url = f"{metadata_url}/query"
+            valid_store, store_paths, validation_note = self._validated_layer_store(layer)
+            if valid_store and not self._force_refresh_enabled():
+                metadata = json.loads(store_paths["metadata"].read_text(encoding="utf-8") or "{}")
+                payload = json.loads(store_paths["raw_geojson"].read_text(encoding="utf-8") or "{}")
+                raw_gdf = _raw_payload_to_gdf(payload)
+                if raw_gdf.empty:
+                    raise RuntimeError(f"DWH FeatureServer layer {layer.layer_id} stored payload contains no features.")
+                raw_layers[layer.layer_id] = {
+                    "layer": layer,
+                    "metadata": metadata,
+                    "payload": payload,
+                    "raw_gdf": raw_gdf,
+                    "metadata_path": store_paths["metadata"],
+                    "raw_geojson_path": store_paths["raw_geojson"],
+                    "processed_vector_path": store_paths["processed_vector"],
+                    "reuse_action": "reused_valid_local_store",
+                    "validation_status": validation_note,
+                }
+                continue
+
             metadata = self._get_json(metadata_url, {"f": "json"})
             payload = self._get_json(
                 query_url,
@@ -723,9 +808,8 @@ class Phase3CExternalCaseSetupService:
                     "f": "geojson",
                 },
             )
-            prefix = f"layer_{layer.layer_id:02d}_{layer.local_name}"
-            metadata_path = self.raw_dir / f"{prefix}_metadata.json"
-            raw_geojson_path = self.raw_dir / f"{prefix}_raw.geojson"
+            metadata_path = store_paths["metadata"]
+            raw_geojson_path = store_paths["raw_geojson"]
             _write_json(metadata_path, metadata)
             _write_json(raw_geojson_path, payload)
             raw_gdf = _raw_payload_to_gdf(payload)
@@ -738,6 +822,9 @@ class Phase3CExternalCaseSetupService:
                 "raw_gdf": raw_gdf,
                 "metadata_path": metadata_path,
                 "raw_geojson_path": raw_geojson_path,
+                "processed_vector_path": store_paths["processed_vector"],
+                "reuse_action": "force_refreshed_file" if self._force_refresh_enabled() else "downloaded_new_file",
+                "validation_status": "validated_remote_arcgis_bundle",
             }
         return raw_layers
 
@@ -745,6 +832,14 @@ class Phase3CExternalCaseSetupService:
         processed_layers: dict[int, dict] = {}
         for layer_id, item in raw_layers.items():
             layer = item["layer"]
+            if str(item.get("reuse_action") or "") == "reused_valid_local_store":
+                processed_gdf = gpd.read_file(item["processed_vector_path"])
+                processed_layers[layer_id] = {
+                    **item,
+                    "processed_gdf": processed_gdf,
+                    "qa": {},
+                }
+                continue
             processed_gdf, qa = clean_arcgis_geometries(
                 raw_gdf=item["raw_gdf"],
                 expected_geometry_type=layer.geometry_type,
@@ -754,7 +849,7 @@ class Phase3CExternalCaseSetupService:
             if processed_gdf.empty:
                 raise RuntimeError(f"DWH layer {layer_id} produced no valid processed geometries.")
 
-            processed_path = self.processed_dir / f"layer_{layer_id:02d}_{layer.local_name}_processed.gpkg"
+            processed_path = Path(str(item["processed_vector_path"]))
             if processed_path.exists():
                 processed_path.unlink()
             _sanitize_vector_columns_for_gpkg(processed_gdf).to_file(processed_path, driver="GPKG")
@@ -765,6 +860,37 @@ class Phase3CExternalCaseSetupService:
                 "qa": qa,
             }
         return processed_layers
+
+    def _write_local_input_inventory(
+        self,
+        root_input_record: dict[str, Any],
+        processed_layers: dict[int, dict],
+    ) -> dict[str, Path]:
+        rows: list[dict[str, Any]] = [dict(root_input_record or {})]
+        for item in processed_layers.values():
+            layer = item["layer"]
+            rows.append(
+                {
+                    "store_scope": "phase3c_selected_layer_bundle",
+                    "source_id": f"layer_{int(layer.layer_id or 0):02d}",
+                    "provider": "DWH FeatureServer",
+                    "source_url": f"{self.feature_server_url}/{int(layer.layer_id or 0)}",
+                    "local_storage_path": str(item["processed_vector_path"]),
+                    "raw_geojson_path": str(item["raw_geojson_path"]),
+                    "metadata_path": str(item["metadata_path"]),
+                    "storage_tier": PERSISTENT_LOCAL_INPUT_STORE,
+                    "reuse_action": str(item.get("reuse_action") or ""),
+                    "validation_status": str(item.get("validation_status") or ""),
+                    "layer_key": str(layer.layer_key),
+                    "layer_name": str(layer.name),
+                    "event_date": str(layer.event_date),
+                }
+            )
+        return write_inventory(
+            self.local_input_inventory_csv,
+            rows,
+            json_path=self.local_input_inventory_json,
+        )
 
     def _build_shoreline_masks(self, spec: ScoringGridSpec) -> dict:
         from src.services.shoreline_mask import GSHHG_SOURCE_URL, GSHHG_SOURCE_VERSION, build_shoreline_mask_artifacts

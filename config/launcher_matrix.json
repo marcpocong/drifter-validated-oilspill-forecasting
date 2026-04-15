@@ -34,7 +34,7 @@
       "service_profile": "pipeline_only",
       "rerun_cost": "expensive",
       "safe_default": false,
-      "notes": "Use only when an intentional rerun of the main Mindoro spill-case validation chain is desired. The separate phase1_mindoro_focus_pre_spill_2016_2023 Mindoro-specific provenance lane stays outside this entry.",
+      "notes": "Use only when an intentional rerun of the main Mindoro spill-case validation chain is desired. The separate phase1_mindoro_focus_pre_spill_2016_2023 Mindoro-specific provenance lane stays outside this entry. Reruns now prefer validated persistent local inputs under data/... or data/local_input_store/... and only refetch when INPUT_CACHE_POLICY=force_refresh is selected.",
       "steps": [
         {
           "phase": "prep",
@@ -83,7 +83,7 @@
       "service_profile": "pipeline_only",
       "rerun_cost": "expensive",
       "safe_default": false,
-      "notes": "Canonical B1 builder. This does not delete or relabel the repo-preserved archive-only March-family rows, and the same-case A comparator-support lane stays separate and comparator-only.",
+      "notes": "Canonical B1 builder. This does not delete or relabel the repo-preserved archive-only March-family rows, and the same-case A comparator-support lane stays separate and comparator-only. Public-observation and forcing reruns reuse validated persistent local store files before any remote refetch unless INPUT_CACHE_POLICY=force_refresh is selected.",
       "steps": [
         {
           "phase": "phase3b_extended_public",
@@ -107,7 +107,7 @@
       "service_profile": "pipeline_only",
       "rerun_cost": "expensive",
       "safe_default": false,
-      "notes": "Scientific rerun only. This broader regional lane is preserved for reference/governance context and does not overwrite config/phase1_baseline_selection.yaml, does not auto-run phase1_audit or phase5_sync, and fails hard by default if a forcing-provider outage removes part of the official recipe family.",
+      "notes": "Scientific rerun only. This broader regional lane is preserved for reference/governance context and does not overwrite config/phase1_baseline_selection.yaml, does not auto-run phase1_audit or phase5_sync, and fails hard by default if a forcing-provider outage removes part of the official recipe family. Its monthly drifter and forcing inputs persist under data/historical_validation_inputs/... and reruns reuse that validated local store before any remote refetch unless INPUT_CACHE_POLICY=force_refresh is selected.",
       "steps": [
         {
           "phase": "phase1_production_rerun",
@@ -145,7 +145,7 @@
       "service_profile": "mixed_pipeline_and_gnome",
       "rerun_cost": "expensive",
       "safe_default": false,
-      "notes": "Separate external transfer-validation story only. Mindoro remains the main Philippine thesis case; DWH observed masks remain truth; PyGNOME remains comparator-only; current frozen stack is HYCOM GOFS 3.1 + ERA5 + CMEMS wave/Stokes; forcing-readiness stays strict by default unless FORCING_OUTAGE_POLICY=continue_degraded is set explicitly.",
+      "notes": "Separate external transfer-validation story only. Mindoro remains the main Philippine thesis case; DWH observed masks remain truth; PyGNOME remains comparator-only; current frozen stack is HYCOM GOFS 3.1 + ERA5 + CMEMS wave/Stokes; forcing-readiness stays strict by default unless FORCING_OUTAGE_POLICY=continue_degraded is set explicitly. DWH case inputs and scientific forcing now persist under data/local_input_store/... and reruns reuse validated local files before any remote refetch unless INPUT_CACHE_POLICY=force_refresh is selected.",
       "steps": [
         {
           "phase": "phase3c_external_case_setup",
@@ -184,7 +184,7 @@
       "service_profile": "mixed_pipeline_and_gnome",
       "rerun_cost": "expensive",
       "safe_default": false,
-      "notes": "These tracks are informative and reportable as support material, but the promoted B1 row now has its own scientific launcher entry. Forcing-only outages may skip the affected support branch with explicit degraded-mode honesty fields.",
+      "notes": "These tracks are informative and reportable as support material, but the promoted B1 row now has its own scientific launcher entry. Forcing-only outages may skip the affected support branch with explicit degraded-mode honesty fields. Public-observation and extended-forcing support inputs now persist under data/local_input_store/... and reruns reuse validated local files before any remote refetch unless INPUT_CACHE_POLICY=force_refresh is selected.",
       "steps": [
         {
           "phase": "public_obs_appendix",

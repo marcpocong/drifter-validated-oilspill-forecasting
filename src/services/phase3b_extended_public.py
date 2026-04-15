@@ -29,6 +29,8 @@ from src.services.phase3b_multidate_public import (
     _is_modeled_forecast_row,
 )
 from src.utils.io import get_case_output_dir, get_forcing_files, resolve_recipe_selection
+from src.utils.local_input_store import PERSISTENT_LOCAL_INPUT_STORE, persistent_local_input_dir
+from src.utils.startup_prompt_policy import input_cache_policy_force_refresh_enabled
 
 try:
     import geopandas as gpd
@@ -158,16 +160,21 @@ class Phase3BExtendedPublicService:
         self.appendix_dir = self.case_output_dir / "public_obs_appendix"
         self.multidate_dir = self.case_output_dir / "phase3b_multidate_public"
         self.output_dir = self.case_output_dir / EXTENDED_DIR_NAME
-        self.raw_dir = self.output_dir / "raw"
-        self.processed_dir = self.output_dir / "processed_vectors"
-        self.mask_dir = self.output_dir / "accepted_obs_masks"
+        self.store_dir = persistent_local_input_dir(self.case.run_name, EXTENDED_DIR_NAME)
+        self.raw_dir = self.store_dir / "raw"
+        self.processed_dir = self.store_dir / "processed_vectors"
+        self.mask_dir = self.store_dir / "accepted_obs_masks"
         self.precheck_dir = self.output_dir / "precheck"
-        for path in (self.output_dir, self.raw_dir, self.processed_dir, self.mask_dir, self.precheck_dir):
+        for path in (self.output_dir, self.store_dir, self.raw_dir, self.processed_dir, self.mask_dir, self.precheck_dir):
             path.mkdir(parents=True, exist_ok=True)
         self.grid = GridBuilder()
         self.sea_mask = load_sea_mask_array(self.grid.spec)
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": "mindoro-phase3b-extended-public/1.0"})
+
+    @staticmethod
+    def _force_refresh_enabled() -> bool:
+        return input_cache_policy_force_refresh_enabled()
 
     def run(self) -> dict:
         strict_before = self._strict_hashes()
@@ -177,11 +184,15 @@ class Phase3BExtendedPublicService:
         accepted = acceptance[acceptance["accepted_for_extended_quantitative"]].copy()
 
         inventory_path = self.output_dir / "extended_public_obs_inventory.csv"
+        inventory_json_path = self.output_dir / "extended_public_obs_inventory.json"
         registry_path = self.output_dir / "extended_public_obs_acceptance_registry.csv"
+        registry_json_path = self.output_dir / "extended_public_obs_acceptance_registry.json"
         inventory.to_csv(inventory_path, index=False)
+        _write_json(inventory_json_path, inventory.to_dict(orient="records"))
 
         if accepted.empty:
             acceptance.to_csv(registry_path, index=False)
+            _write_json(registry_json_path, acceptance.to_dict(orient="records"))
             not_possible = self._write_not_possible(
                 accepted_dates=[],
                 reasons=["No beyond-horizon public layers satisfied the quantitative observation-derived source rules."],
@@ -201,6 +212,7 @@ class Phase3BExtendedPublicService:
 
         processed = self._archive_and_rasterize_accepted(accepted)
         processed.to_csv(registry_path, index=False)
+        _write_json(registry_json_path, processed.to_dict(orient="records"))
         accepted_dates = sorted(processed.loc[processed["mask_exists"], "obs_date"].astype(str).unique().tolist())
         latest_date = accepted_dates[-1] if accepted_dates else ""
         forcing_check = self._forcing_preflight(latest_date)
@@ -221,8 +233,37 @@ class Phase3BExtendedPublicService:
             forcing_check=forcing_check,
             strict_before=strict_before,
             multidate_before=multidate_before,
-        )
+            )
         return self._result(accepted_dates, not_possible, manifest)
+
+    def _store_bundle_paths(self, source_key: str) -> dict[str, Path]:
+        raw_dir = self.raw_dir / source_key
+        return {
+            "bundle_root": raw_dir,
+            "item_metadata": raw_dir / f"{source_key}_item_metadata.json",
+            "layer_metadata": raw_dir / f"{source_key}_layer_metadata.json",
+            "raw_geojson": raw_dir / f"{source_key}_raw.geojson",
+            "processed_vector": self.processed_dir / f"{source_key}.gpkg",
+            "mask": self.mask_dir / f"{source_key}.tif",
+        }
+
+    def _validated_store_bundle(self, source_key: str) -> tuple[bool, dict[str, Path], str]:
+        paths = self._store_bundle_paths(source_key)
+        required = [
+            paths["item_metadata"],
+            paths["layer_metadata"],
+            paths["raw_geojson"],
+            paths["processed_vector"],
+            paths["mask"],
+        ]
+        missing = [str(path) for path in required if not path.exists() or path.stat().st_size <= 0]
+        if missing:
+            return False, paths, f"missing stored extended-public inputs: {', '.join(missing)}"
+        try:
+            gpd.read_file(paths["processed_vector"])
+        except Exception as exc:
+            return False, paths, f"stored extended-public vector could not be read: {exc}"
+        return True, paths, "validated stored extended-public input bundle"
 
     def _load_inventory(self) -> pd.DataFrame:
         inventory_path = self.appendix_dir / "public_obs_inventory.csv"
@@ -254,6 +295,10 @@ class Phase3BExtendedPublicService:
                     "scoreability_note": "",
                     "processing_status": "pending" if accepted else "not_accepted",
                     "processing_error": "",
+                    "storage_tier": PERSISTENT_LOCAL_INPUT_STORE,
+                    "persistent_store_bundle_root": "",
+                    "reuse_action": "",
+                    "validation_status": "",
                 }
             )
         return pd.DataFrame(rows)
@@ -274,15 +319,55 @@ class Phase3BExtendedPublicService:
                 if not service_url or layer_id is None:
                     raise ValueError("accepted source is missing service_url or layer_id")
 
+                valid, store_paths, validation_note = self._validated_store_bundle(source_key)
+                if valid and not self._force_refresh_enabled():
+                    raw_geojson_path = store_paths["raw_geojson"]
+                    item_meta_path = store_paths["item_metadata"]
+                    layer_meta_path = store_paths["layer_metadata"]
+                    processed_path = store_paths["processed_vector"]
+                    mask_path = store_paths["mask"]
+                    raw_geojson = json.loads(raw_geojson_path.read_text(encoding="utf-8"))
+                    cleaned_gdf = gpd.read_file(processed_path)
+                    stored_nonzero = pd.to_numeric(record.get("raster_nonzero_cells"), errors="coerce")
+                    raster_nonzero_cells = int(stored_nonzero) if pd.notna(stored_nonzero) else 1
+                    scoreable_after_rasterization = raster_nonzero_cells > 0
+                    scoreability_note = ""
+                    record.update(
+                        {
+                            "source_key": source_key,
+                            "extended_raw_geojson": str(raw_geojson_path),
+                            "extended_item_metadata": str(item_meta_path),
+                            "extended_layer_metadata": str(layer_meta_path),
+                            "extended_processed_vector": str(processed_path),
+                            "extended_obs_mask": str(mask_path),
+                            "raw_feature_count": int(len(raw_geojson.get("features") or [])),
+                            "processed_feature_count": int(len(cleaned_gdf)),
+                            "raw_crs": "",
+                            "processed_crs": str(cleaned_gdf.crs or self.grid.crs),
+                            "raster_nonzero_cells": raster_nonzero_cells,
+                            "scoreable_after_rasterization": bool(scoreable_after_rasterization),
+                            "scoreability_note": scoreability_note,
+                            "mask_exists": bool(mask_path.exists()),
+                            "processing_status": "processed",
+                            "processing_error": "",
+                            "processing_notes": validation_note,
+                            "persistent_store_bundle_root": str(store_paths["bundle_root"]),
+                            "reuse_action": "reused_valid_local_store",
+                            "validation_status": validation_note,
+                        }
+                    )
+                    processed_rows.append(record)
+                    continue
+
                 item_meta = self._fetch_arcgis_item(item_id) if item_id else {}
                 layer_meta = self._fetch_service_layer(service_url, layer_id)
                 raw_geojson = self._fetch_geojson(service_url, layer_id)
 
-                raw_dir = self.raw_dir / source_key
+                raw_dir = store_paths["bundle_root"]
                 raw_dir.mkdir(parents=True, exist_ok=True)
-                item_meta_path = raw_dir / f"{source_key}_item_metadata.json"
-                layer_meta_path = raw_dir / f"{source_key}_layer_metadata.json"
-                raw_geojson_path = raw_dir / f"{source_key}_raw.geojson"
+                item_meta_path = store_paths["item_metadata"]
+                layer_meta_path = store_paths["layer_metadata"]
+                raw_geojson_path = store_paths["raw_geojson"]
                 _write_json(item_meta_path, item_meta)
                 _write_json(layer_meta_path, layer_meta)
                 _write_json(raw_geojson_path, raw_geojson)
@@ -305,14 +390,14 @@ class Phase3BExtendedPublicService:
                 if cleaned_gdf.empty:
                     raise ValueError("no valid polygon geometry remained after cleaning")
 
-                processed_path = self.processed_dir / f"{source_key}.gpkg"
+                processed_path = store_paths["processed_vector"]
                 if processed_path.exists():
                     processed_path.unlink()
                 _sanitize_vector_columns_for_gpkg(cleaned_gdf).to_file(processed_path, driver="GPKG")
 
                 mask = rasterize_observation_layer(cleaned_gdf, self.grid)
                 mask = apply_ocean_mask(mask, sea_mask=self.sea_mask, fill_value=0.0)
-                mask_path = self.mask_dir / f"{source_key}.tif"
+                mask_path = store_paths["mask"]
                 save_raster(self.grid, mask.astype(np.float32), mask_path)
 
                 raster_nonzero_cells = int(np.count_nonzero(mask > 0))
@@ -343,6 +428,9 @@ class Phase3BExtendedPublicService:
                         "processing_status": "processed",
                         "processing_error": "",
                         "processing_notes": " | ".join(part for part in (notes, qa_notes, scoreability_note) if part),
+                        "persistent_store_bundle_root": str(store_paths["bundle_root"]),
+                        "reuse_action": "force_refreshed_file" if self._force_refresh_enabled() else "downloaded_new_file",
+                        "validation_status": "validated_remote_arcgis_bundle",
                     }
                 )
             except Exception as exc:
@@ -718,7 +806,9 @@ class Phase3BExtendedPublicService:
             "forcing_preflight": forcing_check,
             "artifacts": {
                 "extended_public_obs_inventory": str(inventory_path),
+                "extended_public_obs_inventory_json": str(inventory_path.with_suffix(".json")),
                 "extended_public_obs_acceptance_registry": str(registry_path),
+                "extended_public_obs_acceptance_registry_json": str(registry_path.with_suffix(".json")),
                 "not_possible_report": str(not_possible_path),
                 "forcing_preflight_csv": forcing_check.get("csv_path", ""),
                 "forcing_preflight_json": forcing_check.get("json_path", ""),

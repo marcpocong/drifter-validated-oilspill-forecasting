@@ -30,7 +30,13 @@ from src.utils.forcing_outage_policy import (
     resolve_forcing_outage_policy,
     source_id_for_recipe_component,
 )
+from src.utils.local_input_store import (
+    PERSISTENT_LOCAL_INPUT_STORE,
+    persistent_local_input_dir,
+    stage_store_file,
+)
 from src.utils.io import get_case_output_dir, model_dir_complete_for_recipe, resolve_recipe_selection, resolve_spill_origin
+from src.utils.startup_prompt_policy import input_cache_policy_force_refresh_enabled
 
 try:
     import matplotlib.pyplot as plt
@@ -210,7 +216,8 @@ class Phase3BExtendedPublicScoredService:
         self.obs_union_dir = self.output_dir / "date_union_obs_masks"
         self.precheck_dir = self.output_dir / "precheck"
         self.forcing_dir = self.output_dir / "forcing"
-        for path in (self.forecast_composite_dir, self.obs_union_dir, self.precheck_dir, self.forcing_dir):
+        self.persistent_forcing_dir = persistent_local_input_dir(self.case.run_name, EXTENDED_SCORED_DIR_NAME, "forcing")
+        for path in (self.forecast_composite_dir, self.obs_union_dir, self.precheck_dir, self.forcing_dir, self.persistent_forcing_dir):
             path.mkdir(parents=True, exist_ok=True)
         self.grid = GridBuilder()
         self.sea_mask = load_sea_mask_array(self.grid.spec)
@@ -219,6 +226,13 @@ class Phase3BExtendedPublicScoredService:
         self.window = resolve_short_extended_window()
         self.model_run_name = f"{self.case.run_name}/{EXTENDED_SCORED_DIR_NAME}/model_run"
         self.model_output_dir = get_case_output_dir(self.model_run_name)
+
+    @staticmethod
+    def _force_refresh_enabled() -> bool:
+        return input_cache_policy_force_refresh_enabled()
+
+    def _persistent_forcing_store_dir(self) -> Path:
+        return getattr(self, "persistent_forcing_dir", self.forcing_dir)
 
     def run(self) -> dict:
         strict_before = self._strict_hashes()
@@ -350,6 +364,8 @@ class Phase3BExtendedPublicScoredService:
         return unique
 
     def _gfs_cache_ready_record(self, gfs_path: Path) -> dict[str, Any] | None:
+        if self._force_refresh_enabled():
+            return None
         required_start, required_end = self._required_gfs_time_bounds()
         for candidate in self._candidate_gfs_cache_paths(gfs_path):
             inspection = _forcing_time_and_vars(
@@ -372,6 +388,12 @@ class Phase3BExtendedPublicScoredService:
                 "source_system": "existing_local_cache",
                 "source_tier": "staged",
                 "staged_from": str(candidate),
+                "provider": "NOAA GFS archive",
+                "source_url": str(candidate) if candidate == gfs_path else "local persistent input store",
+                "storage_tier": PERSISTENT_LOCAL_INPUT_STORE,
+                "local_storage_path": str(gfs_path),
+                "reuse_action": "reused_valid_local_store",
+                "validation_status": "validated",
                 "requested_start_utc": inspection["required_start_utc"],
                 "requested_end_utc": inspection["required_end_utc"],
                 "cache_time_start_utc": inspection["time_start_utc"],
@@ -401,7 +423,7 @@ class Phase3BExtendedPublicScoredService:
                     start_time=required_start,
                     end_time=required_end,
                     output_path=gfs_path,
-                    scratch_dir=self.forcing_dir,
+                    scratch_dir=self._persistent_forcing_store_dir(),
                     budget_seconds=budget_seconds,
                 )
                 or {}
@@ -409,6 +431,8 @@ class Phase3BExtendedPublicScoredService:
             record.setdefault("status", "downloaded")
             record["source_system"] = "ncei_thredds_archive"
             record["source_tier"] = "primary"
+            record["provider"] = "NOAA GFS archive"
+            record["source_url"] = "https://www.ncei.noaa.gov/products/weather-climate-models/global-forecast"
         except Exception as primary_exc:
             primary_failure = f"{type(primary_exc).__name__}: {primary_exc}"
             primary_outage = service._is_remote_outage_error(primary_exc)
@@ -418,7 +442,7 @@ class Phase3BExtendedPublicScoredService:
                         start_time=required_start,
                         end_time=required_end,
                         output_path=gfs_path,
-                        scratch_dir=self.forcing_dir,
+                        scratch_dir=self._persistent_forcing_store_dir(),
                         budget_seconds=budget_seconds,
                     )
                     or {}
@@ -427,6 +451,8 @@ class Phase3BExtendedPublicScoredService:
                 record["source_system"] = "ucar_gdex_d084001"
                 record["source_tier"] = "secondary"
                 record["primary_failure"] = primary_failure
+                record["provider"] = "UCAR GDEx"
+                record["source_url"] = "https://gdex.ucar.edu/datasets/d084001/"
             except Exception as secondary_exc:
                 secondary_outage = service._is_remote_outage_error(secondary_exc)
                 gfs_path.unlink(missing_ok=True)
@@ -450,6 +476,10 @@ class Phase3BExtendedPublicScoredService:
         record["source_id"] = "gfs"
         record["forcing_factor"] = gfs_path.name
         record["upstream_outage_detected"] = False
+        record["storage_tier"] = PERSISTENT_LOCAL_INPUT_STORE
+        record["local_storage_path"] = str(gfs_path)
+        record["reuse_action"] = "downloaded_new_file"
+        record["validation_status"] = "validated"
         record["requested_start_utc"] = _iso_z(required_start)
         record["requested_end_utc"] = _iso_z(required_end)
         record["primary_failure"] = str(record.get("primary_failure") or primary_failure)
@@ -476,7 +506,7 @@ class Phase3BExtendedPublicScoredService:
             raise RuntimeError(f"Recipe {recipe_name} is not defined in config/recipes.yaml.")
 
         service = DataIngestionService()
-        service.forcing_dir = self.forcing_dir
+        service.forcing_dir = self._persistent_forcing_store_dir()
         service.forcing_dir.mkdir(parents=True, exist_ok=True)
         service.configure_explicit_download_window(
             start_date=self.window.download_start_date,
@@ -487,6 +517,9 @@ class Phase3BExtendedPublicScoredService:
         current_file = str(recipe["currents_file"])
         wind_file = str(recipe["wind_file"])
         wave_file = str(recipe.get("wave_file") or "")
+        store_currents_path = service.forcing_dir / current_file
+        store_wind_path = service.forcing_dir / wind_file
+        store_wave_path = service.forcing_dir / wave_file if wave_file else None
 
         current_source_id = source_id_for_recipe_component(forcing_kind="current", filename=current_file)
         downloads["currents"] = service.download_required_forcing_record(current_source_id)
@@ -523,7 +556,7 @@ class Phase3BExtendedPublicScoredService:
         if wind_file.startswith("gfs"):
             downloads["wind"] = self._download_required_gfs_wind(
                 service,
-                gfs_path=self.forcing_dir / wind_file,
+                gfs_path=store_wind_path,
             )
             if downloads["wind"]["status"] not in {"downloaded", "cached", "reused_local_file"}:
                 if (
@@ -621,13 +654,20 @@ class Phase3BExtendedPublicScoredService:
 
         return {
             "recipe": recipe_name,
-            "currents": self.forcing_dir / current_file,
-            "wind": self.forcing_dir / wind_file,
-            "wave": self.forcing_dir / wave_file if wave_file else None,
+            "currents": self._stage_prepared_forcing_output(store_currents_path, self.forcing_dir / current_file),
+            "wind": self._stage_prepared_forcing_output(store_wind_path, self.forcing_dir / wind_file),
+            "wave": self._stage_prepared_forcing_output(store_wave_path, self.forcing_dir / wave_file) if wave_file else None,
             "downloads": downloads,
             "duration_hours": recipe.get("duration_hours", 72),
             "time_step_minutes": recipe.get("time_step_minutes", 60),
         }
+
+    def _stage_prepared_forcing_output(self, store_path: Path | None, stage_path: Path) -> Path | None:
+        if store_path is None:
+            return None
+        if store_path.exists():
+            stage_store_file(store_path, stage_path)
+        return stage_path
 
     def _write_download_failure_manifest(
         self,
@@ -679,21 +719,44 @@ class Phase3BExtendedPublicScoredService:
     def _write_forcing_window_manifest(self, recipe_name: str, forcing_paths: dict) -> dict:
         required_start = _normalize_utc(self.window.required_forcing_start_utc)
         required_end = _normalize_utc(self.window.required_forcing_end_utc)
-        rows = [
-            {
-                "forcing_kind": "current",
-                **_forcing_time_and_vars(Path(forcing_paths["currents"]), ["uo", "vo"], required_start, required_end),
-            },
-            {
-                "forcing_kind": "wind",
-                **_forcing_time_and_vars(Path(forcing_paths["wind"]), ["x_wind", "y_wind"], required_start, required_end),
-            },
-        ]
+        download_rows = forcing_paths.get("downloads") or {}
+        rows = []
+        current_row = {
+            "forcing_kind": "current",
+            **_forcing_time_and_vars(Path(forcing_paths["currents"]), ["uo", "vo"], required_start, required_end),
+            "provider": str((download_rows.get("currents") or {}).get("provider") or ""),
+            "source_url": str((download_rows.get("currents") or {}).get("source_url") or ""),
+            "local_storage_path": str((download_rows.get("currents") or {}).get("local_storage_path") or Path(forcing_paths["currents"])),
+            "staged_output_path": str(forcing_paths["currents"]),
+            "storage_tier": str((download_rows.get("currents") or {}).get("storage_tier") or PERSISTENT_LOCAL_INPUT_STORE),
+            "reuse_action": str((download_rows.get("currents") or {}).get("reuse_action") or ""),
+            "validation_status": str((download_rows.get("currents") or {}).get("validation_status") or ""),
+        }
+        rows.append(current_row)
+        wind_row = {
+            "forcing_kind": "wind",
+            **_forcing_time_and_vars(Path(forcing_paths["wind"]), ["x_wind", "y_wind"], required_start, required_end),
+            "provider": str((download_rows.get("wind") or {}).get("provider") or ""),
+            "source_url": str((download_rows.get("wind") or {}).get("source_url") or ""),
+            "local_storage_path": str((download_rows.get("wind") or {}).get("local_storage_path") or Path(forcing_paths["wind"])),
+            "staged_output_path": str(forcing_paths["wind"]),
+            "storage_tier": str((download_rows.get("wind") or {}).get("storage_tier") or PERSISTENT_LOCAL_INPUT_STORE),
+            "reuse_action": str((download_rows.get("wind") or {}).get("reuse_action") or ""),
+            "validation_status": str((download_rows.get("wind") or {}).get("validation_status") or ""),
+        }
+        rows.append(wind_row)
         if forcing_paths.get("wave"):
             rows.append(
                 {
                     "forcing_kind": "wave",
                     **_forcing_time_and_vars(Path(forcing_paths["wave"]), ["VHM0", "VSDX", "VSDY"], required_start, required_end),
+                    "provider": str((download_rows.get("wave") or {}).get("provider") or ""),
+                    "source_url": str((download_rows.get("wave") or {}).get("source_url") or ""),
+                    "local_storage_path": str((download_rows.get("wave") or {}).get("local_storage_path") or Path(forcing_paths["wave"])),
+                    "staged_output_path": str(forcing_paths["wave"]),
+                    "storage_tier": str((download_rows.get("wave") or {}).get("storage_tier") or PERSISTENT_LOCAL_INPUT_STORE),
+                    "reuse_action": str((download_rows.get("wave") or {}).get("reuse_action") or ""),
+                    "validation_status": str((download_rows.get("wave") or {}).get("validation_status") or ""),
                 }
             )
         payload = {

@@ -47,6 +47,8 @@ from src.utils.io import (
     resolve_recipe_selection,
     resolve_spill_origin,
 )
+from src.utils.local_input_store import PERSISTENT_LOCAL_INPUT_STORE, persistent_local_input_dir
+from src.utils.startup_prompt_policy import input_cache_policy_force_refresh_enabled
 
 try:
     import geopandas as gpd
@@ -111,6 +113,10 @@ class InventoryRow:
     accept_for_appendix_qualitative: bool
     rejection_reason: str
     notes: str
+    storage_tier: str = PERSISTENT_LOCAL_INPUT_STORE
+    persistent_store_bundle_root: str = ""
+    reuse_action: str = ""
+    validation_status: str = ""
     archived_item_metadata: str = ""
     archived_layer_metadata: str = ""
     archived_raw_download: str = ""
@@ -141,6 +147,10 @@ class InventoryRow:
             "accept_for_appendix_qualitative": bool(self.accept_for_appendix_qualitative),
             "rejection_reason": self.rejection_reason,
             "notes": self.notes,
+            "storage_tier": self.storage_tier,
+            "persistent_store_bundle_root": self.persistent_store_bundle_root,
+            "reuse_action": self.reuse_action,
+            "validation_status": self.validation_status,
             "archived_item_metadata": self.archived_item_metadata,
             "archived_layer_metadata": self.archived_layer_metadata,
             "archived_raw_download": self.archived_raw_download,
@@ -392,12 +402,13 @@ class PublicObservationAppendixService:
 
         self.base_output_dir = get_case_output_dir(self.case.run_name)
         self.appendix_dir = self.base_output_dir / "public_obs_appendix"
-        self.raw_dir = self.appendix_dir / "raw"
-        self.processed_dir = self.appendix_dir / "processed_vectors"
-        self.accepted_masks_dir = self.appendix_dir / "accepted_obs_masks"
+        self.store_dir = persistent_local_input_dir(self.case.run_name, "public_obs_appendix")
+        self.raw_dir = self.store_dir / "raw"
+        self.processed_dir = self.store_dir / "processed_vectors"
+        self.accepted_masks_dir = self.store_dir / "accepted_obs_masks"
         self.forecast_date_dir = self.appendix_dir / "forecast_datecomposites"
         self.precheck_dir = self.appendix_dir / "precheck"
-        for path in (self.appendix_dir, self.raw_dir, self.processed_dir, self.accepted_masks_dir, self.forecast_date_dir, self.precheck_dir):
+        for path in (self.appendix_dir, self.store_dir, self.raw_dir, self.processed_dir, self.accepted_masks_dir, self.forecast_date_dir, self.precheck_dir):
             path.mkdir(parents=True, exist_ok=True)
 
         self.grid = GridBuilder()
@@ -410,6 +421,10 @@ class PublicObservationAppendixService:
 
         self.main_phase3b_hashes_before = self._snapshot_locked_phase3b_files()
         self.forecast_generated_during_run = False
+
+    @staticmethod
+    def _force_refresh_enabled() -> bool:
+        return input_cache_policy_force_refresh_enabled()
 
     def _snapshot_locked_phase3b_files(self) -> dict[str, str]:
         snapshot: dict[str, str] = {}
@@ -488,6 +503,35 @@ class PublicObservationAppendixService:
         )
         self.forecast_generated_during_run = True
 
+    def _bundle_paths(self, source_key: str) -> dict[str, Path]:
+        raw_target_dir = self.raw_dir / source_key
+        return {
+            "bundle_root": raw_target_dir,
+            "item_metadata": raw_target_dir / f"{source_key}_item_metadata.json",
+            "layer_metadata": raw_target_dir / f"{source_key}_layer_metadata.json",
+            "raw_geojson": raw_target_dir / f"{source_key}_raw.geojson",
+            "processed_vector": self.processed_dir / f"{source_key}.gpkg",
+            "mask": self.accepted_masks_dir / f"{source_key}.tif",
+        }
+
+    def _validated_store_bundle(self, source_key: str) -> tuple[bool, dict[str, Path], str]:
+        paths = self._bundle_paths(source_key)
+        required = [
+            paths["item_metadata"],
+            paths["layer_metadata"],
+            paths["raw_geojson"],
+            paths["processed_vector"],
+            paths["mask"],
+        ]
+        missing = [str(path) for path in required if not path.exists() or path.stat().st_size <= 0]
+        if missing:
+            return False, paths, f"missing stored appendix inputs: {', '.join(missing)}"
+        try:
+            gpd.read_file(paths["processed_vector"])
+        except Exception as exc:
+            return False, paths, f"stored processed vector could not be read: {exc}"
+        return True, paths, "validated stored appendix input bundle"
+
     def _copy_official_arcgis_artifacts(
         self,
         *,
@@ -496,19 +540,34 @@ class PublicObservationAppendixService:
         processed_vector_path: Path,
         service_metadata_path: Path,
         mask_path: Path,
-    ) -> tuple[Path, Path, Path, Path]:
-        raw_target_dir = self.raw_dir / source_key
-        raw_target_dir.mkdir(parents=True, exist_ok=True)
-        raw_target = raw_target_dir / raw_geojson_path.name
-        meta_target = raw_target_dir / service_metadata_path.name
-        processed_target = self.processed_dir / f"{source_key}.gpkg"
-        mask_target = self.accepted_masks_dir / f"{source_key}.tif"
+    ) -> tuple[Path, Path, Path, Path, str, str, Path]:
+        valid, paths, validation_note = self._validated_store_bundle(source_key)
+        if valid and not self._force_refresh_enabled():
+            return (
+                paths["raw_geojson"],
+                paths["item_metadata"],
+                paths["processed_vector"],
+                paths["mask"],
+                "reused_valid_local_store",
+                validation_note,
+                paths["bundle_root"],
+            )
 
-        shutil.copyfile(raw_geojson_path, raw_target)
-        shutil.copyfile(service_metadata_path, meta_target)
-        shutil.copyfile(processed_vector_path, processed_target)
-        shutil.copyfile(mask_path, mask_target)
-        return raw_target, meta_target, processed_target, mask_target
+        paths["bundle_root"].mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(raw_geojson_path, paths["raw_geojson"])
+        shutil.copyfile(service_metadata_path, paths["item_metadata"])
+        shutil.copyfile(service_metadata_path, paths["layer_metadata"])
+        shutil.copyfile(processed_vector_path, paths["processed_vector"])
+        shutil.copyfile(mask_path, paths["mask"])
+        return (
+            paths["raw_geojson"],
+            paths["item_metadata"],
+            paths["processed_vector"],
+            paths["mask"],
+            "force_refreshed_file" if self._force_refresh_enabled() else "copied_from_canonical_store",
+            "validated_canonical_arcgis_bundle",
+            paths["bundle_root"],
+        )
 
     def _archive_and_ingest_external_polygon(
         self,
@@ -517,17 +576,29 @@ class PublicObservationAppendixService:
         item_id: str,
         service_url: str,
         layer_id: int,
-    ) -> tuple[Path, Path, Path, Path, Path]:
-        raw_target_dir = self.raw_dir / source_key
-        raw_target_dir.mkdir(parents=True, exist_ok=True)
+    ) -> tuple[Path, Path, Path, Path, Path, str, str, Path]:
+        valid, paths, validation_note = self._validated_store_bundle(source_key)
+        if valid and not self._force_refresh_enabled():
+            return (
+                paths["item_metadata"],
+                paths["layer_metadata"],
+                paths["raw_geojson"],
+                paths["processed_vector"],
+                paths["mask"],
+                "reused_valid_local_store",
+                validation_note,
+                paths["bundle_root"],
+            )
+
+        paths["bundle_root"].mkdir(parents=True, exist_ok=True)
 
         item_meta = self._fetch_arcgis_item(item_id)
         layer_meta = self._fetch_service_layer(service_url, layer_id)
         raw_geojson = self._fetch_geojson(service_url, layer_id)
 
-        item_meta_path = raw_target_dir / f"{source_key}_item_metadata.json"
-        layer_meta_path = raw_target_dir / f"{source_key}_layer_metadata.json"
-        raw_geojson_path = raw_target_dir / f"{source_key}_raw.geojson"
+        item_meta_path = paths["item_metadata"]
+        layer_meta_path = paths["layer_metadata"]
+        raw_geojson_path = paths["raw_geojson"]
         _write_json(item_meta_path, item_meta)
         _write_json(layer_meta_path, layer_meta)
         _write_json(raw_geojson_path, raw_geojson)
@@ -551,15 +622,24 @@ class PublicObservationAppendixService:
         if cleaned_gdf.empty:
             raise RuntimeError(f"Accepted appendix source {source_key} produced no valid polygon geometry after cleaning.")
 
-        processed_path = self.processed_dir / f"{source_key}.gpkg"
+        processed_path = paths["processed_vector"]
         cleaned_to_write = _sanitize_vector_columns_for_gpkg(cleaned_gdf)
         cleaned_to_write.to_file(processed_path, driver="GPKG")
 
-        mask_path = self.accepted_masks_dir / f"{source_key}.tif"
+        mask_path = paths["mask"]
         mask_data = rasterize_observation_layer(cleaned_gdf, self.grid)
         mask_data = apply_ocean_mask(mask_data, sea_mask=self.sea_mask, fill_value=0.0)
         save_raster(self.grid, mask_data.astype(np.float32), mask_path)
-        return item_meta_path, layer_meta_path, raw_geojson_path, processed_path, mask_path
+        return (
+            item_meta_path,
+            layer_meta_path,
+            raw_geojson_path,
+            processed_path,
+            mask_path,
+            "force_refreshed_file" if self._force_refresh_enabled() else "downloaded_new_file",
+            "validated_remote_arcgis_bundle",
+            paths["bundle_root"],
+        )
 
     def _build_main_service_layer_rows(self, main_item: dict) -> list[InventoryRow]:
         service_url = str(main_item.get("url") or "")
@@ -833,7 +913,7 @@ class PublicObservationAppendixService:
         for row in rows:
             if row.source_key in existing_official_layers:
                 paths = existing_official_layers[row.source_key]
-                raw_path, meta_path, processed_path, mask_path = self._copy_official_arcgis_artifacts(
+                raw_path, meta_path, processed_path, mask_path, reuse_action, validation_status, bundle_root = self._copy_official_arcgis_artifacts(
                     source_key=row.source_key,
                     raw_geojson_path=paths["raw"],
                     processed_vector_path=paths["processed"],
@@ -849,6 +929,9 @@ class PublicObservationAppendixService:
                             "archived_raw_download": str(raw_path),
                             "processed_vector": str(processed_path),
                             "appendix_obs_mask": str(mask_path),
+                            "persistent_store_bundle_root": str(bundle_root),
+                            "reuse_action": reuse_action,
+                            "validation_status": validation_status,
                         }
                     )
                 )
@@ -856,7 +939,7 @@ class PublicObservationAppendixService:
 
             item_id = row.item_or_layer_id.split(":", 1)[0]
             layer_id = int(row.layer_id or 0)
-            item_meta_path, layer_meta_path, raw_geojson_path, processed_path, mask_path = self._archive_and_ingest_external_polygon(
+            item_meta_path, layer_meta_path, raw_geojson_path, processed_path, mask_path, reuse_action, validation_status, bundle_root = self._archive_and_ingest_external_polygon(
                 source_key=row.source_key,
                 item_id=item_id,
                 service_url=row.service_url,
@@ -871,6 +954,9 @@ class PublicObservationAppendixService:
                         "archived_raw_download": str(raw_geojson_path),
                         "processed_vector": str(processed_path),
                         "appendix_obs_mask": str(mask_path),
+                        "persistent_store_bundle_root": str(bundle_root),
+                        "reuse_action": reuse_action,
+                        "validation_status": validation_status,
                     }
                 )
             )

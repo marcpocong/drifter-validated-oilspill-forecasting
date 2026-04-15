@@ -247,6 +247,7 @@ Expected files:
 - `publication_figure_registry.csv`
 - `publication_figure_captions.md`
 - `publication_figure_talking_points.md`
+- `publication_figure_inventory.md`
 - `CASE_MINDORO_RETRO_2023__...__paper__*.png`
 - `CASE_MINDORO_RETRO_2023__...__slide__*.png`
 - `CASE_DWH_RETRO_2010_72H__...__paper__*.png`
@@ -258,13 +259,16 @@ Expected files:
 
 Interpretation:
 
-- this directory is now the canonical presentation layer for defense slides and paper-ready single figures
+- this directory is now the canonical thesis-facing presentation layer for defense slides and paper-ready single figures
 - it keeps the raw and panel galleries as technical archives rather than overwriting them
 - filenames remain machine-readable, with case, phase/track, model, run type, date/date-range, scenario, view type, and variant tokens
-- recommended-for-defense and recommended-for-paper flags are recorded in the publication registry and manifest
+- `publication_figure_registry.csv` is the full figure inventory and now records `thesis_surface`, `archive_only`, `legacy_support`, `comparator_support`, `display_order`, `page_target`, `study_box_id`, `study_box_numbers`, `study_box_label`, and `recommended_scope`
+- `thesis_surface=true` rows are the curated thesis-facing figure surface; non-main rows remain indexed here but are classified into archive/support instead of being silently deleted
+- `publication_figure_inventory.md` is the human-readable index for the same registry-driven curation
 - Phase 3 OpenDrift-versus-PyGNOME comparison figures are included where those comparator products exist now
-- the package also includes a shared thesis study-box reference figure that now foregrounds `mindoro_case_domain` plus the curated prototype_2016 historical-origin box, an archived full-context overview, and separate per-box geography panels built from stored Phase 1 baseline/config metadata, the stored Mindoro scoring-grid display bounds, and curated prototype provenance metadata only
+- the package also includes a shared thesis study-box reference figure that now foregrounds Study Box `2` (`mindoro_case_domain`) plus Study Box `4` (the curated prototype_2016 historical-origin box), an archived full-context overview, and separate per-box geography panels built from stored Phase 1 baseline/config metadata, the stored Mindoro scoring-grid display bounds, and curated prototype provenance metadata only; Study Boxes `1` and `3` remain archive/advanced/support only
 - Mindoro Phase 4 is shown as OpenDrift/OpenOil-only support/context material; the package includes a no-matched-PyGNOME note figure instead of a fake Phase 4 OpenDrift-versus-PyGNOME board
+- R0 material, stale study-box references, duplicate boards, and raw technical panels not needed for the main presentation are retained through archive/support indexing rather than the thesis-facing surface
 - publication family `K` republishes the preferred accepted-segment 2021 deterministic OpenDrift-vs-PyGNOME forecast figures as support-only material rather than main-defense evidence, while the 2016 prototype package remains preserved as legacy output
 - Mindoro publication figures now report the promoted March 13 -> March 14 R1 primary validation row while explicitly inheriting recipe provenance from the separate focused 2016-2023 Mindoro Phase 1 rerun; DWH figures remain transfer-validation/support visuals
 
@@ -291,7 +295,9 @@ Representative files:
 
 Interpretation:
 
-- this remains the thesis-facing summary bundle
+- this remains the thesis-facing summary/table bundle
+- use this package for the frozen validation narrative, summary tables, and case registry rather than for broad figure browsing
+- use `output/figure_package_publication/` for the curated thesis-facing figure surface and `output/Phase 3B March13-14 Final Output Archive R0 Legacy/` plus the `Mindoro Validation Archive` page for archive-only visuals and provenance figures
 - for Mindoro, thesis-facing reporting now uses only the March 13 -> March 14 R1 primary validation row plus Track A comparator support
 - the March 13 -> March 14 R0 archived baseline and the preserved March-family legacy rows remain repo-preserved archive-only materials rather than thesis-facing package rows
 - repo support layers reuse it rather than replacing it

@@ -41,26 +41,37 @@ The current launcher entrypoint is [start.ps1](/c:/Users/marcp/Downloads/drifter
 - read-only packaging and audit utilities
 - legacy prototype tracks
 
-Safe first commands:
+Use one launcher pattern for interactive workflow runs:
+
+```powershell
+.\start.ps1 -Entry <entry_id>
+```
+
+Use these safe inspection commands to list the current entry IDs:
 
 ```powershell
 .\start.ps1 -List -NoPause
 .\start.ps1 -Help -NoPause
-.\start.ps1 -Entry phase5_sync -NoPause
-.\start.ps1 -Entry trajectory_gallery -NoPause
-.\start.ps1 -Entry trajectory_gallery_panel -NoPause
-.\start.ps1 -Entry figure_package_publication -NoPause
-.\start.ps1 -Entry prototype_legacy_final_figures -NoPause
 ```
 
-Intentional scientific reruns remain available, but they are no longer hidden behind a single stale "Mindoro full" option.
+Current launcher entry groups:
+
+- reportable: `phase1_production_rerun`, `mindoro_phase3b_primary_public_validation`, `mindoro_reportable_core`, `dwh_reportable_bundle`
+- support/archive: `mindoro_phase4_only`, `mindoro_appendix_sensitivity_bundle`, `phase1_mindoro_focus_pre_spill_experiment`, `mindoro_march13_14_phase1_focus_trial`, `mindoro_march6_recovery_sensitivity`, `mindoro_march23_extended_public_stress_test`
+- read-only: `phase1_audit`, `phase2_audit`, `final_validation_package`, `phase5_sync`, `trajectory_gallery`, `trajectory_gallery_panel`, `figure_package_publication`, `prototype_legacy_final_figures`
+- legacy support: `prototype_2021_bundle`, `prototype_legacy_bundle`
+
+Compatibility note:
+
+- `mindoro_march13_14_noaa_reinit_stress_test` is still supported, but only as a legacy alias for older scripts and notes.
+
+See [docs/COMMAND_MATRIX.md](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/docs/COMMAND_MATRIX.md) for exact prompt-free container mappings.
 
 ## Mindoro Phase 3 Promotion Rule
 
 - The frozen Mindoro base case definition remains `config/case_mindoro_retro_2023.yaml` and still represents the original March 3 -> March 6 case.
 - The promoted Phase 3B public-validation row is recorded separately in `config/case_mindoro_retro_2023_phase3b_primary_validation_amendment.yaml`.
 - The canonical launcher entry for that promoted row is `mindoro_phase3b_primary_public_validation`.
-- The older `mindoro_march13_14_noaa_reinit_stress_test` launcher entry is retained as a backward-compatible alias only.
 - The thesis-facing title for B1 is `Phase 3B Observation-Based Spatial Validation Using Public Mindoro Spill Extents`.
 - The separate `phase1_mindoro_focus_pre_spill_2016_2023` drifter rerun now serves as the active Mindoro-specific recipe-provenance lane; its completed four-recipe historical winner is `cmems_gfs`, and the official B1 artifact now also uses `cmems_gfs`. This does not replace the raw-generation history of the original March 13 -> March 14 bundle.
 - That focused rerun searched through early 2023, but its accepted registry does not include near-2023 accepted segments.
@@ -78,7 +89,7 @@ The local UI is intentionally read-only in this first version. It reads the exis
 Launch command:
 
 ```bash
-docker compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501
+docker-compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501
 ```
 
 Then open `http://localhost:8501`.
@@ -117,49 +128,51 @@ Branding:
 - if no logo is present, the UI falls back to text-only branding without breaking
 - see [docs/UI_BRANDING.md](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/docs/UI_BRANDING.md) or [ui/assets/README.md](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/ui/assets/README.md)
 
-## Safe Phase Commands
+## Current Run Paths
 
-Read-only utilities:
+Use one prompt-free container pattern for scripts, CI, or manual phase-level reruns:
 
 ```bash
-docker-compose exec -T -e PIPELINE_PHASE=phase1_finalization_audit pipeline python -m src
-docker-compose exec -T -e PIPELINE_PHASE=phase2_finalization_audit pipeline python -m src
-docker-compose exec -T -e PIPELINE_PHASE=final_validation_package pipeline python -m src
-docker-compose exec -T -e PIPELINE_PHASE=phase4_crossmodel_comparability_audit pipeline python -m src
-docker-compose exec -T -e PIPELINE_PHASE=phase5_launcher_and_docs_sync pipeline python -m src
-docker-compose exec -T -e PIPELINE_PHASE=trajectory_gallery_build pipeline python -m src
-docker-compose exec -T -e PIPELINE_PHASE=trajectory_gallery_panel_polish pipeline python -m src
-docker-compose exec -T -e PIPELINE_PHASE=figure_package_publication pipeline python -m src
-docker-compose exec -T -e WORKFLOW_MODE=prototype_2021 -e PIPELINE_PHASE=prototype_pygnome_similarity_summary pipeline python -m src
-docker-compose exec -T -e WORKFLOW_MODE=prototype_2016 -e PIPELINE_PHASE=prototype_legacy_final_figures pipeline python -m src
+docker-compose exec -T -e WORKFLOW_MODE=<workflow_mode> -e PIPELINE_PHASE=<phase> <pipeline|gnome> python -m src
 ```
 
-Mindoro support oil-type and shoreline workflow:
+Read-only audit and packaging workflows:
 
-```bash
-docker-compose exec -T -e WORKFLOW_MODE=mindoro_retro_2023 -e PIPELINE_PHASE=phase4_oiltype_and_shoreline pipeline python -m src
+```powershell
+.\start.ps1 -Entry phase1_audit
+.\start.ps1 -Entry phase2_audit
+.\start.ps1 -Entry final_validation_package
+.\start.ps1 -Entry phase5_sync
+.\start.ps1 -Entry trajectory_gallery
+.\start.ps1 -Entry trajectory_gallery_panel
+.\start.ps1 -Entry figure_package_publication
+.\start.ps1 -Entry prototype_legacy_final_figures
 ```
 
-Intentional scientific reruns:
+Reportable workflows:
 
-```bash
-docker-compose exec -T -e WORKFLOW_MODE=phase1_regional_2016_2022 -e PIPELINE_PHASE=phase1_production_rerun pipeline python -m src
-docker-compose exec -T -e WORKFLOW_MODE=mindoro_retro_2023 -e PIPELINE_PHASE=official_phase3b pipeline python -m src
-docker-compose exec -T -e WORKFLOW_MODE=dwh_retro_2010 -e PIPELINE_PHASE=dwh_phase3c_scientific_forcing_ready pipeline python -m src
-docker-compose exec -T -e WORKFLOW_MODE=dwh_retro_2010 -e PIPELINE_PHASE=phase3c_external_case_run pipeline python -m src
-docker-compose exec -T -e WORKFLOW_MODE=dwh_retro_2010 -e PIPELINE_PHASE=phase3c_external_case_ensemble_comparison pipeline python -m src
-docker-compose exec -T -e WORKFLOW_MODE=dwh_retro_2010 -e PIPELINE_PHASE=phase3c_dwh_pygnome_comparator gnome python -m src
+```powershell
+.\start.ps1 -Entry phase1_production_rerun
+.\start.ps1 -Entry mindoro_phase3b_primary_public_validation
+.\start.ps1 -Entry mindoro_reportable_core
+.\start.ps1 -Entry dwh_reportable_bundle
 ```
 
-Experimental/support reruns:
+Support and archive workflows:
 
-```bash
+```powershell
+.\start.ps1 -Entry mindoro_phase4_only
+.\start.ps1 -Entry mindoro_appendix_sensitivity_bundle
 .\start.ps1 -Entry phase1_mindoro_focus_pre_spill_experiment
-docker-compose exec -e WORKFLOW_MODE=phase1_mindoro_focus_pre_spill_2016_2023 -e PIPELINE_PHASE=phase1_production_rerun pipeline python -m src
-docker-compose exec -T -e WORKFLOW_MODE=phase1_mindoro_focus_pre_spill_2016_2023 -e PIPELINE_PHASE=phase1_production_rerun -e INPUT_CACHE_POLICY=reuse_if_valid -e FORCING_SOURCE_BUDGET_SECONDS=120 -e FORCING_OUTAGE_POLICY=continue_degraded pipeline python -m src
 ```
 
-The launcher command and the direct `docker-compose exec` form without `-T` are the interactive startup-prompt paths. The `-T` form stays non-interactive by design and now prints the resolved startup policy so you can see whether it used explicit env values or silent defaults.
+The Streamlit UI stays outside the launcher and launches directly:
+
+```bash
+docker-compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501
+```
+
+The launcher command and the direct `docker-compose exec` form without `-T` are the interactive startup-prompt paths. The `-T` form stays non-interactive by design and now prints the resolved startup policy so you can see whether it used explicit env values or silent defaults. Use [docs/COMMAND_MATRIX.md](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/docs/COMMAND_MATRIX.md) for the exact phase-by-phase `-T` mappings behind each launcher entry.
 
 ## Scientific Boundaries To Keep
 
@@ -170,6 +183,9 @@ The launcher command and the direct `docker-compose exec` form without `-T` are 
 - The shared input-cache env is now `INPUT_CACHE_POLICY=default|reuse_if_valid|force_refresh`. Silent non-interactive defaults resolve to `reuse_if_valid`, while `PREP_FORCE_REFRESH=1` remains a backward-compatible alias when the new env is unset.
 - Prep is now cache-first across workflows: if the canonical same-case drifter/forcing/ArcGIS input already exists locally and still validates for the requested window, the repo reuses it instead of re-downloading unless `INPUT_CACHE_POLICY=force_refresh` is selected.
 - The dedicated historical Phase 1 reruns now also persist their monthly drifter and forcing ingests under `data/historical_validation_inputs/<workflow_mode>/...` so similar reruns can reuse prepared local inputs; the old `output/.../_scratch` monthly stores remain legacy backfill only, and each rerun now records the active local store in `phase1_local_input_inventory.csv`.
+- The same reuse rule now extends beyond Phase 1: public-observation appendix ingests, extended-public source bundles, DWH external-case source bundles, DWH scientific forcing, and the main extended-public forcing windows all persist reusable inputs under `data/...` or `data/local_input_store/...` and record whether each file was reused, newly downloaded, or force-refreshed.
+- Persistent local input store means the validated reusable files kept under `data/drifters`, `data/forcing`, `data/arcgis`, `data/historical_validation_inputs`, and `data/local_input_store`. Temporary cache means output-local staging or legacy scratch folders such as `output/.../forcing`, `output/.../raw`, and `output/.../_scratch`; those are not the canonical reuse source.
+- Machine-readable inventories now follow that distinction: rerun-facing manifests record provider/source URL, persistent local storage path, reuse action, and validation status so you can trace when the workflow reused local inputs versus fetching fresh copies.
 - Forcing-only outage handling is now explicit: `FORCING_OUTAGE_POLICY=default|continue_degraded|fail_hard`. By default, scientific/reportable lanes fail hard, while appendix/legacy/experimental lanes may skip the affected forcing-dependent branch or recipe subset with manifest honesty fields and `rerun_required=true`. This does not apply to drifter truth or ArcGIS/observation truth acquisition.
 - Forcing providers now also fail fast under `FORCING_SOURCE_BUDGET_SECONDS` with a default per-provider wall-clock budget of `300` seconds. Set `FORCING_SOURCE_BUDGET_SECONDS=0` only when you intentionally want the old wait-forever debugging behavior.
 - Keep historical/regional transport validation separate from spill-case validation.
@@ -233,6 +249,7 @@ Large raw data, scientific raster stacks, NetCDF outputs, and bulk case rerun ar
 - [docs/DWH_PHASE3C_FREEZE_SYNC_NOTE.md](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/docs/DWH_PHASE3C_FREEZE_SYNC_NOTE.md)
 - [docs/OUTPUT_CATALOG.md](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/docs/OUTPUT_CATALOG.md)
 - [docs/FIGURE_GALLERY.md](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/docs/FIGURE_GALLERY.md)
+- [docs/THESIS_SURFACE_GOVERNANCE.md](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/docs/THESIS_SURFACE_GOVERNANCE.md)
 - [docs/QUICKSTART.md](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/docs/QUICKSTART.md)
 - [docs/UI_GUIDE.md](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/docs/UI_GUIDE.md)
 - [docs/UI_BRANDING.md](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/docs/UI_BRANDING.md)

@@ -133,7 +133,7 @@ def _inline_font_face_css() -> str:
 def _render_sidebar_branding(branding: dict) -> None:
     title = APP_TITLE if branding.get("has_logo") else "Drifter-Validated Oil Spill Forecasting"
     subtitle = (
-        "Panel mode keeps the main result, support lanes, and packaged figures first."
+        "Panel mode follows the final paper story: provenance, B1, comparator support, DWH, then context and secondary lanes."
         if branding.get("has_logo")
         else SIDEBAR_SUBTITLE
     )
@@ -276,7 +276,7 @@ def _render_sidebar_controls(state: dict, branding: dict) -> dict:
                 st.code("\n".join(read_paths), language="text")
         else:
             visual_layer = "publication"
-            st.caption("Publication layer active in panel mode.")
+            st.caption("Publication layer active in panel mode; archive and legacy stay secondary.")
 
     return {
         "advanced": advanced,

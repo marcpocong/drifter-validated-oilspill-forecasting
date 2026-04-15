@@ -337,6 +337,8 @@ class Phase3BExtendedPublicScoredMarch1314ReinitTests(unittest.TestCase):
         self.assertIsNotNone(record)
         self.assertEqual(record["status"], "reused_local_file")
         self.assertEqual(record["source_system"], "existing_local_cache")
+        self.assertEqual(record["reuse_action"], "reused_valid_local_store")
+        self.assertEqual(record["storage_tier"], "persistent_local_input_store")
 
     def test_download_required_gfs_wind_builds_exact_window_cache(self):
         class _FakeDownloader:

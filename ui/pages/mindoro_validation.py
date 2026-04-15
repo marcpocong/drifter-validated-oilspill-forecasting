@@ -36,6 +36,7 @@ def _mindoro_final_subset(
     artifact_groups: set[str],
     *,
     status_keys: set[str] | None = None,
+    surface_keys: set[str] | None = None,
 ) -> object:
     if df.empty:
         return df
@@ -44,12 +45,19 @@ def _mindoro_final_subset(
         payload = payload.loc[payload.get("artifact_group", "").astype(str).isin(sorted(artifact_groups))].copy()
     if status_keys and "status_key" in payload.columns:
         payload = payload.loc[payload.get("status_key", "").astype(str).isin(sorted(status_keys))].copy()
+    if surface_keys and "surface_key" in payload.columns:
+        payload = payload.loc[payload.get("surface_key", "").astype(str).isin(sorted(surface_keys))].copy()
     return payload.reset_index(drop=True)
 
 
 def _filter_table(df, *, column: str, allowed_values: set[str] | None = None, blocked_values: set[str] | None = None):
     if df is None or df.empty or column not in df.columns:
-        return df
+        payload = df.copy() if df is not None else df
+        if payload is None or payload.empty:
+            return payload
+        if "surface_key" in payload.columns and allowed_values is None and blocked_values is None:
+            return payload.reset_index(drop=True)
+        return payload
     payload = df.copy()
     series = payload[column].fillna("").astype(str)
     if allowed_values:
@@ -73,7 +81,7 @@ def render(state: dict, ui_state: dict) -> None:
     render_page_intro(
         "Mindoro B1 Primary Validation",
         "This page leads with the Mindoro March 13 -> March 14 R1 primary validation row as the only thesis-facing Mindoro result. Track A stays comparator-only, while the March 13 -> March 14 R0 archived baseline and the preserved March-family legacy rows were moved to the Mindoro Validation Archive page.",
-        badge="Mindoro B1 | March 13 -> March 14 R1 primary validation row",
+        badge="Thesis-facing | Mindoro B1 primary validation",
     )
 
     if export_mode:
@@ -109,15 +117,19 @@ def render(state: dict, ui_state: dict) -> None:
     primary_figures = _mindoro_final_subset(
         mindoro_final_registry,
         {"publication/observations", "publication/opendrift_primary"},
-        status_keys={"mindoro_primary_validation"},
+        surface_keys={"thesis_main"},
     )
     comparator_figures = _mindoro_final_subset(
         mindoro_final_registry,
         {"publication/comparator_pygnome"},
-        status_keys={"mindoro_crossmodel_comparator"},
+        surface_keys={"comparator_support"},
     )
-    b1_summary = _filter_table(state["mindoro_b1_summary"], column="branch_id", allowed_values={"R1_previous"})
-    b1_fss = _filter_table(state["mindoro_b1_fss"], column="branch_id", allowed_values={"R1_previous"})
+    b1_summary = state["mindoro_b1_summary"].loc[
+        state["mindoro_b1_summary"].get("surface_key", "").astype(str).eq("thesis_main")
+    ].reset_index(drop=True)
+    b1_fss = state["mindoro_b1_fss"].loc[
+        state["mindoro_b1_fss"].get("surface_key", "").astype(str).eq("thesis_main")
+    ].reset_index(drop=True)
     archive_package = next(
         (package for package in state.get("curated_package_roots", []) if package.get("package_id") == "mindoro_validation_archive"),
         None,
@@ -136,14 +148,14 @@ def render(state: dict, ui_state: dict) -> None:
 
     def _comparator_support() -> None:
         render_status_callout(
-            "Support comparison",
+            "Comparator support",
             "Track A is attached to B1 as same-case comparator support. PyGNOME is comparator-only and never truth, and archived March 13 -> March 14 R0 comparator outputs were moved to the Mindoro Validation Archive page.",
             "warning",
         )
         render_figure_gallery(
             comparator_figures,
-            title="Comparator publication figures",
-            caption="These figures come from the curated comparator subgroup under the final March13-14 package and remain separate from the primary B1 claim. Click any figure to enlarge it.",
+            title="Comparator-support publication figures",
+            caption="These figures come from the curated comparator-support subgroup under the final March13-14 package and remain separate from the primary B1 claim. Click any figure to enlarge it.",
             limit=2 if export_mode else (None if ui_state["advanced"] else 4),
             columns_per_row=1 if export_mode else 2,
             export_mode=export_mode,

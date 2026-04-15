@@ -70,6 +70,15 @@ def _mindoro_validation_wrapper_for_test() -> None:
     mindoro_validation.render(state, panel_state)
 
 
+def _mindoro_validation_archive_wrapper_for_test() -> None:
+    from ui.data_access import build_dashboard_state
+    from ui.pages import mindoro_validation_archive
+
+    state = build_dashboard_state()
+    panel_state = {"advanced": False, "mode_label": "Panel-friendly", "visual_layer": "publication", "export_mode": False}
+    mindoro_validation_archive.render(state, panel_state)
+
+
 def _cross_model_wrapper_for_test() -> None:
     from ui.data_access import build_dashboard_state
     from ui.pages import cross_model_comparison
@@ -280,6 +289,7 @@ class UiAppSmokeTests(unittest.TestCase):
             (_home_panel_wrapper_for_test, "Home / Overview"),
             (_home_advanced_wrapper_for_test, "Home / Overview"),
             (_mindoro_validation_wrapper_for_test, "Mindoro B1 Primary Validation"),
+            (_mindoro_validation_archive_wrapper_for_test, "Mindoro Validation Archive"),
             (_cross_model_wrapper_for_test, "Mindoro Cross-Model Comparator"),
             (_dwh_wrapper_for_test, "DWH Phase 3C Transfer Validation"),
             (_legacy_wrapper_for_test, "Legacy 2016 Support Package"),
@@ -306,8 +316,14 @@ class UiAppSmokeTests(unittest.TestCase):
         self.assertNotIn("Enlarge figure", button_labels)
         expected_count = len(build_dashboard_state(REPO_ROOT)["home_featured_publication_figures"])
         self.assertEqual(self._gallery_tile_count(at), expected_count)
-        text_blocks = " ".join(element.value for element in at.markdown)
+        text_blocks = self._visible_text(at, "markdown", "subheader")
         self.assertNotIn("keyboard_double", text_blocks)
+        self.assertIn("Primary thesis story", text_blocks)
+        self.assertIn("Secondary lanes", text_blocks)
+        self.assertIn("Workflow / provenance context", text_blocks)
+        self.assertIn("Archive only", text_blocks)
+        self.assertIn("Legacy support", text_blocks)
+        self.assertNotIn("Legacy 2016 support triptychs first", text_blocks)
 
     def test_home_advanced_gallery_matches_panel_gallery_count(self):
         at = AppTest.from_function(_home_advanced_wrapper_for_test, default_timeout=60)
@@ -324,6 +340,7 @@ class UiAppSmokeTests(unittest.TestCase):
     def test_publication_package_pages_use_panel_gallery_without_figure_dropdowns(self):
         for wrapper, minimum_tiles in (
             (_mindoro_validation_wrapper_for_test, 4),
+            (_mindoro_validation_archive_wrapper_for_test, 3),
             (_cross_model_wrapper_for_test, 2),
             (_dwh_wrapper_for_test, 11),
             (_legacy_wrapper_for_test, 4),
@@ -373,6 +390,24 @@ class UiAppSmokeTests(unittest.TestCase):
         info_text = " ".join(element.value for element in at.warning)
         self.assertIn("falls back to the broader regional reference artifacts", info_text)
 
+    def test_phase1_page_calls_out_cmems_gfs_and_keeps_cmems_era5_as_runner_up(self):
+        at = AppTest.from_function(_phase1_wrapper_for_test, default_timeout=60)
+        at.run()
+        self.assertFalse(at.exception)
+        text_blocks = self._visible_text(
+            at,
+            "markdown",
+            "subheader",
+            "info",
+            "warning",
+            "success",
+        )
+        self.assertIn("Selected Mindoro B1 recipe: `cmems_gfs`", text_blocks)
+        self.assertIn("`cmems_era5` as the runner-up", text_blocks)
+        self.assertIn("Diagnostic recipe summary, not winner ranking", text_blocks)
+        self.assertNotIn("Selected Mindoro B1 recipe: `cmems_era5`", text_blocks)
+        self.assertNotIn("Focused recipe summary", text_blocks)
+
     def test_phase1_page_surfaces_only_main_thesis_boxes_in_default_mode(self):
         at = AppTest.from_function(_phase1_wrapper_for_test, default_timeout=60)
         at.run()
@@ -386,9 +421,12 @@ class UiAppSmokeTests(unittest.TestCase):
         )
         lowered = text_blocks.lower()
         self.assertEqual(lowered.count("study boxes used by the thesis"), 1)
-        self.assertIn("thesis box geography references (boxes 2 and 4)", lowered)
-        self.assertNotIn("archived box geography references (boxes 1 and 3)", lowered)
+        self.assertIn("study boxes used by the thesis (boxes 2 and 4)", lowered)
+        self.assertIn("per-box geography references for the thesis (boxes 2 and 4)", lowered)
+        self.assertNotIn("archived per-box geography references (boxes 1 and 3)", lowered)
         self.assertEqual(self._gallery_tile_count(at), 3)
+        self.assertIn("study box 2", lowered)
+        self.assertIn("study box 4", lowered)
         self.assertIn("mindoro_case_domain", lowered)
         self.assertIn("first-code search-box", lowered)
 
@@ -404,7 +442,9 @@ class UiAppSmokeTests(unittest.TestCase):
             "warning",
         )
         lowered = text_blocks.lower()
-        self.assertIn("archived box geography references (boxes 1 and 3)", lowered)
+        self.assertIn("archived per-box geography references (boxes 1 and 3)", lowered)
+        self.assertIn("study box 1", lowered)
+        self.assertIn("study box 3", lowered)
         self.assertIn("focused mindoro phase 1 box geography reference", lowered)
         self.assertIn("mindoro scoring-grid bounds geography reference", lowered)
         self.assertEqual(self._gallery_tile_count(at), 5)

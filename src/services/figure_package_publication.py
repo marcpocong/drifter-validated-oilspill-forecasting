@@ -28,6 +28,14 @@ from rasterio.warp import transform_bounds
 from shapely.geometry import MultiPoint, box as shapely_box
 
 from src.core.artifact_status import artifact_status_columns, artifact_status_columns_for_key
+from src.core.publication_figure_governance import publication_figure_governance_columns
+from src.core.study_box_catalog import (
+    ARCHIVE_ONLY_STUDY_BOX_NUMBERS,
+    THESIS_FACING_STUDY_BOX_NUMBERS,
+    parse_study_box_numbers,
+    study_box_catalog_rows,
+    study_box_figure_metadata,
+)
 from src.services.mindoro_primary_validation_metadata import (
     MINDORO_BASE_CASE_CONFIG_PATH,
     MINDORO_PHASE1_CONFIRMATION_CANDIDATE_BASELINE_PATH,
@@ -144,6 +152,24 @@ class PublicationFigureRecord:
     status_provenance: str
     status_panel_text: str
     status_dashboard_summary: str
+    surface_key: str
+    surface_label: str
+    surface_description: str
+    surface_home_visible: bool
+    surface_panel_visible: bool
+    surface_archive_visible: bool
+    surface_advanced_visible: bool
+    surface_recommended_visible: bool
+    thesis_surface: bool
+    archive_only: bool
+    legacy_support: bool
+    comparator_support: bool
+    display_order: int
+    page_target: str
+    study_box_id: str
+    study_box_numbers: str
+    study_box_label: str
+    recommended_scope: str
 
     def as_row(self) -> dict[str, Any]:
         return {
@@ -177,6 +203,24 @@ class PublicationFigureRecord:
             "status_provenance": self.status_provenance,
             "status_panel_text": self.status_panel_text,
             "status_dashboard_summary": self.status_dashboard_summary,
+            "surface_key": self.surface_key,
+            "surface_label": self.surface_label,
+            "surface_description": self.surface_description,
+            "surface_home_visible": self.surface_home_visible,
+            "surface_panel_visible": self.surface_panel_visible,
+            "surface_archive_visible": self.surface_archive_visible,
+            "surface_advanced_visible": self.surface_advanced_visible,
+            "surface_recommended_visible": self.surface_recommended_visible,
+            "thesis_surface": self.thesis_surface,
+            "archive_only": self.archive_only,
+            "legacy_support": self.legacy_support,
+            "comparator_support": self.comparator_support,
+            "display_order": self.display_order,
+            "page_target": self.page_target,
+            "study_box_id": self.study_box_id,
+            "study_box_numbers": self.study_box_numbers,
+            "study_box_label": self.study_box_label,
+            "recommended_scope": self.recommended_scope,
         }
 
 
@@ -1628,10 +1672,15 @@ class FigurePackagePublicationService:
         first_code_box = self._coerce_wgs84_bounds(
             self.prototype_2016_provenance_metadata.get("prototype_2016_initial_capture_box")
         ) or (108.6465, 121.3655, 6.1865, 20.3515)
+        focused_meta = study_box_figure_metadata("focused_phase1_validation_box")
+        case_domain_meta = study_box_figure_metadata("mindoro_case_domain")
+        scoring_meta = study_box_figure_metadata("scoring_grid_display_bounds")
+        prototype_meta = study_box_figure_metadata("prototype_first_code_search_box")
         return [
             {
-                "tag": "1",
-                "label": "Focused Mindoro Phase 1 validation box",
+                "study_box_id": "focused_phase1_validation_box",
+                "tag": focused_meta["study_box_numbers"],
+                "label": focused_meta["box_label"],
                 "short_label": "Focused provenance box",
                 "bounds": focused_box,
                 "color": "#d97706",
@@ -1640,8 +1689,9 @@ class FigurePackagePublicationService:
                 "text_anchor": (focused_box[0] + 0.06, focused_box[3] - 0.10),
             },
             {
-                "tag": "2",
-                "label": "Mindoro case-domain overview box (`mindoro_case_domain`)",
+                "study_box_id": "mindoro_case_domain",
+                "tag": case_domain_meta["study_box_numbers"],
+                "label": case_domain_meta["box_label"],
                 "short_label": "Mindoro case domain",
                 "bounds": mindoro_case_domain,
                 "color": "#165ba8",
@@ -1650,8 +1700,9 @@ class FigurePackagePublicationService:
                 "text_anchor": (mindoro_case_domain[0] + 0.10, mindoro_case_domain[2] + 0.16),
             },
             {
-                "tag": "3",
-                "label": "Mindoro scoring-grid display bounds",
+                "study_box_id": "scoring_grid_display_bounds",
+                "tag": scoring_meta["study_box_numbers"],
+                "label": scoring_meta["box_label"],
                 "short_label": "Scoring-grid bounds",
                 "bounds": scoring_bounds,
                 "color": "#b42318",
@@ -1661,8 +1712,9 @@ class FigurePackagePublicationService:
                 "arrow_to_center": True,
             },
             {
-                "tag": "4",
-                "label": "prototype_2016 first-code search box (historical-origin)",
+                "study_box_id": "prototype_first_code_search_box",
+                "tag": prototype_meta["study_box_numbers"],
+                "label": prototype_meta["box_label"],
                 "short_label": "Prototype origin box",
                 "bounds": first_code_box,
                 "color": "#7c3aed",
@@ -2064,22 +2116,23 @@ class FigurePackagePublicationService:
         pixel_height: int,
     ) -> PublicationFigureRecord:
         relative_path = _relative_to_repo(self.repo_root, path)
+        record_context = {
+            "case_id": str(spec["case_id"]),
+            "phase_or_track": str(spec["phase_or_track"]),
+            "run_type": str(spec["run_type"]),
+            "figure_slug": str(spec.get("figure_slug") or ""),
+            "figure_id": path.stem,
+            "relative_path": relative_path,
+            "notes": str(spec.get("notes") or ""),
+            "short_plain_language_interpretation": str(spec["short_plain_language_interpretation"]),
+            "legacy_debug_only": bool(spec.get("legacy_debug_only")),
+        }
         status_override = str(spec.get("status_key_override") or "").strip()
         if status_override:
-            status = artifact_status_columns_for_key(status_override)
+            status = artifact_status_columns_for_key(status_override, record_context)
         else:
-            status = artifact_status_columns(
-                {
-                    "case_id": str(spec["case_id"]),
-                    "phase_or_track": str(spec["phase_or_track"]),
-                    "run_type": str(spec["run_type"]),
-                    "figure_slug": str(spec.get("figure_slug") or ""),
-                    "relative_path": relative_path,
-                    "notes": str(spec.get("notes") or ""),
-                    "short_plain_language_interpretation": str(spec["short_plain_language_interpretation"]),
-                    "legacy_debug_only": bool(spec.get("legacy_debug_only")),
-                }
-            )
+            status = artifact_status_columns(record_context)
+        governance = publication_figure_governance_columns({**record_context, **status, **spec})
         record = PublicationFigureRecord(
             figure_id=path.stem,
             display_title=str(spec.get("figure_title") or ""),
@@ -2111,6 +2164,24 @@ class FigurePackagePublicationService:
             status_provenance=status["status_provenance"],
             status_panel_text=status["status_panel_text"],
             status_dashboard_summary=status["status_dashboard_summary"],
+            surface_key=str(status["surface_key"]),
+            surface_label=str(status["surface_label"]),
+            surface_description=str(status["surface_description"]),
+            surface_home_visible=bool(status["surface_home_visible"]),
+            surface_panel_visible=bool(status["surface_panel_visible"]),
+            surface_archive_visible=bool(status["surface_archive_visible"]),
+            surface_advanced_visible=bool(status["surface_advanced_visible"]),
+            surface_recommended_visible=bool(status["surface_recommended_visible"]),
+            thesis_surface=bool(governance["thesis_surface"]),
+            archive_only=bool(governance["archive_only"]),
+            legacy_support=bool(governance["legacy_support"]),
+            comparator_support=bool(governance["comparator_support"]),
+            display_order=int(governance["display_order"]),
+            page_target=str(governance["page_target"]),
+            study_box_id=str(governance["study_box_id"]),
+            study_box_numbers=str(governance["study_box_numbers"]),
+            study_box_label=str(governance["study_box_label"]),
+            recommended_scope=str(governance["recommended_scope"]),
         )
         self.figure_records.append(record)
         return record
@@ -4890,7 +4961,7 @@ class FigurePackagePublicationService:
 
     def _study_box_publication_specs(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         study_boxes = self._thesis_study_box_entries()
-        featured_tags = {"2", "4"}
+        featured_tags = set(THESIS_FACING_STUDY_BOX_NUMBERS)
         featured_study_boxes = [item for item in study_boxes if str(item.get("tag")) in featured_tags]
         source_paths = [
             str(PHASE1_BASELINE_SELECTION_PATH),
@@ -4906,23 +4977,23 @@ class FigurePackagePublicationService:
         ]
         note_lines = [
             "All boxes are WGS84 longitude/latitude references copied from stored repo metadata only.",
-            "This panel-friendly thesis default now foregrounds the broader Mindoro case-domain overview box and the prototype-origin search box.",
-            "The focused Phase 1 provenance box and the scoring-grid display bounds are still preserved as secondary archived references and are not deleted from the package.",
+            "Study Boxes 2 and 4 are the thesis-facing defaults: the broader Mindoro case-domain overview box and the prototype-origin search box.",
+            "Study Boxes 1 and 3 remain preserved as archive-only references and are not deleted from the package.",
             "The prototype_2016 first-code search box remains historical-origin support metadata only; the stored case-local prototype extents remain the operative scientific/display extents for the 2016 figures.",
         ]
         singles = [
             self._study_box_spec(
                 spec_id="thesis_study_boxes_reference",
                 figure_slug="thesis_study_boxes_reference",
-                figure_title="Thesis study boxes reference figure",
+                figure_title="Study Boxes 2 and 4 - Thesis study boxes reference figure",
                 subtitle=(
-                    "Panel-friendly thesis-facing WGS84 box reference centered on the Mindoro case-domain overview box "
-                    "and the prototype_2016 historical-origin search box"
+                    "Panel-friendly thesis-facing WGS84 box reference centered on Study Box 2, the Mindoro "
+                    "case-domain overview box, and Study Box 4, the prototype_2016 historical-origin search box"
                 ),
                 interpretation=(
-                    "This panel-friendly thesis default foregrounds only the broader Mindoro case-domain overview box "
-                    "and the prototype_2016 historical-origin search box, while keeping the focused Phase 1 and "
-                    "scoring-grid boxes available as archived secondary references."
+                    "This panel-friendly thesis default foregrounds only Study Box 2, the broader Mindoro "
+                    "case-domain overview box, and Study Box 4, the prototype_2016 historical-origin search box, "
+                    "while keeping Study Boxes 1 and 3 available as archived secondary references."
                 ),
                 notes=(
                     "Built from stored Phase 1 baseline/config metadata, a local clipped land-context geography file, "
@@ -4938,24 +5009,24 @@ class FigurePackagePublicationService:
             self._study_box_spec(
                 spec_id="thesis_study_boxes_reference_archive_full_context",
                 figure_slug="thesis_study_boxes_reference_archive_full_context",
-                figure_title="Archived full study-box reference figure",
+                figure_title="Study Boxes 1-4 - Archived full study-box reference figure",
                 subtitle=(
-                    "Archive copy of the earlier all-box WGS84 overview showing tags 1, 2, 3, and 4 together for "
-                    "traceability"
+                    "Archive copy of the earlier all-box WGS84 overview showing Study Boxes 1, 2, 3, and 4 "
+                    "together for traceability"
                 ),
                 interpretation=(
-                    "This archive preserves the earlier all-box study-area overview so the previous 1/2/3/4 rendering "
-                    "remains available after the thesis-default overview switched to the cleaner 2/4 presentation."
+                    "This archive preserves the earlier all-box study-area overview so the previous Study Boxes 1, 2, "
+                    "3, and 4 rendering remains available after the thesis-default overview switched to the cleaner "
+                    "Study Boxes 2 and 4 presentation."
                 ),
                 notes=(
                     "Archive copy of the earlier full-context study-box overview preserved for traceability. The "
-                    "thesis-default overview now foregrounds only the broader Mindoro case-domain and the prototype "
-                    "historical-origin box."
+                    "thesis-default overview now foregrounds only Study Box 2 and Study Box 4."
                 ),
                 note_lines=[
-                    "This archived overview keeps the earlier full 1/2/3/4 box set available for traceability.",
-                    "The current thesis-default panel now foregrounds only boxes 2 and 4 for a cleaner panel story.",
-                    "No study-box outputs were deleted; the focused Phase 1 and scoring-grid references remain available separately.",
+                    "This archived overview keeps the earlier full Study Boxes 1, 2, 3, and 4 set available for traceability.",
+                    "The current thesis-default panel now foregrounds only Study Boxes 2 and 4 for a cleaner panel story.",
+                    "No study-box outputs were deleted; Study Boxes 1 and 3 remain available separately as archive/support references.",
                 ],
                 subtitle_box_title="Archived box set",
                 subtitle_box_lines=[
@@ -4974,53 +5045,53 @@ class FigurePackagePublicationService:
             "1": {
                 "spec_id": "focused_phase1_box_geography_reference",
                 "figure_slug": "focused_phase1_box_geography_reference",
-                "figure_title": "Focused Mindoro Phase 1 box geography reference",
+                "figure_title": "Study Box 1 - Focused Mindoro Phase 1 box geography reference",
                 "subtitle": (
-                    "Active thesis-facing Mindoro Phase 1 provenance box shown on a west-coast Philippines geographic "
-                    "reference backdrop"
+                    "Archived Study Box 1, the focused Mindoro Phase 1 provenance box, shown on a west-coast "
+                    "Philippines geographic reference backdrop"
                 ),
                 "interpretation": (
-                    "This panel isolates the active thesis-facing Mindoro Phase 1 provenance box while still showing "
-                    "the surrounding west-coast Philippine geography."
+                    "This archived panel isolates Study Box 1, the focused Mindoro Phase 1 provenance box, while "
+                    "still showing the surrounding west-coast Philippine geography."
                 ),
                 "notes": (
                     "Built from the stored focused Phase 1 baseline-selection box only, with a presentation-only "
-                    "geographic backdrop for orientation."
+                    "geographic backdrop for orientation. Study Box 1 is archive-only in the thesis-facing package."
                 ),
                 "note_lines": [
-                    "This is the active thesis-facing provenance box for the B1 recipe-selection story.",
-                    "It is preserved here as a secondary archived reference rather than the default thesis overview image.",
+                    "Study Box 1 is the focused Phase 1 provenance box for the B1 recipe-selection story.",
+                    "It is preserved here as an archive-only reference rather than a thesis-facing overview image.",
                     "Built from stored repo metadata only; no scientific rerun or live extent rewriting was triggered.",
                 ],
                 "subtitle_box_lines": [
-                    "Selected box: Focused Mindoro Phase 1 validation box",
+                    "Selected box: Study Box 1 - Focused Mindoro Phase 1 validation box",
                     f"Bounds (WGS84): {self._format_wgs84_bounds(study_boxes[0]['bounds'])}",
-                    "Role: active thesis-facing provenance box for the B1 recipe story",
+                    "Role: archive-only provenance reference for the B1 recipe story",
                 ],
                 "recommended_for_paper": False,
             },
             "2": {
                 "spec_id": "mindoro_case_domain_geography_reference",
                 "figure_slug": "mindoro_case_domain_geography_reference",
-                "figure_title": "Mindoro case-domain geography reference",
+                "figure_title": "Study Box 2 - Mindoro case-domain geography reference",
                 "subtitle": (
-                    "Stored `mindoro_case_domain` fallback transport and overview extent shown with geographic context"
+                    "Study Box 2, the stored `mindoro_case_domain` fallback transport and overview extent, shown with geographic context"
                 ),
                 "interpretation": (
-                    "This panel keeps the broader `mindoro_case_domain` visible as the fallback transport and overview "
-                    "extent without confusing it with the focused thesis-facing provenance box."
+                    "This panel keeps Study Box 2 visible as the broader `mindoro_case_domain` transport and overview "
+                    "extent without confusing it with archive-only Study Box 1."
                 ),
                 "notes": (
                     "Built from the stored `mindoro_case_domain` config only, with a presentation-only geographic "
-                    "backdrop for orientation."
+                    "backdrop for orientation. Study Box 2 is thesis-facing."
                 ),
                 "note_lines": [
-                    "`mindoro_case_domain` remains the broader fallback transport and overview extent.",
-                    "This is one of the two boxes now foregrounded in the thesis-default panel-friendly overview.",
+                    "Study Box 2 is `mindoro_case_domain`, the broader fallback transport and overview extent.",
+                    "It is one of the two boxes foregrounded in the thesis-default panel-friendly overview.",
                     "Built from stored repo metadata only; no scientific rerun or live extent rewriting was triggered.",
                 ],
                 "subtitle_box_lines": [
-                    "Selected box: Mindoro case-domain overview box (`mindoro_case_domain`)",
+                    "Selected box: Study Box 2 - Mindoro case-domain overview box (`mindoro_case_domain`)",
                     f"Bounds (WGS84): {self._format_wgs84_bounds(study_boxes[1]['bounds'])}",
                     "Role: broader Mindoro transport and overview context, not the active thesis provenance box",
                 ],
@@ -5029,26 +5100,26 @@ class FigurePackagePublicationService:
             "3": {
                 "spec_id": "scoring_grid_bounds_geography_reference",
                 "figure_slug": "scoring_grid_bounds_geography_reference",
-                "figure_title": "Mindoro scoring-grid bounds geography reference",
+                "figure_title": "Study Box 3 - Mindoro scoring-grid bounds geography reference",
                 "subtitle": (
-                    "Stored Mindoro scoring-grid display bounds shown with geographic context for the thesis-facing "
-                    "validation area"
+                    "Archived Study Box 3, the stored Mindoro scoring-grid display bounds, shown with geographic "
+                    "context for the validation area"
                 ),
                 "interpretation": (
-                    "This panel isolates the narrower scoring-grid display bounds so the scoreable Mindoro display "
-                    "extent stays visible without being mistaken for the broader case domain."
+                    "This archived panel isolates Study Box 3, the narrower scoring-grid display bounds, so the "
+                    "scoreable Mindoro display extent stays visible without being mistaken for Study Box 2."
                 ),
                 "notes": (
                     "Built from the stored Mindoro forecast-manifest display bounds only, with a presentation-only "
-                    "geographic backdrop for orientation."
+                    "geographic backdrop for orientation. Study Box 3 is archive-only in the thesis-facing package."
                 ),
                 "note_lines": [
-                    "These are the stored scoring-grid display bounds used for the Mindoro scoreable display extent.",
-                    "They are narrower than the broader `mindoro_case_domain` and remain a secondary archived reference rather than the default thesis overview image.",
+                    "Study Box 3 is the stored scoring-grid display bounds used for the Mindoro scoreable display extent.",
+                    "It is narrower than Study Box 2 and remains an archive-only reference rather than a thesis-facing overview image.",
                     "Built from stored repo metadata only; no scientific rerun or live extent rewriting was triggered.",
                 ],
                 "subtitle_box_lines": [
-                    "Selected box: Mindoro scoring-grid display bounds",
+                    "Selected box: Study Box 3 - Mindoro scoring-grid display bounds",
                     f"Bounds (WGS84): {self._format_wgs84_bounds(study_boxes[2]['bounds'])}",
                     "Role: narrower scoreable display extent derived from the stored forecast manifest",
                 ],
@@ -5057,27 +5128,28 @@ class FigurePackagePublicationService:
             "4": {
                 "spec_id": "prototype_first_code_search_box_geography_reference",
                 "figure_slug": "prototype_first_code_search_box_geography_reference",
-                "figure_title": "prototype_2016 first-code search-box geography reference",
+                "figure_title": "Study Box 4 - prototype_2016 first-code search-box geography reference",
                 "subtitle": (
-                    "Historical-origin `prototype_2016` first-code search box shown with the broader west-coast "
-                    "Philippines geography"
+                    "Study Box 4, the historical-origin `prototype_2016` first-code search box, shown with the "
+                    "broader west-coast Philippines geography"
                 ),
                 "interpretation": (
-                    "This panel isolates the historical-origin `prototype_2016` first-code search box so the early "
-                    "west-coast Philippines focus stays visible without implying that it is an active thesis box today."
+                    "This panel isolates Study Box 4, the historical-origin `prototype_2016` first-code search box, "
+                    "so the early west-coast Philippines focus stays visible without implying that it is an active "
+                    "Mindoro validation box today."
                 ),
                 "notes": (
                     "Built from the curated `prototype_2016` provenance metadata only, with a presentation-only "
-                    "geographic backdrop for orientation."
+                    "geographic backdrop for orientation. Study Box 4 is thesis-facing as historical-origin support."
                 ),
                 "note_lines": [
-                    "This is historical-origin support metadata from the very first prototype code, not an active thesis-facing Mindoro box.",
-                    "It is one of the two boxes now foregrounded in the thesis-default panel-friendly overview.",
+                    "Study Box 4 is historical-origin support metadata from the very first prototype code, not an active Mindoro validation box.",
+                    "It is one of the two boxes foregrounded in the thesis-default panel-friendly overview.",
                     "The stored case-local prototype extents remain the operative scientific/display extents for the 2016 figures.",
                     "Built from stored repo metadata only; no scientific rerun or live extent rewriting was triggered.",
                 ],
                 "subtitle_box_lines": [
-                    "Selected box: `prototype_2016` first-code search box",
+                    "Selected box: Study Box 4 - `prototype_2016` first-code search box",
                     f"Bounds (WGS84): {self._format_wgs84_bounds(study_boxes[3]['bounds'])}",
                     "Role: historical-origin west-coast Philippines search box used by the earliest prototype code",
                 ],
@@ -6908,7 +6980,13 @@ class FigurePackagePublicationService:
         return single_specs, board_specs
 
     def _write_registry(self, path: Path) -> list[dict[str, Any]]:
-        rows = [record.as_row() for record in sorted(self.figure_records, key=lambda item: (item.figure_family_code, item.figure_id))]
+        rows = [
+            record.as_row()
+            for record in sorted(
+                self.figure_records,
+                key=lambda item: (item.display_order, item.figure_family_code, item.figure_id),
+            )
+        ]
         _write_csv(
             path,
             rows,
@@ -6943,6 +7021,24 @@ class FigurePackagePublicationService:
                 "status_provenance",
                 "status_panel_text",
                 "status_dashboard_summary",
+                "surface_key",
+                "surface_label",
+                "surface_description",
+                "surface_home_visible",
+                "surface_panel_visible",
+                "surface_archive_visible",
+                "surface_advanced_visible",
+                "surface_recommended_visible",
+                "thesis_surface",
+                "archive_only",
+                "legacy_support",
+                "comparator_support",
+                "display_order",
+                "page_target",
+                "study_box_id",
+                "study_box_numbers",
+                "study_box_label",
+                "recommended_scope",
             ],
         )
         return rows
@@ -6989,6 +7085,109 @@ class FigurePackagePublicationService:
         )
         return rows
 
+    def _record_display_label(self, record: PublicationFigureRecord) -> str:
+        return record.display_title or record.study_box_label or record.status_label or record.figure_family_label
+
+    def _validate_study_box_surface_rules(self) -> None:
+        thesis_numbers = set(THESIS_FACING_STUDY_BOX_NUMBERS)
+        archive_numbers = set(ARCHIVE_ONLY_STUDY_BOX_NUMBERS)
+        for record in self.figure_records:
+            study_box_numbers = set(parse_study_box_numbers(record.study_box_numbers))
+            if not study_box_numbers:
+                continue
+            if record.thesis_surface and not study_box_numbers.issubset(thesis_numbers):
+                raise ValueError(
+                    f"Thesis-facing study-box figure {record.figure_id} includes archive-only study box numbers: {record.study_box_numbers}"
+                )
+            if (
+                record.run_type == "single_box_reference_map"
+                and study_box_numbers.intersection(archive_numbers)
+                and not record.archive_only
+            ):
+                raise ValueError(
+                    f"Archive-only study-box detail figure {record.figure_id} is not marked archive_only."
+                )
+
+    def _study_box_figure_index(self) -> dict[str, list[str]]:
+        index: dict[str, list[str]] = {}
+        for record in sorted(self.figure_records, key=lambda item: (item.display_order, item.figure_id)):
+            if not record.study_box_numbers:
+                continue
+            index.setdefault(record.study_box_numbers, []).append(record.figure_id)
+        return index
+
+    def _build_inventory_markdown(self) -> str:
+        ordered_records = sorted(self.figure_records, key=lambda item: (item.display_order, item.figure_id))
+        lines = [
+            "# Publication Figure Inventory",
+            "",
+            "This inventory is the curated thesis-surface index for `output/figure_package_publication/`.",
+            "",
+            "Classification keys:",
+            "",
+            "- `thesis_surface=true`: visible on the curated thesis-facing surface.",
+            "- `archive_only=true`: preserved for provenance/archive only.",
+            "- `legacy_support=true`: prototype or legacy support material.",
+            "- `comparator_support=true`: comparator-only support material.",
+            "- `display_order`: manifest-driven thesis presentation order.",
+            "- `page_target`: thesis page or archive view that should expose the figure.",
+            "- `study_box_id`: stable study-box identifier when the figure is a study-context map.",
+            "- `study_box_numbers`: study box number or number set shown by the figure (for example `2`, `4`, or `2,4`).",
+            "- `recommended_scope`: whether the figure belongs in main text, page support, appendix support, legacy support, or archive only.",
+            "",
+        ]
+        for page_target in sorted({record.page_target for record in ordered_records}):
+            page_records = [record for record in ordered_records if record.page_target == page_target]
+            if not page_records:
+                continue
+            lines.append(f"## {page_target}")
+            lines.append("")
+            for record in page_records:
+                tags = [
+                    f"scope={record.recommended_scope}",
+                    f"display_order={record.display_order}",
+                    f"thesis_surface={str(record.thesis_surface).lower()}",
+                    f"archive_only={str(record.archive_only).lower()}",
+                    f"legacy_support={str(record.legacy_support).lower()}",
+                    f"comparator_support={str(record.comparator_support).lower()}",
+                ]
+                if record.study_box_id:
+                    tags.append(f"study_box_id={record.study_box_id}")
+                if record.study_box_numbers:
+                    tags.append(f"study_box_numbers={record.study_box_numbers}")
+                lines.append(
+                    f"- `{record.figure_id}` [{self._record_display_label(record)}]: "
+                    + ", ".join(tags)
+                )
+            lines.append("")
+        return "\n".join(lines)
+
+    def _manifest_inventory(self) -> dict[str, Any]:
+        ordered_records = sorted(self.figure_records, key=lambda item: (item.display_order, item.figure_id))
+        page_targets = sorted({record.page_target for record in ordered_records})
+        return {
+            "figure_count": len(ordered_records),
+            "thesis_surface_count": sum(1 for record in ordered_records if record.thesis_surface),
+            "archive_only_count": sum(1 for record in ordered_records if record.archive_only),
+            "legacy_support_count": sum(1 for record in ordered_records if record.legacy_support),
+            "comparator_support_count": sum(1 for record in ordered_records if record.comparator_support),
+            "page_target_counts": {
+                page_target: sum(1 for record in ordered_records if record.page_target == page_target)
+                for page_target in page_targets
+            },
+            "recommended_scope_counts": {
+                scope: sum(1 for record in ordered_records if record.recommended_scope == scope)
+                for scope in sorted({record.recommended_scope for record in ordered_records})
+            },
+            "thesis_surface_figure_ids": [record.figure_id for record in ordered_records if record.thesis_surface],
+            "archive_figure_ids": [record.figure_id for record in ordered_records if record.archive_only],
+            "page_target_index": {
+                page_target: [record.figure_id for record in ordered_records if record.page_target == page_target]
+                for page_target in page_targets
+            },
+            "study_box_figure_index": self._study_box_figure_index(),
+        }
+
     def _build_captions_markdown(self) -> str:
         lines = [
             "# Publication Figure Captions",
@@ -7005,7 +7204,7 @@ class FigurePackagePublicationService:
                 lines.append("")
                 continue
             for record in sorted(family_records, key=lambda item: item.figure_id):
-                status_label = record.status_label or record.figure_family_label
+                status_label = self._record_display_label(record)
                 provenance = f" Provenance: {record.status_provenance}" if record.status_provenance else ""
                 lines.append(
                     f"- `{record.figure_id}` [{status_label}]: {record.short_plain_language_interpretation}{provenance}"
@@ -7014,19 +7213,34 @@ class FigurePackagePublicationService:
         return "\n".join(lines)
 
     def _build_talking_points_markdown(self) -> str:
-        recommended = [record for record in self.figure_records if record.recommended_for_main_defense]
-        paper_ready = [record for record in self.figure_records if record.recommended_for_paper and record.variant == "paper"]
-        supporting_honesty = [record for record in self.figure_records if record.figure_family_code == "F"]
-        prototype_support = [record for record in self.figure_records if record.figure_family_code == "K"]
+        recommended = [
+            record
+            for record in self.figure_records
+            if record.recommended_for_main_defense and record.thesis_surface
+        ]
+        paper_ready = [
+            record
+            for record in self.figure_records
+            if record.recommended_for_paper and record.variant == "paper" and record.thesis_surface
+        ]
+        supporting_honesty = [
+            record for record in self.figure_records if record.figure_family_code == "F" and record.thesis_surface
+        ]
+        legacy_support = [
+            record
+            for record in self.figure_records
+            if record.legacy_support and record.thesis_surface
+        ]
+        archive_rows = [record for record in self.figure_records if record.archive_only]
         lines = [
             "# Publication Figure Talking Points",
             "",
             "## Start Here",
             "",
         ]
-        for record in sorted(recommended, key=lambda item: (item.figure_family_code, item.figure_id)):
+        for record in sorted(recommended, key=lambda item: (item.display_order, item.figure_id)):
             lines.append(
-                f"- `{record.figure_id}` [{record.status_label or record.figure_family_label}]: {record.status_panel_text or record.short_plain_language_interpretation}"
+                f"- `{record.figure_id}` [{self._record_display_label(record)}]: {record.status_panel_text or record.short_plain_language_interpretation}"
             )
         lines.extend(
             [
@@ -7035,7 +7249,7 @@ class FigurePackagePublicationService:
                 "",
             ]
         )
-        for record in sorted(paper_ready, key=lambda item: (item.figure_family_code, item.figure_id)):
+        for record in sorted(paper_ready, key=lambda item: (item.display_order, item.figure_id)):
             lines.append(f"- `{record.figure_id}`: suitable for single-image paper or appendix use.")
         if supporting_honesty:
             lines.extend(
@@ -7047,19 +7261,31 @@ class FigurePackagePublicationService:
             )
             for record in sorted(supporting_honesty, key=lambda item: item.figure_id):
                 lines.append(
-                    f"- `{record.figure_id}` [{record.status_label or record.figure_family_label}]: {record.status_panel_text or 'This figure explains why Phase 4 OpenDrift-versus-PyGNOME comparison is not shown.'}"
+                    f"- `{record.figure_id}` [{self._record_display_label(record)}]: {record.status_panel_text or 'This figure explains why Phase 4 OpenDrift-versus-PyGNOME comparison is not shown.'}"
                 )
-        if prototype_support:
+        if legacy_support:
             lines.extend(
                 [
                     "",
-                    "## Prototype Support Figures",
+                    "## Selected Legacy Support",
                     "",
                 ]
             )
-            for record in sorted(prototype_support, key=lambda item: item.figure_id):
+            for record in sorted(legacy_support, key=lambda item: (item.display_order, item.figure_id)):
                 lines.append(
-                    f"- `{record.figure_id}` [{record.status_label or record.figure_family_label}]: {record.status_panel_text or 'Legacy prototype comparator only; deterministic OpenDrift control versus deterministic PyGNOME, with PyGNOME shown as a comparator rather than truth.'}"
+                    f"- `{record.figure_id}` [{self._record_display_label(record)}]: {record.status_panel_text or 'Legacy support retained as context only.'}"
+                )
+        if archive_rows:
+            lines.extend(
+                [
+                    "",
+                    "## Archive Index",
+                    "",
+                ]
+            )
+            for record in sorted(archive_rows, key=lambda item: (item.display_order, item.figure_id)):
+                lines.append(
+                    f"- `{record.figure_id}` [{self._record_display_label(record)}]: archive/provenance only."
                 )
         if self.missing_optional_artifacts:
             lines.extend(["", "## Missing Optional Inputs", ""])
@@ -7070,15 +7296,16 @@ class FigurePackagePublicationService:
     def _build_manifest(self, generated_at_utc: str) -> dict[str, Any]:
         rows = [record.as_row() for record in self.figure_records]
         family_counts = {code: len([record for record in self.figure_records if record.figure_family_code == code]) for code in FIGURE_FAMILIES}
+        ordered_records = sorted(self.figure_records, key=lambda item: (item.display_order, item.figure_id))
         recommended = [
             record.figure_id
-            for record in sorted(self.figure_records, key=lambda item: (item.figure_family_code, item.figure_id))
-            if record.recommended_for_main_defense
+            for record in ordered_records
+            if record.recommended_for_main_defense and record.surface_recommended_visible and record.thesis_surface
         ]
         paper_ready = [
             record.figure_id
-            for record in sorted(self.figure_records, key=lambda item: (item.figure_family_code, item.figure_id))
-            if record.recommended_for_paper and record.variant == "paper"
+            for record in ordered_records
+            if record.recommended_for_paper and record.variant == "paper" and record.thesis_surface
         ]
         deferred_note_figure_ids = [record.figure_id for record in self.figure_records if record.figure_family_code == "F"]
         return {
@@ -7091,6 +7318,9 @@ class FigurePackagePublicationService:
             "phase4_deferred_comparison_note_figure_produced": bool(deferred_note_figure_ids),
             "phase4_deferred_comparison_note_figure_ids": deferred_note_figure_ids,
             "style_config_path": _relative_to_repo(self.repo_root, self.repo_root / STYLE_CONFIG_PATH),
+            "inventory_markdown_path": _relative_to_repo(
+                self.repo_root, self.output_dir / "publication_figure_inventory.md"
+            ),
             "font_audit": self.font_audit.as_row(),
             "map_label_paths": {
                 "mindoro": _relative_to_repo(self.repo_root, self.repo_root / MINDORO_LABELS_PATH),
@@ -7112,6 +7342,13 @@ class FigurePackagePublicationService:
             "single_image_paper_figures_produced": any(record.variant == "paper" for record in self.figure_records),
             "recommended_main_defense_figures": recommended,
             "recommended_paper_figures": paper_ready,
+            "inventory": self._manifest_inventory(),
+            "study_box_presentation_rule": {
+                "thesis_surface_numbers": list(THESIS_FACING_STUDY_BOX_NUMBERS),
+                "archive_only_numbers": list(ARCHIVE_ONLY_STUDY_BOX_NUMBERS),
+                "summary": "Study Boxes 2 and 4 may appear on thesis-facing surfaces. Study Boxes 1 and 3 are archive/advanced/support only.",
+            },
+            "study_box_catalog": study_box_catalog_rows(),
             "upstream_status_context": {
                 "phase1_scientifically_frozen": bool(self._phase_status_flag("phase1", "phase1_regional_baseline", "scientifically_frozen", False)),
                 "phase2_scientifically_usable": bool(self._phase_status_flag("phase2", "phase2_machine_readable_forecast", "scientifically_reportable", True)),
@@ -7133,11 +7370,13 @@ class FigurePackagePublicationService:
             saved_by_spec_id[str(spec["spec_id"])] = self._save_single_figure(spec)
         for spec in board_specs:
             saved_by_spec_id[str(spec["spec_id"])] = self._save_board_figure(spec, saved_by_spec_id)
+        self._validate_study_box_surface_rules()
 
         registry_csv = self.output_dir / "publication_figure_registry.csv"
         manifest_json = self.output_dir / "publication_figure_manifest.json"
         captions_md = self.output_dir / "publication_figure_captions.md"
         talking_points_md = self.output_dir / "publication_figure_talking_points.md"
+        inventory_md = self.output_dir / "publication_figure_inventory.md"
         font_audit_csv = self.output_dir / "font_audit.csv"
         board_layout_audit_csv = self.output_dir / "board_layout_audit.csv"
 
@@ -7146,6 +7385,7 @@ class FigurePackagePublicationService:
         self._write_board_layout_audit(board_layout_audit_csv)
         _write_text(captions_md, self._build_captions_markdown())
         _write_text(talking_points_md, self._build_talking_points_markdown())
+        _write_text(inventory_md, self._build_inventory_markdown())
         _write_json(manifest_json, self._build_manifest(generated_at_utc))
 
         return {
@@ -7154,6 +7394,7 @@ class FigurePackagePublicationService:
             "manifest_json": str(manifest_json),
             "captions_md": str(captions_md),
             "talking_points_md": str(talking_points_md),
+            "inventory_md": str(inventory_md),
             "font_audit_csv": str(font_audit_csv),
             "board_layout_audit_csv": str(board_layout_audit_csv),
             "figure_count": len(self.figure_records),
@@ -7161,8 +7402,16 @@ class FigurePackagePublicationService:
             "side_by_side_comparison_boards_produced": any(record.view_type == "board" for record in self.figure_records),
             "single_image_paper_figures_produced": any(record.variant == "paper" for record in self.figure_records),
             "phase4_deferred_comparison_note_figure_produced": any(record.figure_family_code == "F" for record in self.figure_records),
-            "recommended_main_defense_figures": [record.figure_id for record in self.figure_records if record.recommended_for_main_defense],
-            "recommended_paper_figures": [record.figure_id for record in self.figure_records if record.recommended_for_paper and record.variant == "paper"],
+            "recommended_main_defense_figures": [
+                record.figure_id
+                for record in self.figure_records
+                if record.recommended_for_main_defense and record.surface_recommended_visible and record.thesis_surface
+            ],
+            "recommended_paper_figures": [
+                record.figure_id
+                for record in self.figure_records
+                if record.recommended_for_paper and record.variant == "paper" and record.thesis_surface
+            ],
             "missing_optional_artifacts": self.missing_optional_artifacts,
             "figure_rows": rows,
         }

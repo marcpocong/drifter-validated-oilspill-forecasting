@@ -59,7 +59,7 @@ def render(state: dict, ui_state: dict) -> None:
     render_page_intro(
         "Legacy 2016 Support Package",
         "This page surfaces the authoritative curated prototype_2016 package. It is support-only legacy material and should be read as historical pipeline context rather than as the main Mindoro or DWH validation evidence.",
-        badge="prototype_2016 | support-only legacy package",
+        badge="Legacy support | prototype_2016 support-only package",
     )
 
     if export_mode:

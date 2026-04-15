@@ -53,7 +53,7 @@ def render(state: dict, ui_state: dict) -> None:
     render_page_intro(
         "DWH Phase 3C Transfer Validation",
         "This page treats DWH as a separate Phase 3C external transfer-validation lane. It keeps C1 deterministic, C2 ensemble extension, and C3 comparator-only semantics explicit, with public observation-derived masks as truth and no drifter baseline.",
-        badge="DWH Phase 3C | separate external transfer-validation lane",
+        badge="Thesis-facing | DWH transfer-validation",
     )
 
     if export_mode:

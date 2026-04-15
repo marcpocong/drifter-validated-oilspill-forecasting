@@ -92,8 +92,8 @@ Promotion and provenance control:
 - Backward-compatible launcher alias: `mindoro_march13_14_noaa_reinit_stress_test`
 - Shared-imagery guardrail: both NOAA/NESDIS public products cite March 12 WorldView-3 imagery, so the promoted B1 row is reportable as a reinitialization-based public-validation pair, not as an independent day-to-day validation.
 - Track semantics: `B1` is the only main-text primary Mindoro validation row; `A` is the same-case comparator-support track attached to `B1`; `archive_r0` is the March 13 -> March 14 R0 archived baseline; `B2` is the March 6 archive-only sparse-reference row; `B3` is the March 3-6 archive-only broader-support row.
-- Spatial semantics: focused Phase 1 validation box `[118.751, 124.305, 10.620, 16.026]`; broad `mindoro_case_domain` fallback transport/overview extent `[115.0, 122.0, 6.0, 14.5]`; current scoring-grid display bounds `[120.90964677179262, 122.0621541786303, 12.249384840763462, 13.783655303175253]`.
-- Presentation note: `output/figure_package_publication/` now also carries a shared thesis study-box reference figure that foregrounds `mindoro_case_domain` plus the prototype_2016 historical-origin box, while preserving the focused Mindoro Phase 1 box and the scoring-grid display bounds as archived secondary geography references in the thesis-facing UI/package layer.
+- Spatial semantics: Study Box `1` is the focused Phase 1 validation box `[118.751, 124.305, 10.620, 16.026]`; Study Box `2` is the broad `mindoro_case_domain` fallback transport/overview extent `[115.0, 122.0, 6.0, 14.5]`; Study Box `3` is the current scoring-grid display bounds `[120.90964677179262, 122.0621541786303, 12.249384840763462, 13.783655303175253]`; Study Box `4` is the prototype_2016 first-code search box `[108.6465, 121.3655, 6.1865, 20.3515]`.
+- Presentation note: `output/figure_package_publication/` now carries a shared thesis study-box reference figure that foregrounds Study Boxes `2` and `4`, while preserving Study Boxes `1` and `3` as archived secondary geography references in the thesis-facing UI/package layer.
 
 ### Phase 3A Benchmark Comparator Support
 

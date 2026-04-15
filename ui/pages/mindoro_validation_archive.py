@@ -64,35 +64,29 @@ def _filter_text(df, *tokens: str):
 def render(state: dict, ui_state: dict) -> None:
     export_mode = bool(ui_state.get("export_mode"))
     case_id = "CASE_MINDORO_RETRO_2023"
-    r0_status = get_artifact_status("mindoro_b1_r0_archive")
     b2_status = get_artifact_status("mindoro_legacy_march6")
     b3_status = get_artifact_status("mindoro_legacy_support")
-    trajectory_status = get_artifact_status("mindoro_trajectory_context")
 
-    archive_registry = _filter_values(
-        state["final_validation_case_registry"],
-        column="track_id",
-        allowed_values={"archive_r0", "B2", "B3"},
-    )
-    archive_limitations = _filter_values(
-        state["final_validation_limitations"],
-        column="track_id",
-        allowed_values={"archive_r0", "B2", "B3"},
-    )
-    r0_summary = _filter_values(state["mindoro_b1_summary"], column="branch_id", allowed_values={"R0"})
-    r0_fss = _filter_values(state["mindoro_b1_fss"], column="branch_id", allowed_values={"R0"})
-    r0_comparator_summary = _filter_values(
-        state["mindoro_comparator_summary"],
-        column="track_id",
-        allowed_values={"R0_reinit_p50"},
-    )
-    r0_comparator_ranking = _filter_values(
-        state["mindoro_comparator_ranking"],
-        column="track_id",
-        allowed_values={"R0_reinit_p50"},
-    )
+    archive_registry = state["final_validation_case_registry"].loc[
+        state["final_validation_case_registry"].get("surface_key", "").astype(str).eq("archive_only")
+    ].reset_index(drop=True)
+    archive_limitations = state["final_validation_limitations"].loc[
+        state["final_validation_limitations"].get("surface_key", "").astype(str).eq("archive_only")
+    ].reset_index(drop=True)
+    r0_summary = state["mindoro_b1_summary"].loc[
+        state["mindoro_b1_summary"].get("surface_key", "").astype(str).eq("archive_only")
+    ].reset_index(drop=True)
+    r0_fss = state["mindoro_b1_fss"].loc[
+        state["mindoro_b1_fss"].get("surface_key", "").astype(str).eq("archive_only")
+    ].reset_index(drop=True)
+    r0_comparator_summary = state["mindoro_comparator_summary"].loc[
+        state["mindoro_comparator_summary"].get("surface_key", "").astype(str).eq("archive_only")
+    ].reset_index(drop=True)
+    r0_comparator_ranking = state["mindoro_comparator_ranking"].loc[
+        state["mindoro_comparator_ranking"].get("surface_key", "").astype(str).eq("archive_only")
+    ].reset_index(drop=True)
 
-    r0_publication = figure_subset("publication", case_id=case_id, status_keys=[r0_status.key])
+    r0_publication = figure_subset("publication", case_id=case_id, surface_keys=["archive_only"])
     archived_final_output = state["mindoro_final_archive_registry"]
     r0_baseline_figures = _filter_text(r0_publication, "march14_r0_overlay")
     r0_including_figures = _filter_text(
@@ -101,14 +95,14 @@ def render(state: dict, ui_state: dict) -> None:
         "mindoro_primary_validation_board",
         "mindoro_crossmodel_board",
     )
-    b2_figures = figure_subset("publication", case_id=case_id, status_keys=[b2_status.key])
-    b3_figures = figure_subset("publication", case_id=case_id, status_keys=[b3_status.key])
-    transport_context_figures = figure_subset("panel", case_id=case_id, status_keys=[trajectory_status.key])
+    b2_figures = figure_subset("publication", case_id=case_id, status_keys=[b2_status.key], surface_keys=["archive_only"])
+    b3_figures = figure_subset("publication", case_id=case_id, status_keys=[b3_status.key], surface_keys=["archive_only"])
+    transport_context_figures = figure_subset("panel", case_id=case_id, surface_keys=["advanced_only"])
 
     render_page_intro(
         "Mindoro Validation Archive",
         "This page centralizes archived Mindoro validation material that remains repo-preserved for provenance, audit, and reproducibility. The main paper and thesis-facing Mindoro reporting will use the March 13 -> March 14 R1 primary validation row only.",
-        badge="Archive only | provenance and audit",
+        badge="Archive only | Mindoro provenance and audit",
     )
 
     if export_mode:

@@ -9,13 +9,13 @@ The local Streamlit app is a read-only thesis presentation layer over the artifa
 Start the pipeline container if needed:
 
 ```bash
-docker compose up -d pipeline
+docker-compose up -d pipeline
 ```
 
 Launch the UI:
 
 ```bash
-docker compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501
+docker-compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501
 ```
 
 Open:
@@ -23,6 +23,12 @@ Open:
 ```text
 http://localhost:8501
 ```
+
+## How It Fits With The Launcher
+
+- The UI is intentionally not a launcher entry.
+- List current workflow entries with `.\start.ps1 -List -NoPause` or `.\start.ps1 -Help -NoPause`.
+- Refresh read-only UI-facing surfaces with `phase5_sync`, `trajectory_gallery`, `trajectory_gallery_panel`, `figure_package_publication`, or `prototype_legacy_final_figures` before launching the UI when you need updated packages.
 
 ## Read-Only Guarantee
 
@@ -35,11 +41,13 @@ http://localhost:8501
 
 Panel mode is the default presentation surface:
 
+- final paper / defense story first
 - publication figures first
 - plain-language page framing
 - main result and support lanes kept clearly separate
 - fewer technical controls
-- reference pages kept secondary
+- archive and legacy lanes kept secondary
+- artifact promotion/archive routing follows the canonical thesis-surface registry in `src/core/artifact_status.py`
 
 Advanced mode stays read-only, but opens lower-level inspection:
 
@@ -50,15 +58,18 @@ Advanced mode stays read-only, but opens lower-level inspection:
 
 ## Final Page Map
 
-Main pages in panel mode:
+Primary thesis-story pages in panel mode:
 
 - `Home / Overview`
 - `Phase 1 Recipe Selection`
 - `Mindoro B1 Primary Validation`
-- `Mindoro Validation Archive`
 - `Mindoro Cross-Model Comparator`
 - `DWH Phase 3C Transfer Validation`
 - `Phase 4 Oil-Type and Shoreline Context`
+
+Secondary lanes in panel mode:
+
+- `Mindoro Validation Archive`
 - `Legacy 2016 Support Package`
 
 Reference page in panel mode:
@@ -71,8 +82,8 @@ Advanced-only page:
 
 ## Output Roots Behind The Main Pages
 
-- `Home / Overview`: curated package roots plus `output/figure_package_publication/`
-- `Phase 1 Recipe Selection`: `output/phase1_mindoro_focus_pre_spill_2016_2023/`, `output/phase1_production_rerun/`, and the shared thesis study-box reference figure set from `output/figure_package_publication/`, where the default overview now foregrounds boxes `2` and `4` while the focused Phase 1 and scoring-grid geography panels remain archived secondary references
+- `Home / Overview`: curated package roots plus `output/figure_package_publication/`, with featured figures now ordered from publication-governance `page_target` and `display_order` fields so workflow/provenance context leads before Mindoro B1, comparator support, DWH, and Phase 4
+- `Phase 1 Recipe Selection`: `output/phase1_mindoro_focus_pre_spill_2016_2023/`, `output/phase1_production_rerun/`, and the shared thesis study-box reference figure set from `output/figure_package_publication/`, where the default overview now foregrounds Study Boxes `2` and `4` while Study Boxes `1` and `3` remain archived secondary references
 - `Mindoro B1 Primary Validation`: `output/Phase 3B March13-14 Final Output/`, filtered so the main thesis-facing page shows only the March 13 -> March 14 R1 primary validation row plus Track A comparator support
 - `Mindoro Validation Archive`: `output/final_validation_package/`, `output/Phase 3B March13-14 Final Output/`, and repo-preserved archived March-family materials routed through archive-only curation
 - `Mindoro Cross-Model Comparator`: `output/Phase 3B March13-14 Final Output/publication/comparator_pygnome/`
@@ -80,6 +91,20 @@ Advanced-only page:
 - `Phase 4 Oil-Type and Shoreline Context`: `output/phase4/CASE_MINDORO_RETRO_2023/`
 - `Legacy 2016 Support Package`: `output/2016 Legacy Runs FINAL Figures/`
 - `Artifacts / Logs / Registries`: `output/final_reproducibility_package/` and `output/final_validation_package/`
+
+## Study Box Numbering
+
+- Study Box `1`: focused Mindoro Phase 1 validation box. Archive/advanced/support only.
+- Study Box `2`: `mindoro_case_domain` overview extent. Thesis-facing.
+- Study Box `3`: scoring-grid display bounds. Archive/advanced/support only.
+- Study Box `4`: `prototype_2016` first-code search box. Thesis-facing as historical-origin support.
+
+## Surface Badges
+
+- `Thesis-facing`: current main evidence or current thesis-story context
+- `Comparator support`: current support material kept separate from the primary claim
+- `Archive only`: preserved for provenance, audit, or reproducibility only
+- `Legacy support`: preserved historical or prototype support material
 
 ## Export / PDF Mode
 
