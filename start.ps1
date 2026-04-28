@@ -11,15 +11,19 @@
 
     Canonical paths:
         .\start.ps1 -List -NoPause
+        .\start.ps1 -ListRole <thesis_role> -NoPause
         .\start.ps1 -Help -NoPause
+        .\start.ps1 -Explain <entry_id> -NoPause
         .\start.ps1 -Entry <entry_id>
-        docker-compose exec -T -e WORKFLOW_MODE=<workflow_mode> -e PIPELINE_PHASE=<phase> <pipeline|gnome> python -m src
+        docker compose exec -T -e WORKFLOW_MODE=<workflow_mode> -e PIPELINE_PHASE=<phase> <pipeline|gnome> python -m src
 #>
 
 param(
     [switch]$List,
     [switch]$Help,
     [string]$Entry,
+    [string]$Explain,
+    [string]$ListRole,
     [switch]$Panel,
     [switch]$NoPause
 )
@@ -34,8 +38,71 @@ $Script:PrepOutagePayloadPrefix = "PREP_OUTAGE_PAYLOAD="
 $Script:ForcingOutageSkipExitCode = 87
 $Script:ForcingOutageSkipPayloadPrefix = "FORCING_OUTAGE_SKIP_PAYLOAD="
 $Script:StartupPromptProbePrefix = "STARTUP_PROMPT_PROBE="
+$Script:ComposeMode = $null
+$Script:ComposeModeChecked = $false
 
 Set-Location $Script:RepoRoot
+
+function Resolve-ComposeMode {
+    if ($Script:ComposeModeChecked) {
+        return $Script:ComposeMode
+    }
+
+    $Script:ComposeModeChecked = $true
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        & docker compose version *> $null
+        if ($LASTEXITCODE -eq 0) {
+            $Script:ComposeMode = "docker_compose_v2"
+            return $Script:ComposeMode
+        }
+
+        & docker-compose version *> $null
+        if ($LASTEXITCODE -eq 0) {
+            $Script:ComposeMode = "docker_compose_v1"
+            return $Script:ComposeMode
+        }
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    $Script:ComposeMode = $null
+    return $null
+}
+
+function Get-ComposeMode {
+    $mode = Resolve-ComposeMode
+    if ($mode) {
+        return $mode
+    }
+
+    throw "Docker Compose is required. Prefer 'docker compose'; older 'docker-compose' also works if installed."
+}
+
+function Get-ComposeCommandText {
+    $mode = Resolve-ComposeMode
+    switch ($mode) {
+        "docker_compose_v1" { return "docker-compose" }
+        default { return "docker compose" }
+    }
+}
+
+function Invoke-ComposeCommand {
+    param([Parameter(Mandatory = $true)][string[]]$ComposeArgs)
+
+    switch (Get-ComposeMode) {
+        "docker_compose_v2" {
+            & docker compose @ComposeArgs
+            return
+        }
+        "docker_compose_v1" {
+            & docker-compose @ComposeArgs
+            return
+        }
+    }
+}
 
 function Write-Section {
     param([string]$Text)
@@ -112,7 +179,7 @@ function Invoke-DockerPhaseCommand {
         # ErrorRecord objects when ErrorActionPreference=Stop. Downgrade just this native call so
         # benign container/status chatter does not abort the launcher.
         $ErrorActionPreference = "Continue"
-        & docker-compose @dockerArgs 2>&1 | ForEach-Object {
+        Invoke-ComposeCommand -ComposeArgs $dockerArgs 2>&1 | ForEach-Object {
             $message = if ($_ -is [System.Management.Automation.ErrorRecord]) {
                 $_.Exception.Message
             } else {
@@ -212,6 +279,260 @@ function Get-LauncherEntryById {
         throw "Unknown launcher entry '$EntryId'. Known entry IDs: $known"
     }
     return $match
+}
+
+function Get-VisibleLauncherEntries {
+    return @(
+        Get-LauncherEntries |
+            Where-Object { -not [bool]$_.menu_hidden } |
+            Sort-Object menu_order, entry_id
+    )
+}
+
+function Get-HiddenLauncherEntries {
+    return @(
+        Get-LauncherEntries |
+            Where-Object { [bool]$_.menu_hidden } |
+            Sort-Object menu_order, entry_id
+    )
+}
+
+function Get-ValidThesisRoles {
+    return @(
+        "primary_evidence",
+        "support_context",
+        "comparator_support",
+        "archive_provenance",
+        "legacy_support",
+        "read_only_governance"
+    )
+}
+
+function Format-ThesisRoleLabel {
+    param([string]$Role)
+
+    switch ([string]$Role) {
+        "primary_evidence" { return "Primary evidence" }
+        "support_context" { return "Support/context" }
+        "comparator_support" { return "Comparator support" }
+        "archive_provenance" { return "Archive/provenance" }
+        "legacy_support" { return "Legacy support" }
+        "read_only_governance" { return "Read-only governance" }
+        default { return ([string]$Role) }
+    }
+}
+
+function Format-RunKindLabel {
+    param([string]$RunKind)
+
+    switch ([string]$RunKind) {
+        "read_only" { return "Read-only" }
+        "packaging_only" { return "Packaging-only" }
+        "scientific_rerun" { return "Scientific rerun" }
+        "comparator_rerun" { return "Comparator rerun" }
+        "archive_rerun" { return "Archive/support rerun" }
+        default { return ([string]$RunKind) }
+    }
+}
+
+function Test-LauncherEntryReadOnlyLike {
+    param([Parameter(Mandatory = $true)]$LauncherEntry)
+
+    return ([string]$LauncherEntry.run_kind -in @("read_only", "packaging_only"))
+}
+
+function Test-LauncherEntryNeedsPreview {
+    param([Parameter(Mandatory = $true)]$LauncherEntry)
+
+    if ([bool]$LauncherEntry.confirms_before_run) {
+        return $true
+    }
+
+    if (-not [bool]$LauncherEntry.safe_default) {
+        return $true
+    }
+
+    return ([string]$LauncherEntry.rerun_cost -ne "cheap_read_only")
+}
+
+function Test-ConsolePromptAvailable {
+    try {
+        return [Environment]::UserInteractive -and -not [Console]::IsInputRedirected
+    }
+    catch {
+        return $false
+    }
+}
+
+function Get-LauncherEntryOutputWarning {
+    param([Parameter(Mandatory = $true)]$LauncherEntry)
+
+    switch ([string]$LauncherEntry.run_kind) {
+        "read_only" { return "Uses stored manifests or artifacts only. No scientific rerun should occur." }
+        "packaging_only" { return "Rebuilds packaging/docs from stored outputs only. No scientific rerun should occur." }
+        "comparator_rerun" { return "May rerun support/comparator workflows and write new comparator artifacts under output/. PyGNOME remains comparator-only." }
+        "archive_rerun" { return "May rerun archive, appendix, or provenance workflows and write new support artifacts under output/ without changing the thesis claim boundary." }
+        default { return "May rerun scientific phases and write new workflow artifacts under output/. Continue only when you intentionally want that rerun." }
+    }
+}
+
+function Write-LauncherEntrySummary {
+    param(
+        [Parameter(Mandatory = $true)]$LauncherEntry,
+        [string]$DisplayKey,
+        [switch]$IncludeHiddenMarker
+    )
+
+    $prefix = if ($DisplayKey) { "  $DisplayKey. " } else { "  - " }
+    Write-Host ("{0}{1}" -f $prefix, $LauncherEntry.label) -ForegroundColor White
+    Write-Host ("     id={0}" -f $LauncherEntry.entry_id) -ForegroundColor DarkGray
+    Write-Host ("     thesis role={0} | draft={1}" -f (Format-ThesisRoleLabel -Role ([string]$LauncherEntry.thesis_role)), ([string]$LauncherEntry.draft_section)) -ForegroundColor Yellow
+
+    $safetyTag = if ([bool]$LauncherEntry.safe_default) { "safe-default" } else { "explicit-confirm" }
+    $tags = @(
+        (Format-RunKindLabel -RunKind ([string]$LauncherEntry.run_kind)),
+        ("cost={0}" -f [string]$LauncherEntry.rerun_cost),
+        $safetyTag,
+        ("for={0}" -f [string]$LauncherEntry.recommended_for)
+    )
+    if ($IncludeHiddenMarker -and [bool]$LauncherEntry.menu_hidden) {
+        $tags += "hidden-from-default-menu"
+    }
+    if ($LauncherEntry.alias_of) {
+        $tags += ("alias-of={0}" -f [string]$LauncherEntry.alias_of)
+    }
+
+    Write-Host ("     tags={0}" -f ($tags -join " | ")) -ForegroundColor DarkGray
+    Write-Host ("     boundary={0}" -f [string]$LauncherEntry.claim_boundary) -ForegroundColor Gray
+}
+
+function Show-LauncherEntryPreview {
+    param([Parameter(Mandatory = $true)]$LauncherEntry)
+
+    $stepsSummary = ($LauncherEntry.steps | ForEach-Object { "{0}:{1}" -f $_.service, $_.phase }) -join " -> "
+
+    Clear-Host
+    Write-Section "ENTRY PREVIEW"
+    Write-Host ""
+    Write-Host ("Entry ID: {0}" -f [string]$LauncherEntry.entry_id) -ForegroundColor Yellow
+    if ($LauncherEntry.alias_of) {
+        Write-Host ("Preferred / canonical ID: {0}" -f [string]$LauncherEntry.alias_of) -ForegroundColor DarkGray
+    }
+    Write-Host ("Label: {0}" -f [string]$LauncherEntry.label) -ForegroundColor White
+    Write-Host ("Thesis role: {0}" -f (Format-ThesisRoleLabel -Role ([string]$LauncherEntry.thesis_role))) -ForegroundColor White
+    Write-Host ("Draft section: {0}" -f [string]$LauncherEntry.draft_section) -ForegroundColor White
+    Write-Host ("Claim boundary: {0}" -f [string]$LauncherEntry.claim_boundary) -ForegroundColor White
+    Write-Host ("Run kind: {0}" -f (Format-RunKindLabel -RunKind ([string]$LauncherEntry.run_kind))) -ForegroundColor White
+    Write-Host ("Rerun cost: {0}" -f [string]$LauncherEntry.rerun_cost) -ForegroundColor White
+    $safetyText = if ([bool]$LauncherEntry.safe_default) { "safe default" } else { "explicit confirmation required" }
+    Write-Host ("Safety: {0}" -f $safetyText) -ForegroundColor White
+    Write-Host ("Recommended for: {0}" -f [string]$LauncherEntry.recommended_for) -ForegroundColor White
+    Write-Host ("Steps/phases: {0}" -f $stepsSummary) -ForegroundColor White
+    Write-Host ("Output warning: {0}" -f (Get-LauncherEntryOutputWarning -LauncherEntry $LauncherEntry)) -ForegroundColor Yellow
+    if ($LauncherEntry.notes) {
+        Write-Host ("Notes: {0}" -f [string]$LauncherEntry.notes) -ForegroundColor DarkGray
+    }
+}
+
+function Confirm-LauncherEntryRun {
+    param([Parameter(Mandatory = $true)]$LauncherEntry)
+
+    if (-not (Test-LauncherEntryNeedsPreview -LauncherEntry $LauncherEntry)) {
+        return
+    }
+
+    if (-not (Test-ConsolePromptAvailable)) {
+        throw "Launcher entry '$([string]$LauncherEntry.entry_id)' requires interactive confirmation. Run .\start.ps1 -Explain $([string]$LauncherEntry.entry_id) first, then rerun it from an interactive PowerShell session."
+    }
+
+    Show-LauncherEntryPreview -LauncherEntry $LauncherEntry
+    Write-Host ""
+
+    if (Test-LauncherEntryReadOnlyLike -LauncherEntry $LauncherEntry) {
+        while ($true) {
+            $choice = (Read-Host "Type Y to continue, or press Enter to cancel").Trim()
+            if ([string]::IsNullOrWhiteSpace($choice)) {
+                throw "Launch cancelled before execution."
+            }
+            if ($choice.ToUpperInvariant() -in @("Y", "YES")) {
+                return
+            }
+            Write-Host "Enter Y to continue, or press Enter to cancel." -ForegroundColor DarkYellow
+        }
+    }
+
+    $entryId = [string]$LauncherEntry.entry_id
+    while ($true) {
+        $choice = (Read-Host ("Type RUN or {0} to continue, or press Enter to cancel" -f $entryId)).Trim()
+        if ([string]::IsNullOrWhiteSpace($choice)) {
+            throw "Launch cancelled before execution."
+        }
+        if ($choice -eq "RUN" -or $choice -eq $entryId) {
+            return
+        }
+        Write-Host ("Enter RUN or {0} to continue, or press Enter to cancel." -f $entryId) -ForegroundColor DarkYellow
+    }
+}
+
+function Get-LauncherRoleGroups {
+    return @(
+        @{
+            MenuKey = "1"
+            GroupId = "main_thesis_evidence"
+            Label = "Main thesis evidence reruns"
+            Description = "Intentional reruns for the main thesis evidence lanes."
+        },
+        @{
+            MenuKey = "2"
+            GroupId = "support_context"
+            Label = "Support/context and appendix reruns"
+            Description = "Support, comparator, and appendix reruns outside the main-text claim."
+        },
+        @{
+            MenuKey = "3"
+            GroupId = "archive_provenance"
+            Label = "Archive/provenance reruns"
+            Description = "Archive, provenance, and governance reruns kept outside the default defense path."
+        },
+        @{
+            MenuKey = "4"
+            GroupId = "legacy_debug"
+            Label = "Legacy prototype/debug reruns"
+            Description = "Legacy prototype support and debug paths."
+        },
+        @{
+            MenuKey = "5"
+            GroupId = "read_only_governance"
+            Label = "Read-only packaging, audits, dashboard, and docs"
+            Description = "Safe packaging and audit surfaces built from stored outputs only."
+        }
+    )
+}
+
+function Get-LauncherEntriesForRoleGroup {
+    param([Parameter(Mandatory = $true)][string]$GroupId)
+
+    $entries = Get-VisibleLauncherEntries
+    switch ($GroupId) {
+        "main_thesis_evidence" {
+            return @($entries | Where-Object { $_.thesis_role -eq "primary_evidence" })
+        }
+        "support_context" {
+            return @($entries | Where-Object { $_.thesis_role -in @("support_context", "comparator_support") })
+        }
+        "archive_provenance" {
+            return @($entries | Where-Object { $_.thesis_role -eq "archive_provenance" })
+        }
+        "legacy_debug" {
+            return @($entries | Where-Object { $_.thesis_role -eq "legacy_support" })
+        }
+        "read_only_governance" {
+            return @($entries | Where-Object { $_.thesis_role -eq "read_only_governance" })
+        }
+        default {
+            throw "Unknown launcher role group '$GroupId'."
+        }
+    }
 }
 
 function ConvertTo-Hashtable {
@@ -443,7 +764,7 @@ function Invoke-StartupPromptProbe {
         $EntryId
     )
 
-    & docker-compose @dockerArgs 2>&1 | ForEach-Object {
+    Invoke-ComposeCommand -ComposeArgs $dockerArgs 2>&1 | ForEach-Object {
         $message = if ($_ -is [System.Management.Automation.ErrorRecord]) {
             $_.Exception.Message
         } else {
@@ -656,6 +977,7 @@ function Invoke-DockerPhase {
 function Invoke-LauncherEntry {
     param([Parameter(Mandatory = $true)]$LauncherEntry)
 
+    Confirm-LauncherEntryRun -LauncherEntry $LauncherEntry
     Ensure-Directories
     $entryId = [string]$LauncherEntry.entry_id
     $workflowMode = [string]$LauncherEntry.workflow_mode
@@ -670,14 +992,14 @@ function Invoke-LauncherEntry {
             # Docker may emit "Container ... Running" on stderr even when the command succeeds.
             # Treat that output as normal launcher chatter instead of a terminating PowerShell error.
             $ErrorActionPreference = "Continue"
-            docker-compose up -d 2>&1 | ForEach-Object { Write-ProcessLine $_ }
+            Invoke-ComposeCommand -ComposeArgs @("up", "-d") 2>&1 | ForEach-Object { Write-ProcessLine $_ }
             $composeExitCode = $LASTEXITCODE
         }
         finally {
             $ErrorActionPreference = $previousErrorActionPreference
         }
         if ($composeExitCode -ne 0) {
-            throw "docker-compose up failed with exit code $composeExitCode."
+            throw ("{0} up -d failed with exit code {1}." -f (Get-ComposeCommandText), $composeExitCode)
         }
 
         $entryStartupEnv = Resolve-LauncherStartupEnv -LauncherEntry $LauncherEntry
@@ -738,14 +1060,14 @@ function Invoke-ReadOnlyUi {
         # Docker may emit routine status lines to stderr even on success.
         $ErrorActionPreference = "Continue"
         if ($RestartPipeline) {
-            docker-compose up -d 2>&1 | ForEach-Object { Write-ProcessLine $_ }
+            Invoke-ComposeCommand -ComposeArgs @("up", "-d") 2>&1 | ForEach-Object { Write-ProcessLine $_ }
             $composeExitCode = $LASTEXITCODE
             if ($composeExitCode -eq 0) {
-                docker-compose restart pipeline gnome 2>&1 | ForEach-Object { Write-ProcessLine $_ }
+                Invoke-ComposeCommand -ComposeArgs @("restart", "pipeline", "gnome") 2>&1 | ForEach-Object { Write-ProcessLine $_ }
                 $composeExitCode = $LASTEXITCODE
             }
         } else {
-            docker-compose up -d 2>&1 | ForEach-Object { Write-ProcessLine $_ }
+            Invoke-ComposeCommand -ComposeArgs @("up", "-d") 2>&1 | ForEach-Object { Write-ProcessLine $_ }
             $composeExitCode = $LASTEXITCODE
         }
     }
@@ -754,9 +1076,9 @@ function Invoke-ReadOnlyUi {
     }
     if ($composeExitCode -ne 0) {
         if ($RestartPipeline) {
-            throw "docker-compose up/restart for the full compose stack failed with exit code $composeExitCode."
+            throw ("{0} up/restart for the full compose stack failed with exit code {1}." -f (Get-ComposeCommandText), $composeExitCode)
         }
-        throw "docker-compose up -d failed with exit code $composeExitCode."
+        throw ("{0} up -d failed with exit code {1}." -f (Get-ComposeCommandText), $composeExitCode)
     }
 
     Write-Host ""
@@ -782,7 +1104,7 @@ function Invoke-ReadOnlyUi {
     try {
         # Keep Streamlit attached to this terminal so Ctrl+C behaves as expected.
         $ErrorActionPreference = "Continue"
-        & docker-compose @uiArgs 2>&1 | ForEach-Object { Write-ProcessLine $_ }
+        Invoke-ComposeCommand -ComposeArgs $uiArgs 2>&1 | ForEach-Object { Write-ProcessLine $_ }
         $uiExitCode = $LASTEXITCODE
     }
     finally {
@@ -819,7 +1141,7 @@ function Invoke-ContainerPythonScript {
     $previousErrorActionPreference = $ErrorActionPreference
     try {
         $ErrorActionPreference = "Continue"
-        & docker-compose @dockerArgs 2>&1 | ForEach-Object { Write-ProcessLine $_ }
+        Invoke-ComposeCommand -ComposeArgs $dockerArgs 2>&1 | ForEach-Object { Write-ProcessLine $_ }
         $scriptExitCode = $LASTEXITCODE
     }
     finally {
@@ -979,37 +1301,69 @@ function Export-CsvToExcelWorkbook {
 }
 
 function Show-LauncherList {
+    param([string]$Role)
+
     $matrix = Get-LauncherMatrix
-    $entries = Get-LauncherEntries
+    $compose = Get-ComposeCommandText
+    $normalizedRole = [string]$Role
+
+    if ($normalizedRole) {
+        $normalizedRole = $normalizedRole.Trim().ToLowerInvariant()
+        if ($normalizedRole -notin (Get-ValidThesisRoles)) {
+            throw "Unknown thesis role '$Role'. Valid roles: $((Get-ValidThesisRoles) -join ', ')"
+        }
+    }
+
     Clear-Host
     Write-Section "CURRENT LAUNCHER CATALOG"
     Write-Host ""
-    Write-Host "Recommended defense path: .\panel.ps1 or .\start.ps1 -Panel" -ForegroundColor Green
-    Write-Host "Entrypoint: .\start.ps1" -ForegroundColor Green
+    Write-Host "Defense default: .\panel.ps1 or .\start.ps1 -Panel" -ForegroundColor Green
+    Write-Host "Full launcher: .\start.ps1  # researcher/audit path" -ForegroundColor Yellow
     Write-Host "Catalog: $($matrix.catalog_version)" -ForegroundColor Yellow
-    Write-Host "Panel mode: .\start.ps1 -Panel -NoPause" -ForegroundColor Yellow
-    Write-Host "List entries: .\start.ps1 -List -NoPause" -ForegroundColor Yellow
-    Write-Host "Launcher help: .\start.ps1 -Help -NoPause" -ForegroundColor Yellow
-    Write-Host "Interactive run: .\start.ps1 -Entry <entry_id>" -ForegroundColor Yellow
-    Write-Host "Prompt-free container run: docker-compose exec -T -e WORKFLOW_MODE=<workflow_mode> -e PIPELINE_PHASE=<phase> <pipeline|gnome> python -m src" -ForegroundColor Yellow
-    Write-Host "Read-only UI: docker-compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501" -ForegroundColor Yellow
-    Write-Host "Full UI refresh: docker-compose up -d ; docker-compose restart pipeline gnome ; then rerun the same Streamlit command." -ForegroundColor Yellow
+    Write-Host "List by role: .\start.ps1 -ListRole <thesis_role> -NoPause" -ForegroundColor Yellow
+    Write-Host "Explain one entry: .\start.ps1 -Explain <entry_id> -NoPause" -ForegroundColor Yellow
+    Write-Host ("Prompt-free container run: {0} exec -T -e WORKFLOW_MODE=<workflow_mode> -e PIPELINE_PHASE=<phase> <pipeline|gnome> python -m src" -f $compose) -ForegroundColor Yellow
+    Write-Host ("Read-only UI: {0} exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501" -f $compose) -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Use user-facing entry IDs and thesis-role groupings here. Raw phase names are not the primary startup commands." -ForegroundColor White
     Write-Host ""
 
-    foreach ($category in Get-LauncherCategories) {
-        Write-Host "$($category.label)" -ForegroundColor Cyan
-        Write-Host "  $($category.description)" -ForegroundColor DarkGray
-        foreach ($launcherEntry in $entries | Where-Object { $_.category_id -eq $category.category_id }) {
-            $safeTag = if ($launcherEntry.safe_default) { "safe" } else { "manual" }
-            Write-Host ("  - {0} [{1}; cost={2}; mode={3}]" -f $launcherEntry.entry_id, $safeTag, $launcherEntry.rerun_cost, $launcherEntry.workflow_mode) -ForegroundColor White
-            Write-Host "    $($launcherEntry.label)" -ForegroundColor Yellow
-            Write-Host "    $($launcherEntry.description)" -ForegroundColor Gray
-            Write-Host ("    phases: {0}" -f (($launcherEntry.steps | ForEach-Object { $_.phase }) -join ", ")) -ForegroundColor DarkGray
-            if ($launcherEntry.notes) {
-                Write-Host "    note: $($launcherEntry.notes)" -ForegroundColor DarkYellow
+    if ($normalizedRole) {
+        $matchingEntries = @(
+            Get-LauncherEntries |
+                Where-Object { ([string]$_.thesis_role).ToLowerInvariant() -eq $normalizedRole } |
+                Sort-Object menu_order, entry_id
+        )
+        Write-Host ("Filtered thesis role: {0}" -f (Format-ThesisRoleLabel -Role $normalizedRole)) -ForegroundColor Cyan
+        Write-Host ""
+        if (-not $matchingEntries) {
+            Write-Host "No launcher entries currently match that thesis role." -ForegroundColor DarkYellow
+        } else {
+            foreach ($entry in $matchingEntries) {
+                Write-LauncherEntrySummary -LauncherEntry $entry -IncludeHiddenMarker
+                Write-Host ""
             }
         }
-        Write-Host ""
+    } else {
+        foreach ($group in Get-LauncherRoleGroups) {
+            $groupEntries = Get-LauncherEntriesForRoleGroup -GroupId ([string]$group.GroupId)
+            Write-Host ("{0}. {1}" -f [string]$group.MenuKey, [string]$group.Label) -ForegroundColor Cyan
+            Write-Host ("   {0}" -f [string]$group.Description) -ForegroundColor DarkGray
+            foreach ($entry in $groupEntries) {
+                Write-LauncherEntrySummary -LauncherEntry $entry
+                Write-Host ""
+            }
+        }
+
+        $hiddenEntries = Get-HiddenLauncherEntries
+        if ($hiddenEntries) {
+            Write-Host "Hidden compatibility / experimental IDs" -ForegroundColor Cyan
+            Write-Host "   These remain valid for older scripts or deliberate experiments, but they stay out of the default launcher menu." -ForegroundColor DarkGray
+            foreach ($entry in $hiddenEntries) {
+                Write-LauncherEntrySummary -LauncherEntry $entry -IncludeHiddenMarker
+                Write-Host ""
+            }
+        }
     }
 
     if ($matrix.optional_future_work) {
@@ -1024,65 +1378,64 @@ function Show-LauncherList {
 
 function Show-Help {
     $matrix = Get-LauncherMatrix
-    $readOnlyEntries = @(
-        $matrix.entries |
-            Where-Object { $_.category_id -eq "read_only_packaging_help_utilities" -and $_.safe_default } |
-            Sort-Object menu_order
-    )
+    $compose = Get-ComposeCommandText
+
     Clear-Host
     Write-Section "LAUNCHER HELP"
     Write-Host ""
-    Write-Host "Canonical startup paths:" -ForegroundColor Yellow
+    Write-Host "Panel-safe default path:" -ForegroundColor Yellow
     Write-Host "  .\panel.ps1" -ForegroundColor Green
     Write-Host "  .\start.ps1 -Panel -NoPause" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "Full launcher / researcher-audit path:" -ForegroundColor Yellow
+    Write-Host "  .\start.ps1" -ForegroundColor Green
     Write-Host "  .\start.ps1 -List -NoPause" -ForegroundColor Green
-    Write-Host "  .\start.ps1 -Help -NoPause" -ForegroundColor Green
+    Write-Host "  .\start.ps1 -ListRole primary_evidence -NoPause" -ForegroundColor Green
+    Write-Host "  .\start.ps1 -Explain mindoro_phase3b_primary_public_validation -NoPause" -ForegroundColor Green
     Write-Host "  .\start.ps1 -Entry <entry_id>" -ForegroundColor Green
-    Write-Host "  docker-compose exec -T -e WORKFLOW_MODE=<workflow_mode> -e PIPELINE_PHASE=<phase> <pipeline|gnome> python -m src" -ForegroundColor Green
-    Write-Host "  docker-compose exec -T pipeline python src/services/panel_review_check.py" -ForegroundColor Green
-    Write-Host "  docker-compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501" -ForegroundColor Green
-    Write-Host "  docker-compose up -d ; docker-compose restart pipeline gnome ; docker-compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501" -ForegroundColor Green
     Write-Host ""
-    Write-Host "Recommended read-only launcher entries:" -ForegroundColor Yellow
-    Write-Host "  .\panel.ps1  # recommended defense/panel path" -ForegroundColor Green
-    Write-Host "  .\start.ps1 -Panel -NoPause" -ForegroundColor Green
-    foreach ($entry in $readOnlyEntries) {
-        Write-Host ("  .\start.ps1 -Entry {0}" -f $entry.entry_id) -ForegroundColor Green
-    }
+    Write-Host "Preferred user-facing entry IDs:" -ForegroundColor Yellow
+    Write-Host "  phase1_mindoro_focus_provenance" -ForegroundColor White
+    Write-Host "  mindoro_phase3b_primary_public_validation" -ForegroundColor White
+    Write-Host "  dwh_reportable_bundle" -ForegroundColor White
+    Write-Host "  phase1_regional_reference_rerun" -ForegroundColor White
+    Write-Host "  mindoro_phase4_only" -ForegroundColor White
     Write-Host ""
-    Write-Host "Reportable launcher entries require explicit intent:" -ForegroundColor Yellow
-    Write-Host "  .\start.ps1 -Entry phase1_production_rerun" -ForegroundColor Gray
+    Write-Host "Compatibility aliases still work, but they are no longer the preferred wording:" -ForegroundColor Yellow
+    Write-Host "  phase1_mindoro_focus_pre_spill_experiment" -ForegroundColor Gray
+    Write-Host "  phase1_production_rerun" -ForegroundColor Gray
+    Write-Host "  mindoro_march13_14_noaa_reinit_stress_test" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "Read-only / packaging-safe examples:" -ForegroundColor Yellow
+    Write-Host "  .\start.ps1 -Entry phase1_audit" -ForegroundColor Green
+    Write-Host "  .\start.ps1 -Entry final_validation_package" -ForegroundColor Green
+    Write-Host "  .\start.ps1 -Entry phase5_sync" -ForegroundColor Green
+    Write-Host "  .\start.ps1 -Entry figure_package_publication" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "Intentional scientific rerun examples:" -ForegroundColor Yellow
+    Write-Host "  .\start.ps1 -Entry phase1_mindoro_focus_provenance" -ForegroundColor Gray
     Write-Host "  .\start.ps1 -Entry mindoro_phase3b_primary_public_validation" -ForegroundColor Gray
-    Write-Host "  .\start.ps1 -Entry mindoro_reportable_core" -ForegroundColor Gray
     Write-Host "  .\start.ps1 -Entry dwh_reportable_bundle" -ForegroundColor Gray
+    Write-Host "  .\start.ps1 -Entry mindoro_reportable_core" -ForegroundColor Gray
     Write-Host ""
-    Write-Host "Support, archive, and legacy entries stay available through -List:" -ForegroundColor Yellow
-    Write-Host "  mindoro_phase4_only ; mindoro_appendix_sensitivity_bundle ; phase1_mindoro_focus_pre_spill_experiment" -ForegroundColor Gray
-    Write-Host "  mindoro_march13_14_phase1_focus_trial ; mindoro_march6_recovery_sensitivity ; mindoro_march23_extended_public_stress_test" -ForegroundColor Gray
-    Write-Host "  prototype_2021_bundle ; prototype_legacy_bundle" -ForegroundColor Gray
-    Write-Host "  Compatibility alias only: mindoro_march13_14_noaa_reinit_stress_test" -ForegroundColor Gray
+    Write-Host "Direct container commands:" -ForegroundColor Yellow
+    Write-Host ("  {0} exec -T -e WORKFLOW_MODE=<workflow_mode> -e PIPELINE_PHASE=<phase> <pipeline|gnome> python -m src" -f $compose) -ForegroundColor Green
+    Write-Host ("  {0} exec -T pipeline python src/services/panel_review_check.py" -f $compose) -ForegroundColor Green
+    Write-Host ("  {0} exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501" -f $compose) -ForegroundColor Green
+    Write-Host ("  {0} up -d ; {0} restart pipeline gnome ; {0} exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501" -f $compose) -ForegroundColor Green
     Write-Host ""
-    Write-Host "Direct container runs only prompt when they have a TTY:" -ForegroundColor Yellow
-    Write-Host "  docker-compose exec -e WORKFLOW_MODE=phase1_mindoro_focus_pre_spill_2016_2023 -e PIPELINE_PHASE=phase1_production_rerun pipeline python -m src" -ForegroundColor Gray
-    Write-Host "  docker-compose exec -T ... stays prompt-free and now prints the resolved startup policy instead." -ForegroundColor White
-    Write-Host ""
-    Write-Host "Current status guardrails:" -ForegroundColor Yellow
-    Write-Host "  - Phase 1 dedicated 2016-2022 rerun outputs now exist and stage a candidate baseline; default spill-case adoption remains a manual promotion or BASELINE_SELECTION_PATH trial." -ForegroundColor White
-    Write-Host "  - FORCING_OUTAGE_POLICY=default|continue_degraded|fail_hard controls forcing-only outage behavior. Reportable lanes fail hard by default; appendix/legacy/experimental lanes may continue in degraded mode." -ForegroundColor White
-    Write-Host "  - Interactive launcher runs now ask once for the forcing wait budget and, when eligible caches already exist, whether to reuse validated inputs or force refresh." -ForegroundColor White
-    Write-Host "  - Direct interactive docker-compose exec runs do the same once per run; no-TTY direct runs skip prompts and print the resolved policy instead." -ForegroundColor White
+    Write-Host "Guardrails:" -ForegroundColor Yellow
+    Write-Host "  - Panel mode is the defense-safe default. The full launcher is for researcher/audit use." -ForegroundColor White
+    Write-Host "  - Use launcher entry IDs and role groups as the user-facing startup vocabulary. Raw phase names are secondary implementation details." -ForegroundColor White
+    Write-Host "  - B1 is the only main-text primary Mindoro validation row, and the March 13 -> March 14 pair keeps the shared-imagery caveat explicit." -ForegroundColor White
+    Write-Host "  - Track A and every PyGNOME branch remain comparator-only support, never observational truth." -ForegroundColor White
+    Write-Host "  - DWH is a separate external transfer-validation story, not Mindoro recalibration." -ForegroundColor White
+    Write-Host "  - Mindoro Phase 4 oil-type and shoreline outputs remain support/context only." -ForegroundColor White
+    Write-Host "  - prototype_2016 remains legacy support only." -ForegroundColor White
     Write-Host "  - Non-interactive launcher runs default silently to INPUT_CACHE_POLICY=reuse_if_valid and FORCING_SOURCE_BUDGET_SECONDS=300." -ForegroundColor White
-    Write-Host "  - Persistent local input store means validated reusable inputs under data/drifters, data/forcing, data/arcgis, data/historical_validation_inputs, and data/local_input_store; output-local forcing/raw folders are only staging or legacy scratch." -ForegroundColor White
-    Write-Host "  - INPUT_CACHE_POLICY=force_refresh bypasses validated local reuse, fetches fresh copies, and rewrites the persistent local input store for that run." -ForegroundColor White
-    Write-Host "  - Current inventories and manifests now record reuse-vs-refresh, provider/source URL, local storage path, and validation status for rerun-facing inputs." -ForegroundColor White
-    Write-Host "  - Drifter truth and ArcGIS/observation truth inputs stay hard requirements even when degraded forcing continuation is enabled." -ForegroundColor White
-    Write-Host "  - Phase 2 is scientifically usable, but not scientifically frozen." -ForegroundColor White
-    Write-Host "  - Phase 3B and Phase 3C are validation-only lanes: public-observation validation for Mindoro and external transfer validation for DWH." -ForegroundColor White
-    Write-Host "  - Mindoro track semantics are locked as B1=only main-text primary row, A=same-case comparator-support, B2=March 6 legacy honesty, and B3=March 3-6 broader-support legacy context." -ForegroundColor White
-    Write-Host "  - The Mindoro-focused Phase 1 rerun is confirmation-only for the recipe story and stays separate from canonical baseline governance and stored B1 provenance." -ForegroundColor White
-    Write-Host "  - Outside prototype_2016, phase4_oiltype_and_shoreline, phase5_sync, the galleries, and the dashboard are support layers rather than main thesis phases." -ForegroundColor White
-    Write-Host "  - DWH Phase 3C stays a separate external transfer-validation story with readiness-gated HYCOM GOFS 3.1 + ERA5 + CMEMS wave/Stokes forcing; observed masks remain truth and PyGNOME remains comparator-only." -ForegroundColor White
-    Write-Host "  - Prototype mode remains available for debugging and regression only." -ForegroundColor White
+    Write-Host "  - Interactive launcher runs still ask once for the forcing wait budget and cache policy when the target workflow is eligible." -ForegroundColor White
+    Write-Host ("  - Direct interactive {0} exec runs do the same once per run; the -T form stays prompt-free and prints the resolved startup policy instead." -f $compose) -ForegroundColor White
+    Write-Host "  - Do not auto-promote output/phase1_production_rerun/phase1_baseline_selection_candidate.yaml over config/phase1_baseline_selection.yaml." -ForegroundColor White
     Write-Host ""
     Write-Host "Not implemented yet:" -ForegroundColor Yellow
     foreach ($item in $matrix.optional_future_work) {
@@ -1090,6 +1443,121 @@ function Show-Help {
     }
 
     Pause-IfNeeded
+}
+
+function Show-LauncherRoleGroupMenu {
+    param(
+        [Parameter(Mandatory = $true)][string]$GroupId,
+        [Parameter(Mandatory = $true)][string]$Label,
+        [Parameter(Mandatory = $true)][string]$Description
+    )
+
+    while ($true) {
+        $entries = Get-LauncherEntriesForRoleGroup -GroupId $GroupId
+        $selectionMap = @{}
+        $displayIndex = 1
+
+        Clear-Host
+        Write-Section $Label
+        Write-Host ""
+        Write-Host $Description -ForegroundColor DarkGray
+        Write-Host ""
+
+        foreach ($entry in $entries) {
+            $selectionMap[[string]$displayIndex] = $entry.entry_id
+            Write-LauncherEntrySummary -LauncherEntry $entry -DisplayKey ([string]$displayIndex)
+            Write-Host ""
+            $displayIndex += 1
+        }
+
+        if ($GroupId -eq "read_only_governance") {
+            Write-Host "Read-only extras:" -ForegroundColor Yellow
+            Write-Host "  U. Open read-only dashboard" -ForegroundColor White
+            Write-Host "  R. Full restart read-only UI" -ForegroundColor White
+            Write-Host "  P. Panel review mode / manuscript verification" -ForegroundColor White
+            Write-Host ""
+        }
+
+        Write-Host "  X. Explain an entry ID without running it" -ForegroundColor Yellow
+        Write-Host "  B. Back" -ForegroundColor Yellow
+        Write-Host "  Q. Exit" -ForegroundColor Yellow
+        Write-Host ""
+
+        $choice = (Read-Host "Select an option").Trim()
+        if ([string]::IsNullOrWhiteSpace($choice)) {
+            continue
+        }
+
+        switch ($choice.ToUpperInvariant()) {
+            "U" {
+                if ($GroupId -eq "read_only_governance") {
+                    Write-Section "READ-ONLY UI"
+                    try {
+                        Invoke-ReadOnlyUi
+                    }
+                    catch {
+                        Pause-IfNeeded
+                    }
+                    Pause-IfNeeded
+                    continue
+                }
+            }
+            "R" {
+                if ($GroupId -eq "read_only_governance") {
+                    Write-Section "FULL UI REFRESH"
+                    try {
+                        Invoke-ReadOnlyUi -RestartPipeline
+                    }
+                    catch {
+                        Pause-IfNeeded
+                    }
+                    Pause-IfNeeded
+                    continue
+                }
+            }
+            "P" {
+                if ($GroupId -eq "read_only_governance") {
+                    Show-PanelMenu
+                    continue
+                }
+            }
+            "X" {
+                $entryId = (Read-Host "Entry ID to explain").Trim()
+                if (-not [string]::IsNullOrWhiteSpace($entryId)) {
+                    $launcherEntry = Get-LauncherEntryById -EntryId $entryId
+                    Show-LauncherEntryPreview -LauncherEntry $launcherEntry
+                    Pause-IfNeeded
+                }
+                continue
+            }
+            "B" { return }
+            "Q" {
+                Write-Host ""
+                Write-Host "Goodbye." -ForegroundColor DarkGray
+                exit 0
+            }
+        }
+
+        if ($selectionMap.ContainsKey($choice)) {
+            $launcherEntry = Get-LauncherEntryById -EntryId $selectionMap[$choice]
+            Write-Section $launcherEntry.label
+            try {
+                Invoke-LauncherEntry -LauncherEntry $launcherEntry
+            }
+            catch {
+                Pause-IfNeeded
+            }
+            Pause-IfNeeded
+            continue
+        }
+
+        if ($GroupId -eq "read_only_governance") {
+            Write-Host "Invalid option. Use a menu number, U, R, P, X, B, or Q." -ForegroundColor Red
+        } else {
+            Write-Host "Invalid option. Use a menu number, X, B, or Q." -ForegroundColor Red
+        }
+        Start-Sleep -Seconds 2
+    }
 }
 
 function Show-PanelGuide {
@@ -1292,35 +1760,24 @@ function Show-Menu {
     param([switch]$ReturnToCaller)
 
     while ($true) {
-        $entries = Get-LauncherEntries
-        $selectionMap = @{}
-        $displayIndex = 1
+        $groups = Get-LauncherRoleGroups
 
         Clear-Host
         Write-Section "DRIFTER-VALIDATED OIL SPILL FORECASTING"
         Write-Host ""
-        Write-Host "For defense/panel review, use PANEL REVIEW MODE first." -ForegroundColor Yellow
-        Write-Host "The scientific tracks below can be expensive and may rerun parts of the workflow. They are provided for audit and researcher use." -ForegroundColor DarkYellow
+        Write-Host "Panel mode is the defense-safe default." -ForegroundColor Yellow
+        Write-Host "This full launcher is for intentional researcher/audit work and is organized by thesis role instead of raw phase names." -ForegroundColor DarkYellow
         Write-Host ""
-        Write-Host "Choose a launcher entry. Read-only utilities are the safest first choice, or press P for panel review mode." -ForegroundColor Yellow
+        Write-Host "Choose a role-based path:" -ForegroundColor Yellow
         Write-Host ""
 
-        foreach ($category in Get-LauncherCategories) {
-            Write-Host "$($category.label)" -ForegroundColor Cyan
-            foreach ($launcherEntry in $entries | Where-Object { $_.category_id -eq $category.category_id }) {
-                $selectionMap[[string]$displayIndex] = $launcherEntry.entry_id
-                $safeTag = if ($launcherEntry.safe_default) { "safe" } else { "manual" }
-                Write-Host ("  {0}. {1} [{2}; cost={3}]" -f $displayIndex, $launcherEntry.label, $safeTag, $launcherEntry.rerun_cost) -ForegroundColor White
-                Write-Host ("     id={0} | mode={1}" -f $launcherEntry.entry_id, $launcherEntry.workflow_mode) -ForegroundColor DarkGray
-                $displayIndex += 1
-            }
-            Write-Host ""
+        Write-Host "  P. Panel review mode / defense-safe path" -ForegroundColor White
+        foreach ($group in $groups) {
+            Write-Host ("  {0}. {1}" -f [string]$group.MenuKey, [string]$group.Label) -ForegroundColor White
+            Write-Host ("     {0}" -f [string]$group.Description) -ForegroundColor DarkGray
         }
-
-        Write-Host "  P. Panel review mode (recommended for defense)" -ForegroundColor Yellow
+        Write-Host ""
         Write-Host "  L. List catalog only" -ForegroundColor Yellow
-        Write-Host "  U. Launch read-only UI" -ForegroundColor Yellow
-        Write-Host "  R. Full restart read-only UI" -ForegroundColor Yellow
         Write-Host "  H. Help" -ForegroundColor Yellow
         if ($ReturnToCaller) {
             Write-Host "  B. Back" -ForegroundColor Yellow
@@ -1342,28 +1799,6 @@ function Show-Menu {
                 Show-LauncherList
                 continue
             }
-            "U" {
-                Write-Section "READ-ONLY UI"
-                try {
-                    Invoke-ReadOnlyUi
-                }
-                catch {
-                    Pause-IfNeeded
-                }
-                Pause-IfNeeded
-                continue
-            }
-            "R" {
-                Write-Section "FULL UI REFRESH"
-                try {
-                    Invoke-ReadOnlyUi -RestartPipeline
-                }
-                catch {
-                    Pause-IfNeeded
-                }
-                Pause-IfNeeded
-                continue
-            }
             "H" {
                 Show-Help
                 continue
@@ -1380,23 +1815,19 @@ function Show-Menu {
             }
         }
 
-        if ($selectionMap.ContainsKey($choice)) {
-            $launcherEntry = Get-LauncherEntryById -EntryId $selectionMap[$choice]
-            Write-Section $launcherEntry.label
-            try {
-                Invoke-LauncherEntry -LauncherEntry $launcherEntry
-            }
-            catch {
-                Pause-IfNeeded
-            }
-            Pause-IfNeeded
+        $matchedGroup = $groups | Where-Object { $_.MenuKey -eq $choice } | Select-Object -First 1
+        if ($matchedGroup) {
+            Show-LauncherRoleGroupMenu `
+                -GroupId ([string]$matchedGroup.GroupId) `
+                -Label ([string]$matchedGroup.Label) `
+                -Description ([string]$matchedGroup.Description)
             continue
         }
 
         if ($ReturnToCaller) {
-            Write-Host "Invalid option. Use a menu number, P, U, R, L, H, B, or Q." -ForegroundColor Red
+            Write-Host "Invalid option. Use P, 1-5, L, H, B, or Q." -ForegroundColor Red
         } else {
-            Write-Host "Invalid option. Use a menu number, P, U, R, L, H, or Q." -ForegroundColor Red
+            Write-Host "Invalid option. Use P, 1-5, L, H, or Q." -ForegroundColor Red
         }
         Start-Sleep -Seconds 2
     }
@@ -1408,8 +1839,20 @@ try {
         exit 0
     }
 
+    if ($ListRole) {
+        Show-LauncherList -Role $ListRole
+        exit 0
+    }
+
     if ($Help) {
         Show-Help
+        exit 0
+    }
+
+    if ($Explain) {
+        $launcherEntry = Get-LauncherEntryById -EntryId $Explain
+        Show-LauncherEntryPreview -LauncherEntry $launcherEntry
+        Pause-IfNeeded
         exit 0
     }
 

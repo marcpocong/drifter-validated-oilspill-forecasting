@@ -30,6 +30,7 @@ The guarded `.env` command does not overwrite an existing local environment file
 
 ```powershell
 .\start.ps1 -List -NoPause
+.\start.ps1 -ListRole primary_evidence -NoPause
 .\start.ps1 -Help -NoPause
 ```
 
@@ -62,13 +63,13 @@ Read-only entries to use first:
 
 ## 4. Run Reportable Workflows Intentionally
 
-These are the current reportable launcher entries:
+These are the current main thesis evidence entries:
 
 ```powershell
-.\start.ps1 -Entry phase1_production_rerun
+.\start.ps1 -Entry phase1_mindoro_focus_provenance
 .\start.ps1 -Entry mindoro_phase3b_primary_public_validation
-.\start.ps1 -Entry mindoro_reportable_core
 .\start.ps1 -Entry dwh_reportable_bundle
+.\start.ps1 -Entry mindoro_reportable_core
 ```
 
 Use them only when you want a deliberate rerun of the underlying science or reportable package.
@@ -78,7 +79,7 @@ Use them only when you want a deliberate rerun of the underlying science or repo
 ```powershell
 .\start.ps1 -Entry mindoro_phase4_only
 .\start.ps1 -Entry mindoro_appendix_sensitivity_bundle
-.\start.ps1 -Entry phase1_mindoro_focus_pre_spill_experiment
+.\start.ps1 -Entry phase1_regional_reference_rerun
 .\start.ps1 -Entry mindoro_march13_14_phase1_focus_trial
 .\start.ps1 -Entry mindoro_march6_recovery_sensitivity
 .\start.ps1 -Entry mindoro_march23_extended_public_stress_test
@@ -109,7 +110,7 @@ docker compose exec -T -e WORKFLOW_MODE=mindoro_retro_2023 -e PIPELINE_PHASE=fig
 docker compose exec -T -e WORKFLOW_MODE=prototype_2016 -e PIPELINE_PHASE=prototype_legacy_final_figures pipeline python -m src
 ```
 
-Use [docs/COMMAND_MATRIX.md](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/docs/COMMAND_MATRIX.md) for the exact prompt-free phase sequences behind each multi-step launcher entry.
+Use [docs/COMMAND_MATRIX.md](docs/COMMAND_MATRIX.md) for the exact prompt-free phase sequences behind each multi-step launcher entry.
 
 ## 7. Launch The Read-Only Local Dashboard
 

@@ -1,5 +1,5 @@
 {
-  "catalog_version": "phase5_launcher_matrix_v2",
+  "catalog_version": "phase5_launcher_matrix_v3",
   "entrypoint": "start.ps1",
   "categories": [
     {
@@ -10,7 +10,7 @@
     {
       "category_id": "sensitivity_appendix_tracks",
       "label": "Sensitivity / appendix tracks",
-      "description": "Supporting branches and backward-compatible aliases that are informative but not the main reportable path."
+      "description": "Supporting branches, archive lanes, and compatibility aliases preserved outside the default defense path."
     },
     {
       "category_id": "read_only_packaging_help_utilities",
@@ -25,16 +25,149 @@
   ],
   "entries": [
     {
-      "entry_id": "mindoro_reportable_core",
-      "menu_order": 10,
+      "entry_id": "phase1_mindoro_focus_provenance",
+      "menu_order": 12,
+      "category_id": "scientific_reportable_tracks",
+      "workflow_mode": "phase1_mindoro_focus_pre_spill_2016_2023",
+      "label": "Focused Mindoro Phase 1 provenance rerun",
+      "description": "Separate 2016-2023 pre-spill Mindoro-focused drifter rerun that finalizes the Mindoro-specific recipe-provenance story for B1 using the February-April seasonal ranking subset.",
+      "service_profile": "pipeline_only",
+      "rerun_cost": "expensive",
+      "safe_default": false,
+      "thesis_role": "primary_evidence",
+      "draft_section": "Evidence 1 / Focused Mindoro Phase 1 provenance",
+      "claim_boundary": "Primary transport-provenance basis for B1; not direct spill-footprint validation.",
+      "run_kind": "scientific_rerun",
+      "recommended_for": "researcher",
+      "confirms_before_run": true,
+      "notes": "Mindoro-specific provenance lane only. This does not rewrite the stored March 13 -> March 14 R1 raw-generation history, does not modify legacy 2016 prototype outputs, and now evaluates the full four-recipe family with a GFS completeness preflight while promoting the focused historical winner directly into official B1.",
+      "steps": [
+        {
+          "phase": "phase1_production_rerun",
+          "service": "pipeline",
+          "description": "Focused pre-spill 2016-2023 Mindoro Phase 1 provenance rerun"
+        }
+      ]
+    },
+    {
+      "entry_id": "phase1_mindoro_focus_pre_spill_experiment",
+      "menu_order": 13,
+      "category_id": "scientific_reportable_tracks",
+      "workflow_mode": "phase1_mindoro_focus_pre_spill_2016_2023",
+      "label": "Legacy ID alias: Focused Mindoro Phase 1 provenance rerun",
+      "description": "Backward-compatible alias for the focused Mindoro Phase 1 provenance rerun.",
+      "service_profile": "pipeline_only",
+      "rerun_cost": "expensive",
+      "safe_default": false,
+      "thesis_role": "primary_evidence",
+      "draft_section": "Evidence 1 / Focused Mindoro Phase 1 provenance",
+      "claim_boundary": "Primary transport-provenance basis for B1; not direct spill-footprint validation.",
+      "run_kind": "scientific_rerun",
+      "recommended_for": "researcher",
+      "confirms_before_run": true,
+      "alias_of": "phase1_mindoro_focus_provenance",
+      "menu_hidden": true,
+      "notes": "Legacy ID retained for older scripts. Prefer phase1_mindoro_focus_provenance in current thesis-facing documentation.",
+      "steps": [
+        {
+          "phase": "phase1_production_rerun",
+          "service": "pipeline",
+          "description": "Focused pre-spill 2016-2023 Mindoro Phase 1 provenance rerun"
+        }
+      ]
+    },
+    {
+      "entry_id": "mindoro_phase3b_primary_public_validation",
+      "menu_order": 18,
       "category_id": "scientific_reportable_tracks",
       "workflow_mode": "mindoro_retro_2023",
-      "label": "Mindoro validation core + support bundle",
+      "label": "Mindoro B1 primary public-validation rerun",
+      "description": "Promoted March 13 -> March 14 R1 public-validation row with explicit shared-imagery caveat while preserving the frozen March 3 -> March 6 case definition and the repo-preserved archive-only March-family outputs.",
+      "service_profile": "pipeline_only",
+      "rerun_cost": "expensive",
+      "safe_default": false,
+      "thesis_role": "primary_evidence",
+      "draft_section": "Evidence 3 / Mindoro B1 / Chapter 4.2",
+      "claim_boundary": "Only main-text primary Mindoro validation row; shared-imagery caveat applies and it must not be presented as a fully independent day-to-day pair.",
+      "run_kind": "scientific_rerun",
+      "recommended_for": "researcher",
+      "confirms_before_run": true,
+      "notes": "Canonical B1 builder. This does not delete or relabel the repo-preserved archive-only March-family rows, and the same-case A comparator-support lane stays separate and comparator-only. Public-observation and forcing reruns reuse validated persistent local store files before any remote refetch unless INPUT_CACHE_POLICY=force_refresh is selected.",
+      "steps": [
+        {
+          "phase": "phase3b_extended_public",
+          "service": "pipeline",
+          "description": "Extended-horizon guardrail inventory and NOAA source ingestion"
+        },
+        {
+          "phase": "phase3b_extended_public_scored_march13_14_reinit",
+          "service": "pipeline",
+          "description": "March 13 -> March 14 primary public-validation row"
+        }
+      ]
+    },
+    {
+      "entry_id": "dwh_reportable_bundle",
+      "menu_order": 30,
+      "category_id": "scientific_reportable_tracks",
+      "workflow_mode": "dwh_retro_2010",
+      "label": "DWH external transfer-validation bundle",
+      "description": "External-case setup, readiness-gated scientific forcing selection, deterministic transfer validation, ensemble comparison, and comparator-only PyGNOME work on the DWH truth masks.",
+      "service_profile": "mixed_pipeline_and_gnome",
+      "rerun_cost": "expensive",
+      "safe_default": false,
+      "thesis_role": "primary_evidence",
+      "draft_section": "Evidence 5 / DWH Phase 3C external transfer validation",
+      "claim_boundary": "External transfer validation against DWH observation masks; not Mindoro recalibration, and PyGNOME remains comparator-only.",
+      "run_kind": "scientific_rerun",
+      "recommended_for": "researcher",
+      "confirms_before_run": true,
+      "notes": "Separate external transfer-validation story only. Mindoro remains the main Philippine thesis case; DWH observed masks remain truth; PyGNOME remains comparator-only; current frozen stack is HYCOM GOFS 3.1 + ERA5 + CMEMS wave/Stokes; forcing-readiness stays strict by default unless FORCING_OUTAGE_POLICY=continue_degraded is set explicitly. DWH case inputs and scientific forcing now persist under data/local_input_store/... and reruns reuse validated local files before any remote refetch unless INPUT_CACHE_POLICY=force_refresh is selected.",
+      "steps": [
+        {
+          "phase": "phase3c_external_case_setup",
+          "service": "pipeline",
+          "description": "External-case setup and observation ingestion"
+        },
+        {
+          "phase": "dwh_phase3c_scientific_forcing_ready",
+          "service": "pipeline",
+          "description": "Readiness-gated scientific forcing check and stack freeze"
+        },
+        {
+          "phase": "phase3c_external_case_run",
+          "service": "pipeline",
+          "description": "Deterministic external transfer validation against observed DWH truth masks"
+        },
+        {
+          "phase": "phase3c_external_case_ensemble_comparison",
+          "service": "pipeline",
+          "description": "Deterministic-vs-ensemble comparison against observed DWH truth masks"
+        },
+        {
+          "phase": "phase3c_dwh_pygnome_comparator",
+          "service": "gnome",
+          "description": "Comparator-only PyGNOME comparison against observed DWH truth masks"
+        }
+      ]
+    },
+    {
+      "entry_id": "mindoro_reportable_core",
+      "menu_order": 35,
+      "category_id": "scientific_reportable_tracks",
+      "workflow_mode": "mindoro_retro_2023",
+      "label": "Mindoro full evidence/support bundle rerun",
       "description": "Prep, official Phase 1/2, the March 13 -> March 14 R1 Phase 3B primary public-validation row, the preserved archive-only March 6 B2 row, broader archive-only March-family support outputs, and the support-only Mindoro Phase 4 layer.",
       "service_profile": "pipeline_only",
       "rerun_cost": "expensive",
       "safe_default": false,
-      "notes": "Use only when an intentional rerun of the main Mindoro spill-case validation chain is desired. The separate phase1_mindoro_focus_pre_spill_2016_2023 Mindoro-specific provenance lane stays outside this entry. Reruns now prefer validated persistent local inputs under data/... or data/local_input_store/... and only refetch when INPUT_CACHE_POLICY=force_refresh is selected.",
+      "thesis_role": "primary_evidence",
+      "draft_section": "Evidence 1-6 / Mindoro integrated evidence bundle",
+      "claim_boundary": "Full Mindoro bundle including B1, archive rows, and support/context; use only for intentional researcher/audit reruns, not as the default defense path.",
+      "run_kind": "scientific_rerun",
+      "recommended_for": "auditor",
+      "confirms_before_run": true,
+      "notes": "Use only when an intentional rerun of the main Mindoro spill-case validation chain is desired. The separate phase1_mindoro_focus_provenance Mindoro-specific provenance lane stays outside this entry. Reruns now prefer validated persistent local inputs under data/... or data/local_input_store/... and only refetch when INPUT_CACHE_POLICY=force_refresh is selected.",
       "steps": [
         {
           "phase": "prep",
@@ -74,39 +207,21 @@
       ]
     },
     {
-      "entry_id": "mindoro_phase3b_primary_public_validation",
-      "menu_order": 18,
-      "category_id": "scientific_reportable_tracks",
-      "workflow_mode": "mindoro_retro_2023",
-      "label": "Mindoro Phase 3B primary public validation",
-      "description": "Promoted March 13 -> March 14 R1 public-validation row with explicit shared-imagery caveat while preserving the frozen March 3 -> March 6 case definition and the repo-preserved archive-only March-family outputs.",
-      "service_profile": "pipeline_only",
-      "rerun_cost": "expensive",
-      "safe_default": false,
-      "notes": "Canonical B1 builder. This does not delete or relabel the repo-preserved archive-only March-family rows, and the same-case A comparator-support lane stays separate and comparator-only. Public-observation and forcing reruns reuse validated persistent local store files before any remote refetch unless INPUT_CACHE_POLICY=force_refresh is selected.",
-      "steps": [
-        {
-          "phase": "phase3b_extended_public",
-          "service": "pipeline",
-          "description": "Extended-horizon guardrail inventory and NOAA source ingestion"
-        },
-        {
-          "phase": "phase3b_extended_public_scored_march13_14_reinit",
-          "service": "pipeline",
-          "description": "March 13 -> March 14 primary public-validation row"
-        }
-      ]
-    },
-    {
-      "entry_id": "phase1_production_rerun",
-      "menu_order": 15,
-      "category_id": "scientific_reportable_tracks",
+      "entry_id": "phase1_regional_reference_rerun",
+      "menu_order": 40,
+      "category_id": "sensitivity_appendix_tracks",
       "workflow_mode": "phase1_regional_2016_2022",
       "label": "Phase 1 regional reference rerun",
       "description": "Dedicated 2016-2022 historical/regional drifter rerun preserved as the broader regional reference/governance lane; it stages the strict drogued-only non-overlapping 72 h registry and a regional candidate baseline artifact.",
       "service_profile": "pipeline_only",
       "rerun_cost": "expensive",
       "safe_default": false,
+      "thesis_role": "archive_provenance",
+      "draft_section": "Archive / governance appendix / Phase 1 regional reference",
+      "claim_boundary": "Broader reference/governance lane only; does not replace focused Mindoro provenance.",
+      "run_kind": "archive_rerun",
+      "recommended_for": "auditor",
+      "confirms_before_run": true,
       "notes": "Scientific rerun only. This broader regional lane is preserved for reference/governance context and does not overwrite config/phase1_baseline_selection.yaml, does not auto-run phase1_audit or phase5_sync, and fails hard by default if a forcing-provider outage removes part of the official recipe family. Its monthly drifter and forcing inputs persist under data/historical_validation_inputs/... and reruns reuse that validated local store before any remote refetch unless INPUT_CACHE_POLICY=force_refresh is selected.",
       "steps": [
         {
@@ -117,15 +232,48 @@
       ]
     },
     {
+      "entry_id": "phase1_production_rerun",
+      "menu_order": 41,
+      "category_id": "sensitivity_appendix_tracks",
+      "workflow_mode": "phase1_regional_2016_2022",
+      "label": "Legacy ID alias: Phase 1 regional reference rerun",
+      "description": "Backward-compatible alias for the broader regional Phase 1 reference/governance rerun.",
+      "service_profile": "pipeline_only",
+      "rerun_cost": "expensive",
+      "safe_default": false,
+      "thesis_role": "archive_provenance",
+      "draft_section": "Archive / governance appendix / Phase 1 regional reference",
+      "claim_boundary": "Broader reference/governance lane only; does not replace focused Mindoro provenance.",
+      "run_kind": "archive_rerun",
+      "recommended_for": "auditor",
+      "confirms_before_run": true,
+      "alias_of": "phase1_regional_reference_rerun",
+      "menu_hidden": true,
+      "notes": "Legacy ID retained for older scripts. Prefer phase1_regional_reference_rerun in current launcher docs and menu copy.",
+      "steps": [
+        {
+          "phase": "phase1_production_rerun",
+          "service": "pipeline",
+          "description": "Full 2016-2022 historical/regional Phase 1 production rerun with candidate-baseline staging only"
+        }
+      ]
+    },
+    {
       "entry_id": "mindoro_phase4_only",
-      "menu_order": 20,
-      "category_id": "scientific_reportable_tracks",
+      "menu_order": 52,
+      "category_id": "sensitivity_appendix_tracks",
       "workflow_mode": "mindoro_retro_2023",
-      "label": "Mindoro support Phase 4 only",
+      "label": "Mindoro oil-type and shoreline support rerun",
       "description": "Rebuild only the Mindoro support-only Phase 4 oil-type and shoreline interpretation layer.",
       "service_profile": "pipeline_only",
       "rerun_cost": "moderate",
       "safe_default": false,
+      "thesis_role": "support_context",
+      "draft_section": "Evidence 6 / Mindoro oil-type and shoreline support",
+      "claim_boundary": "Mindoro oil-type and shoreline support/context only; not a second primary validation lane.",
+      "run_kind": "scientific_rerun",
+      "recommended_for": "researcher",
+      "confirms_before_run": true,
       "notes": "Does not overwrite stored Mindoro or DWH Phase 3 validation outputs and does not change the main Mindoro validation claim.",
       "steps": [
         {
@@ -136,54 +284,21 @@
       ]
     },
     {
-      "entry_id": "dwh_reportable_bundle",
-      "menu_order": 30,
-      "category_id": "scientific_reportable_tracks",
-      "workflow_mode": "dwh_retro_2010",
-      "label": "DWH Phase 3C reportable bundle",
-      "description": "External-case setup, readiness-gated scientific forcing selection, deterministic transfer validation, ensemble comparison, and comparator-only PyGNOME work on the DWH truth masks.",
-      "service_profile": "mixed_pipeline_and_gnome",
-      "rerun_cost": "expensive",
-      "safe_default": false,
-      "notes": "Separate external transfer-validation story only. Mindoro remains the main Philippine thesis case; DWH observed masks remain truth; PyGNOME remains comparator-only; current frozen stack is HYCOM GOFS 3.1 + ERA5 + CMEMS wave/Stokes; forcing-readiness stays strict by default unless FORCING_OUTAGE_POLICY=continue_degraded is set explicitly. DWH case inputs and scientific forcing now persist under data/local_input_store/... and reruns reuse validated local files before any remote refetch unless INPUT_CACHE_POLICY=force_refresh is selected.",
-      "steps": [
-        {
-          "phase": "phase3c_external_case_setup",
-          "service": "pipeline",
-          "description": "External-case setup and observation ingestion"
-        },
-        {
-          "phase": "dwh_phase3c_scientific_forcing_ready",
-          "service": "pipeline",
-          "description": "Readiness-gated scientific forcing check and stack freeze"
-        },
-        {
-          "phase": "phase3c_external_case_run",
-          "service": "pipeline",
-          "description": "Deterministic external transfer validation against observed DWH truth masks"
-        },
-        {
-          "phase": "phase3c_external_case_ensemble_comparison",
-          "service": "pipeline",
-          "description": "Deterministic-vs-ensemble comparison against observed DWH truth masks"
-        },
-        {
-          "phase": "phase3c_dwh_pygnome_comparator",
-          "service": "gnome",
-          "description": "Comparator-only PyGNOME comparison against observed DWH truth masks"
-        }
-      ]
-    },
-    {
       "entry_id": "mindoro_appendix_sensitivity_bundle",
-      "menu_order": 40,
+      "menu_order": 55,
       "category_id": "sensitivity_appendix_tracks",
       "workflow_mode": "mindoro_retro_2023",
-      "label": "Mindoro appendix / sensitivity bundle",
+      "label": "Mindoro support/context and appendix bundle",
       "description": "Public appendix, extended public scoring, March 23 stress test, retention, initialization, source-history, comparator, threshold, and recipe sensitivity branches.",
       "service_profile": "mixed_pipeline_and_gnome",
       "rerun_cost": "expensive",
       "safe_default": false,
+      "thesis_role": "support_context",
+      "draft_section": "Evidence 4 and 6 / Mindoro support-context appendix",
+      "claim_boundary": "Support, comparator, and appendix branches only; not the main-text Mindoro validation claim, and PyGNOME remains comparator-only where included.",
+      "run_kind": "archive_rerun",
+      "recommended_for": "researcher",
+      "confirms_before_run": true,
       "notes": "These tracks are informative and reportable as support material, but the promoted B1 row now has its own scientific launcher entry. Forcing-only outages may skip the affected support branch with explicit degraded-mode honesty fields. Public-observation and extended-forcing support inputs now persist under data/local_input_store/... and reruns reuse validated local files before any remote refetch unless INPUT_CACHE_POLICY=force_refresh is selected.",
       "steps": [
         {
@@ -262,35 +377,22 @@
       ]
     },
     {
-      "entry_id": "phase1_mindoro_focus_pre_spill_experiment",
-      "menu_order": 41,
-      "category_id": "sensitivity_appendix_tracks",
-      "workflow_mode": "phase1_mindoro_focus_pre_spill_2016_2023",
-      "label": "Mindoro-focused Phase 1 provenance rerun",
-      "description": "Separate 2016-2023 pre-spill Mindoro-focused drifter rerun that finalizes the Mindoro-specific recipe-provenance story for B1 using the February-April seasonal ranking subset.",
-      "service_profile": "pipeline_only",
-      "rerun_cost": "expensive",
-      "safe_default": false,
-      "notes": "Mindoro-specific provenance lane only. This does not rewrite the stored March 13 -> March 14 R1 raw-generation history, does not modify legacy 2016 prototype outputs, and now evaluates the full four-recipe family with a GFS completeness preflight while promoting the focused historical winner directly into official B1.",
-      "steps": [
-        {
-          "phase": "phase1_production_rerun",
-          "service": "pipeline",
-          "description": "Focused pre-spill 2016-2023 Mindoro Phase 1 provenance rerun"
-        }
-      ]
-    },
-    {
       "entry_id": "mindoro_march13_14_phase1_focus_trial",
-      "menu_order": 42,
+      "menu_order": 60,
       "category_id": "sensitivity_appendix_tracks",
       "workflow_mode": "mindoro_retro_2023",
-      "label": "Experimental Mindoro March 13-14 Phase 1 focus trial",
+      "label": "Archive Mindoro Phase 1 focus comparison trial",
       "description": "Separate archive-labeled March 13 -> March 14 replay using the staged Mindoro-focused Phase 1 provenance candidate baseline, with a direct comparison report against the stored canonical B1 row.",
       "service_profile": "pipeline_only",
       "rerun_cost": "expensive",
       "safe_default": false,
-      "notes": "Archive-labeled comparison trial only. Runs only the OpenDrift March 13 -> March 14 lane in a separate directory; does not rerun PyGNOME or overwrite canonical B1 outputs.",
+      "thesis_role": "archive_provenance",
+      "draft_section": "Archive / Mindoro provenance trial",
+      "claim_boundary": "Archive-labeled comparison trial using staged Mindoro Phase 1 provenance; it does not replace canonical B1, and any referenced PyGNOME material remains comparator-only support.",
+      "run_kind": "archive_rerun",
+      "recommended_for": "auditor",
+      "confirms_before_run": true,
+      "notes": "Archive-labeled comparison trial only. Runs only the OpenDrift March 13 -> March 14 lane in a separate directory; it does not rerun PyGNOME comparator-only support outputs or overwrite canonical B1 outputs.",
       "steps": [
         {
           "phase": "phase3b_extended_public",
@@ -309,8 +411,63 @@
       ]
     },
     {
+      "entry_id": "mindoro_march6_recovery_sensitivity",
+      "menu_order": 65,
+      "category_id": "sensitivity_appendix_tracks",
+      "workflow_mode": "mindoro_retro_2023",
+      "label": "Mindoro March 6 archive recovery sensitivity",
+      "description": "Appendix-only March 6 threshold, observation-support, and branch recovery matrix over R1 and selected A2 candidates.",
+      "service_profile": "pipeline_only",
+      "rerun_cost": "moderate",
+      "safe_default": true,
+      "thesis_role": "archive_provenance",
+      "draft_section": "Archive / Mindoro March 6 honesty support",
+      "claim_boundary": "Archive/support recovery matrix for March 6 only; it does not replace the preserved March 6 honesty row.",
+      "run_kind": "archive_rerun",
+      "recommended_for": "auditor",
+      "confirms_before_run": true,
+      "notes": "Appendix-only. This does not replace or relabel the frozen strict March 6 official result.",
+      "steps": [
+        {
+          "phase": "march6_recovery_sensitivity",
+          "service": "pipeline",
+          "description": "Appendix-only March 6 recovery matrix"
+        }
+      ]
+    },
+    {
+      "entry_id": "mindoro_march23_extended_public_stress_test",
+      "menu_order": 66,
+      "category_id": "sensitivity_appendix_tracks",
+      "workflow_mode": "mindoro_retro_2023",
+      "label": "Mindoro March 23 archive stress test",
+      "description": "Appendix-only exact-date March 23 NOAA/MSI public polygon stress test comparing the R0 and R1_previous branches.",
+      "service_profile": "pipeline_only",
+      "rerun_cost": "expensive",
+      "safe_default": false,
+      "thesis_role": "archive_provenance",
+      "draft_section": "Archive / Mindoro March 23 stress test",
+      "claim_boundary": "Archive support stress test only; not a promoted validation row.",
+      "run_kind": "archive_rerun",
+      "recommended_for": "researcher",
+      "confirms_before_run": true,
+      "notes": "Appendix-only. This does not replace the frozen strict March 6 official result or the final validation package.",
+      "steps": [
+        {
+          "phase": "phase3b_extended_public",
+          "service": "pipeline",
+          "description": "Extended-horizon guardrail inventory and March 23 source ingestion"
+        },
+        {
+          "phase": "phase3b_extended_public_scored_march23",
+          "service": "pipeline",
+          "description": "March 23 exact-date branch comparison"
+        }
+      ]
+    },
+    {
       "entry_id": "phase3b_mindoro_march13_14_reinit_5000_experiment",
-      "menu_order": 43,
+      "menu_order": 67,
       "category_id": "sensitivity_appendix_tracks",
       "workflow_mode": "mindoro_retro_2023",
       "label": "Experimental Mindoro B1 5,000-element rerun",
@@ -318,6 +475,13 @@
       "service_profile": "pipeline_only",
       "rerun_cost": "expensive",
       "safe_default": false,
+      "thesis_role": "archive_provenance",
+      "draft_section": "Experimental only / personal sensitivity",
+      "claim_boundary": "Personal experiment only; not thesis-facing and does not replace canonical B1.",
+      "run_kind": "archive_rerun",
+      "recommended_for": "developer",
+      "confirms_before_run": true,
+      "menu_hidden": true,
       "reportable": false,
       "thesis_facing": false,
       "experimental_only": true,
@@ -336,58 +500,22 @@
       ]
     },
     {
-      "entry_id": "mindoro_march6_recovery_sensitivity",
-      "menu_order": 45,
-      "category_id": "sensitivity_appendix_tracks",
-      "workflow_mode": "mindoro_retro_2023",
-      "label": "Mindoro March 6 recovery sensitivity",
-      "description": "Appendix-only March 6 threshold, observation-support, and branch recovery matrix over R1 and selected A2 candidates.",
-      "service_profile": "pipeline_only",
-      "rerun_cost": "moderate",
-      "safe_default": true,
-      "notes": "Appendix-only. This does not replace or relabel the frozen strict March 6 official result.",
-      "steps": [
-        {
-          "phase": "march6_recovery_sensitivity",
-          "service": "pipeline",
-          "description": "Appendix-only March 6 recovery matrix"
-        }
-      ]
-    },
-    {
-      "entry_id": "mindoro_march23_extended_public_stress_test",
-      "menu_order": 46,
-      "category_id": "sensitivity_appendix_tracks",
-      "workflow_mode": "mindoro_retro_2023",
-      "label": "Mindoro March 23 extended public stress test",
-      "description": "Appendix-only exact-date March 23 NOAA/MSI public polygon stress test comparing the R0 and R1_previous branches.",
-      "service_profile": "pipeline_only",
-      "rerun_cost": "expensive",
-      "safe_default": false,
-      "notes": "Appendix-only. This does not replace the frozen strict March 6 official result or the final validation package.",
-      "steps": [
-        {
-          "phase": "phase3b_extended_public",
-          "service": "pipeline",
-          "description": "Extended-horizon guardrail inventory and March 23 source ingestion"
-        },
-        {
-          "phase": "phase3b_extended_public_scored_march23",
-          "service": "pipeline",
-          "description": "March 23 exact-date branch comparison"
-        }
-      ]
-    },
-    {
       "entry_id": "mindoro_march13_14_noaa_reinit_stress_test",
-      "menu_order": 47,
+      "menu_order": 68,
       "category_id": "sensitivity_appendix_tracks",
       "workflow_mode": "mindoro_retro_2023",
-      "label": "Legacy alias: Mindoro March 13-14 primary validation bundle",
+      "label": "Legacy alias: Mindoro March 13-14 validation + comparator bundle",
       "description": "Backward-compatible alias for the promoted March 13 -> March 14 R1 public-validation row plus the same-case comparator-support March 14 A lane.",
       "service_profile": "mixed_pipeline_and_gnome",
       "rerun_cost": "expensive",
       "safe_default": false,
+      "thesis_role": "comparator_support",
+      "draft_section": "Legacy alias / Mindoro B1 plus Track A support",
+      "claim_boundary": "Legacy compatibility bundle for older scripts; B1 remains the primary row, Track A remains comparator support only, and PyGNOME is never observational truth.",
+      "run_kind": "comparator_rerun",
+      "recommended_for": "developer",
+      "confirms_before_run": true,
+      "menu_hidden": true,
       "notes": "Compatibility alias retained for older scripts. B1 is the only main-text primary row, the March 13 -> March 14 R0 baseline plus B2/B3 are archive-only provenance rows, PyGNOME remains comparator-only, and the support-side B1 rebuild uses degraded forcing continuation if a temporary provider outage blocks only forcing acquisition.",
       "steps": [
         {
@@ -412,7 +540,7 @@
     },
     {
       "entry_id": "phase1_audit",
-      "menu_order": 50,
+      "menu_order": 70,
       "category_id": "read_only_packaging_help_utilities",
       "workflow_mode": "mindoro_retro_2023",
       "label": "Phase 1 finalization audit",
@@ -420,6 +548,12 @@
       "service_profile": "pipeline_only",
       "rerun_cost": "cheap_read_only",
       "safe_default": true,
+      "thesis_role": "read_only_governance",
+      "draft_section": "Evidence 8 / Reproducibility and governance",
+      "claim_boundary": "Read-only audit of the stored Phase 1 state; it does not rerun the Phase 1 science.",
+      "run_kind": "read_only",
+      "recommended_for": "auditor",
+      "confirms_before_run": false,
       "notes": "Does not rerun the expensive 2016-2022 production study.",
       "steps": [
         {
@@ -431,7 +565,7 @@
     },
     {
       "entry_id": "phase2_audit",
-      "menu_order": 60,
+      "menu_order": 71,
       "category_id": "read_only_packaging_help_utilities",
       "workflow_mode": "mindoro_retro_2023",
       "label": "Phase 2 finalization audit",
@@ -439,6 +573,12 @@
       "service_profile": "pipeline_only",
       "rerun_cost": "cheap_read_only",
       "safe_default": true,
+      "thesis_role": "read_only_governance",
+      "draft_section": "Evidence 8 / Reproducibility and governance",
+      "claim_boundary": "Read-only audit of the stored Phase 2 state; it does not rerun the official forecast path.",
+      "run_kind": "read_only",
+      "recommended_for": "auditor",
+      "confirms_before_run": false,
       "notes": "Does not rerun the expensive official forecast path by default.",
       "steps": [
         {
@@ -450,7 +590,7 @@
     },
     {
       "entry_id": "final_validation_package",
-      "menu_order": 70,
+      "menu_order": 72,
       "category_id": "read_only_packaging_help_utilities",
       "workflow_mode": "mindoro_retro_2023",
       "label": "Final validation package refresh",
@@ -458,6 +598,12 @@
       "service_profile": "pipeline_only",
       "rerun_cost": "cheap_read_only",
       "safe_default": true,
+      "thesis_role": "read_only_governance",
+      "draft_section": "Evidence 8 / Reproducibility and governance",
+      "claim_boundary": "Packaging-only refresh from stored validation outputs; it does not recompute scores.",
+      "run_kind": "packaging_only",
+      "recommended_for": "auditor",
+      "confirms_before_run": false,
       "notes": "Reuses existing scientific outputs without recomputing scores.",
       "steps": [
         {
@@ -469,7 +615,7 @@
     },
     {
       "entry_id": "phase5_sync",
-      "menu_order": 80,
+      "menu_order": 73,
       "category_id": "read_only_packaging_help_utilities",
       "workflow_mode": "mindoro_retro_2023",
       "label": "Phase 5 launcher/docs/package sync",
@@ -477,6 +623,12 @@
       "service_profile": "pipeline_only",
       "rerun_cost": "cheap_read_only",
       "safe_default": true,
+      "thesis_role": "read_only_governance",
+      "draft_section": "Evidence 8 / Reproducibility and governance",
+      "claim_boundary": "Read-only reproducibility/governance sync layer built from stored outputs and docs only.",
+      "run_kind": "packaging_only",
+      "recommended_for": "auditor",
+      "confirms_before_run": false,
       "notes": "Builds final_reproducibility_package without overwriting scientific outputs.",
       "steps": [
         {
@@ -488,7 +640,7 @@
     },
     {
       "entry_id": "trajectory_gallery",
-      "menu_order": 85,
+      "menu_order": 74,
       "category_id": "read_only_packaging_help_utilities",
       "workflow_mode": "mindoro_retro_2023",
       "label": "Trajectory gallery build",
@@ -496,6 +648,12 @@
       "service_profile": "pipeline_only",
       "rerun_cost": "cheap_read_only",
       "safe_default": true,
+      "thesis_role": "read_only_governance",
+      "draft_section": "Evidence 8 / Reproducibility and governance",
+      "claim_boundary": "Read-only gallery build from stored outputs only; it does not rerun scientific branches.",
+      "run_kind": "packaging_only",
+      "recommended_for": "auditor",
+      "confirms_before_run": false,
       "notes": "Builds output/trajectory_gallery from existing outputs only and does not rerun expensive scientific branches.",
       "steps": [
         {
@@ -507,7 +665,7 @@
     },
     {
       "entry_id": "trajectory_gallery_panel",
-      "menu_order": 86,
+      "menu_order": 75,
       "category_id": "read_only_packaging_help_utilities",
       "workflow_mode": "mindoro_retro_2023",
       "label": "Trajectory gallery panel polish",
@@ -515,6 +673,12 @@
       "service_profile": "pipeline_only",
       "rerun_cost": "cheap_read_only",
       "safe_default": true,
+      "thesis_role": "read_only_governance",
+      "draft_section": "Evidence 8 / Reproducibility and governance",
+      "claim_boundary": "Read-only panel-figure packaging from stored outputs only; it does not rerun scientific branches.",
+      "run_kind": "packaging_only",
+      "recommended_for": "auditor",
+      "confirms_before_run": false,
       "notes": "Builds output/trajectory_gallery_panel without rerunning expensive scientific branches.",
       "steps": [
         {
@@ -526,7 +690,7 @@
     },
     {
       "entry_id": "figure_package_publication",
-      "menu_order": 87,
+      "menu_order": 76,
       "category_id": "read_only_packaging_help_utilities",
       "workflow_mode": "mindoro_retro_2023",
       "label": "Publication-grade figure package",
@@ -534,6 +698,12 @@
       "service_profile": "pipeline_only",
       "rerun_cost": "cheap_read_only",
       "safe_default": true,
+      "thesis_role": "read_only_governance",
+      "draft_section": "Evidence 8 / Reproducibility and governance",
+      "claim_boundary": "Packaging-only rebuild from stored outputs only; it does not rerun scientific branches or change scores.",
+      "run_kind": "packaging_only",
+      "recommended_for": "auditor",
+      "confirms_before_run": false,
       "notes": "Builds output/figure_package_publication without rerunning expensive scientific branches.",
       "steps": [
         {
@@ -553,6 +723,12 @@
       "service_profile": "pipeline_only",
       "rerun_cost": "cheap_read_only",
       "safe_default": true,
+      "thesis_role": "legacy_support",
+      "draft_section": "Evidence 7 / Legacy 2016 archive support",
+      "claim_boundary": "Legacy 2016 support package only; it is packaging-only and not a Mindoro or DWH validation rerun, and any PyGNOME material inside remains comparator-only support.",
+      "run_kind": "packaging_only",
+      "recommended_for": "auditor",
+      "confirms_before_run": false,
       "notes": "Builds output/2016 Legacy Runs FINAL Figures as the authoritative curated prototype_2016 legacy support package without rerunning the scientific workflow. The structured package now includes publication/phase3a, publication/phase4, publication/phase4_comparator when stored comparator outputs exist, scientific_source_pngs, summary, manifests, and phase5 notes; output/figure_package_publication remains the generic repo-wide publication package and is not the authoritative 2016 Phase 4 package.",
       "steps": [
         {
@@ -572,6 +748,12 @@
       "service_profile": "mixed_pipeline_and_gnome",
       "rerun_cost": "moderate",
       "safe_default": false,
+      "thesis_role": "legacy_support",
+      "draft_section": "Legacy/debug appendix / Prototype 2021 support",
+      "claim_boundary": "Debug/demo support lane only; not a thesis-facing validation row, and PyGNOME remains comparator-only.",
+      "run_kind": "scientific_rerun",
+      "recommended_for": "developer",
+      "confirms_before_run": true,
       "notes": "Preferred debug/demo lane only. Built from the two accepted 2021 strict-gate drifter segments, uses the official four-recipe Phase 1 family, and stops at the transport-core bundle. Phase 3B and Phase 4 are separate and are not part of this proof path.",
       "steps": [
         {
@@ -606,6 +788,12 @@
       "service_profile": "mixed_pipeline_and_gnome",
       "rerun_cost": "moderate",
       "safe_default": false,
+      "thesis_role": "legacy_support",
+      "draft_section": "Evidence 7 / Legacy 2016 archive support",
+      "claim_boundary": "Legacy 2016 support/debug lane only; not a current primary validation path, and PyGNOME remains comparator-only.",
+      "run_kind": "scientific_rerun",
+      "recommended_for": "developer",
+      "confirms_before_run": true,
       "notes": "Backward-compatible legacy debug/regression path only. Not the preferred debug lane and not the final Chapter 3 Phase 1 study. Prototype prep now attempts GFS too, but missing GFS remains best-effort and does not collapse the legacy bundle. The visible thesis-facing legacy flow is Phase 1 -> Phase 2 -> Phase 3A -> Phase 4 -> Phase 5; the scientific rerun chain stops at Phase 4 and the bundle finishes with the read-only prototype_legacy_final_figures export. Repo-wide phase5_sync remains a separate cross-repo packaging layer. The PyGNOME similarity step is transport-only, comparator-only, and now surfaces deterministic plus p50/p90 legacy support tracks. There is no thesis-facing prototype_2016 Phase 3B or Phase 3C.",
       "steps": [
         {

@@ -183,7 +183,7 @@ class MainStartupPromptIntegrationTests(unittest.TestCase):
             "forcing_source_budget_seconds": "300",
             "wait_budget_source": "explicit_env",
             "prompting_skipped_reason": "non_interactive_runtime",
-            "matching_launcher_entry_id": "phase1_mindoro_focus_pre_spill_experiment",
+            "matching_launcher_entry_id": "phase1_mindoro_focus_provenance",
         }
         stdout = io.StringIO()
 
@@ -209,7 +209,7 @@ class MainStartupPromptIntegrationTests(unittest.TestCase):
         self.assertIn("INPUT_CACHE_POLICY=reuse_if_valid", output)
         self.assertIn("FORCING_SOURCE_BUDGET_SECONDS=300", output)
         self.assertIn("non-interactive", output)
-        self.assertIn(".\\start.ps1 -Entry phase1_mindoro_focus_pre_spill_experiment", output)
+        self.assertIn(".\\start.ps1 -Entry phase1_mindoro_focus_provenance", output)
         mock_phase.assert_called_once_with()
 
 

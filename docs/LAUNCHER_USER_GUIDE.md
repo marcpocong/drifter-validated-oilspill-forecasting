@@ -2,67 +2,55 @@
 
 ## Purpose
 
-`start.ps1` is the current user-facing workflow entrypoint for this repo. It reads `config/launcher_matrix.json` and groups launcher entries into:
+`start.ps1` is the current user-facing workflow entrypoint for this repo.
 
-- reportable workflows
-- support and archive workflows
-- read-only audit and packaging workflows
-- legacy support workflows
-
-The launcher is the primary path for interactive runs. The Streamlit UI stays separate and launches directly.
+- Panel mode is the defense-safe default path.
+- The full launcher is the researcher / audit path.
+- The launcher now groups entries by thesis role instead of showing one flat technical list.
 
 ## Current Startup Paths
 
-List the current launcher entries:
-
 ```powershell
+.\panel.ps1
+.\start.ps1 -Panel
+.\start.ps1
 .\start.ps1 -List -NoPause
+.\start.ps1 -ListRole primary_evidence -NoPause
 .\start.ps1 -Help -NoPause
-```
-
-Run one workflow interactively through the launcher:
-
-```powershell
+.\start.ps1 -Explain mindoro_phase3b_primary_public_validation -NoPause
 .\start.ps1 -Entry <entry_id>
 ```
 
-Use `-NoPause` only when you intentionally want the launcher to finish without the final pause.
+Use `-NoPause` only when you intentionally want the launcher to return without the final pause.
 
-Run one phase prompt-free inside the container:
+## Preferred Entry IDs
 
-```bash
-docker-compose exec -T -e WORKFLOW_MODE=<workflow_mode> -e PIPELINE_PHASE=<phase> <pipeline|gnome> python -m src
-```
+Main thesis evidence:
 
-Launch the read-only UI directly:
+- `phase1_mindoro_focus_provenance`
+- `mindoro_phase3b_primary_public_validation`
+- `dwh_reportable_bundle`
+- `mindoro_reportable_core`
 
-```bash
-docker-compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501
-```
+Support/context and appendix:
 
-## Main Parameters
+- `mindoro_phase4_only`
+- `mindoro_appendix_sensitivity_bundle`
 
-- `-List`: print the current launcher catalog grouped by category
-- `-Help`: print usage guidance and current guardrails
-- `-Entry <entry_id>`: run one launcher entry from the matrix
-- `-NoPause`: skip the final pause after the launcher finishes
+Archive/provenance:
 
-Runtime environment controls:
+- `phase1_regional_reference_rerun`
+- `mindoro_march13_14_phase1_focus_trial`
+- `mindoro_march6_recovery_sensitivity`
+- `mindoro_march23_extended_public_stress_test`
 
-- `FORCING_OUTAGE_POLICY=default|continue_degraded|fail_hard`
-- `FORCING_SOURCE_BUDGET_SECONDS=<seconds>` with default `300`
-- `INPUT_CACHE_POLICY=default|reuse_if_valid|force_refresh`
+Legacy support/debug:
 
-Interactive launcher runs ask once per entry for:
+- `prototype_legacy_final_figures`
+- `prototype_2021_bundle`
+- `prototype_legacy_bundle`
 
-- the forcing wait budget, when the entry can hit forcing providers
-- whether to reuse validated local input caches or force refresh, when eligible caches already exist
-
-Prompt-free container runs with `-T` do not ask those questions. They resolve the startup policy silently and print it at process start for promptable phases.
-
-## Entry Groups
-
-Read-only audit and packaging entries:
+Read-only governance:
 
 - `phase1_audit`
 - `phase2_audit`
@@ -71,61 +59,34 @@ Read-only audit and packaging entries:
 - `trajectory_gallery`
 - `trajectory_gallery_panel`
 - `figure_package_publication`
-- `prototype_legacy_final_figures`
 
-Reportable entries:
+## Compatibility Aliases
 
-- `phase1_production_rerun`
-- `mindoro_phase3b_primary_public_validation`
-- `mindoro_reportable_core`
-- `dwh_reportable_bundle`
+These older IDs still work, but they are no longer the preferred wording:
 
-Support and archive entries:
+- `phase1_mindoro_focus_pre_spill_experiment` -> prefer `phase1_mindoro_focus_provenance`
+- `phase1_production_rerun` -> prefer `phase1_regional_reference_rerun`
+- `mindoro_march13_14_noaa_reinit_stress_test` -> legacy alias only; prefer `mindoro_phase3b_primary_public_validation`
 
-- `mindoro_phase4_only`
-- `mindoro_appendix_sensitivity_bundle`
-- `phase1_mindoro_focus_pre_spill_experiment`
-- `mindoro_march13_14_phase1_focus_trial`
-- `mindoro_march6_recovery_sensitivity`
-- `mindoro_march23_extended_public_stress_test`
+## Runtime Controls
 
-Legacy support entries:
+- `FORCING_OUTAGE_POLICY=default|continue_degraded|fail_hard`
+- `FORCING_SOURCE_BUDGET_SECONDS=<seconds>` with default `300`
+- `INPUT_CACHE_POLICY=default|reuse_if_valid|force_refresh`
 
-- `prototype_2021_bundle`
-- `prototype_legacy_bundle`
+Interactive launcher runs ask once per entry for the forcing wait budget and, when eligible caches already exist, whether to reuse validated local input caches or force refresh.
 
-Compatibility note:
-
-- `mindoro_march13_14_noaa_reinit_stress_test` is still supported, but only as a legacy alias. Use `mindoro_phase3b_primary_public_validation` as the primary Mindoro B1 command.
-
-## Recommended First Commands
-
-Use these first when you want status, packaging, or UI-refresh work rather than a new scientific rerun:
-
-```powershell
-.\start.ps1 -Entry phase1_audit
-.\start.ps1 -Entry phase2_audit
-.\start.ps1 -Entry final_validation_package
-.\start.ps1 -Entry phase5_sync
-.\start.ps1 -Entry trajectory_gallery
-.\start.ps1 -Entry trajectory_gallery_panel
-.\start.ps1 -Entry figure_package_publication
-```
-
-Use these only when you intentionally want reportable reruns:
-
-```powershell
-.\start.ps1 -Entry phase1_production_rerun
-.\start.ps1 -Entry mindoro_phase3b_primary_public_validation
-.\start.ps1 -Entry mindoro_reportable_core
-.\start.ps1 -Entry dwh_reportable_bundle
-```
+Prompt-free container runs with `-T` do not ask those questions. They print the resolved startup policy instead.
 
 ## How The UI Fits
 
-The Streamlit UI is intentionally not a launcher entry. It is a read-only exploration surface over packaged outputs.
+The Streamlit UI remains outside the launcher matrix. Launch it directly:
 
-If you want the freshest read-only surfaces before opening it, refresh one or more of these first:
+```bash
+docker compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501
+```
+
+If you want the freshest read-only packaging before opening it, refresh one or more of these first:
 
 ```powershell
 .\start.ps1 -Entry phase5_sync
@@ -134,33 +95,20 @@ If you want the freshest read-only surfaces before opening it, refresh one or mo
 .\start.ps1 -Entry figure_package_publication
 ```
 
-Then launch the UI directly:
-
-```bash
-docker-compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501
-```
-
-## Runtime Behavior
-
-- Non-interactive launcher runs default to `FORCING_SOURCE_BUDGET_SECONDS=300` and `INPUT_CACHE_POLICY=reuse_if_valid`.
-- Persistent local input store means validated reusable inputs under `data/drifters`, `data/forcing`, `data/arcgis`, `data/historical_validation_inputs`, and `data/local_input_store`.
-- Output-local forcing and raw folders are staging or legacy scratch areas, not the canonical reuse source.
-- `INPUT_CACHE_POLICY=force_refresh` bypasses validated local reuse, fetches fresh copies, and rewrites the persistent local store for that run.
-- Inventories record reuse action, provider/source URL, persistent local storage path, and validation status.
-
 ## Guardrails
 
+- Use launcher entry IDs and role groups as the primary workflow vocabulary.
+- Do not treat raw phase names as the primary user-facing startup commands.
+- `B1` is the only main-text primary Mindoro validation row.
+- The March 13 -> March 14 `B1` pair keeps the shared-imagery caveat explicit.
+- `Track A` and every PyGNOME branch remain comparator-only support.
+- DWH stays a separate external transfer-validation story with observed masks as truth.
+- Mindoro Phase 4 oil-type and shoreline outputs remain support/context only.
 - `phase1_production_rerun` stages `output/phase1_production_rerun/phase1_baseline_selection_candidate.yaml` only. It does not auto-overwrite `config/phase1_baseline_selection.yaml`.
-- `mindoro_phase3b_primary_public_validation` is the canonical Mindoro March 13 -> March 14 B1 entry. It preserves the frozen March 3 -> March 6 case YAML and uses the separate amendment file.
-- `mindoro_reportable_core` is the full Mindoro validation-chain rerun. The separate `phase1_mindoro_focus_pre_spill_experiment` provenance lane stays outside it by design.
-- `Phase 3B` and `Phase 3C` remain validation-only lanes.
-- Outside `prototype_2016`, `phase4_oiltype_and_shoreline`, `phase5_sync`, the galleries, and the UI are support layers rather than main thesis phases.
-- DWH Phase 3C stays a separate external transfer-validation story with readiness-gated HYCOM GOFS 3.1 + ERA5 + CMEMS wave/Stokes forcing; observed masks remain truth and PyGNOME remains comparator-only.
-- `prototype_2021` is the preferred debug lane, but it is still not the final Phase 1 study.
 - `prototype_2016` remains legacy support only as `Phase 1 / 2 / 3A / 4 / 5`.
 
 ## Where To Look Next
 
-- [docs/COMMAND_MATRIX.md](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/docs/COMMAND_MATRIX.md) for phase-level prompt-free mappings
-- [docs/QUICKSTART.md](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/docs/QUICKSTART.md) for the shortest current run path
-- [docs/UI_GUIDE.md](/c:/Users/marcp/Downloads/drifter-validated-oilspill-forecasting-rc-v1.0/drifter-validated-oilspill-forecasting-rc-v1.0/docs/UI_GUIDE.md) for the Streamlit surface
+- [docs/COMMAND_MATRIX.md](docs/COMMAND_MATRIX.md)
+- [docs/QUICKSTART.md](docs/QUICKSTART.md)
+- [docs/UI_GUIDE.md](docs/UI_GUIDE.md)
