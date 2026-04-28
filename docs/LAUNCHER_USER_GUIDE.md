@@ -52,6 +52,7 @@ Legacy support/debug:
 
 Read-only governance:
 
+- `b1_drifter_context_panel`
 - `phase1_audit`
 - `phase2_audit`
 - `final_validation_package`
@@ -89,6 +90,7 @@ docker compose exec pipeline python -m streamlit run ui/app.py --server.address 
 If you want the freshest read-only packaging before opening it, refresh one or more of these first:
 
 ```powershell
+.\start.ps1 -Entry b1_drifter_context_panel
 .\start.ps1 -Entry phase5_sync
 .\start.ps1 -Entry trajectory_gallery
 .\start.ps1 -Entry trajectory_gallery_panel

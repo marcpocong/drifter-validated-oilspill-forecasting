@@ -31,6 +31,7 @@ Safe inspection helpers:
 | --- | --- |
 | Defense / panel inspection | `.\panel.ps1` |
 | Open dashboard only | panel option `1`, or `docker compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501` |
+| Inspect drifter provenance behind B1 | panel option `7`, or `.\start.ps1 -Entry b1_drifter_context_panel` |
 | Verify manuscript numbers | panel option `2` |
 | Rebuild publication figures only | panel option `3`, or `.\start.ps1 -Entry figure_package_publication` |
 | Rebuild B1 validation | `.\start.ps1 -Entry mindoro_phase3b_primary_public_validation` |
@@ -47,7 +48,7 @@ Safe inspection helpers:
 | Support/context and appendix reruns | `mindoro_phase4_only`, `mindoro_appendix_sensitivity_bundle` | Support/context only; not main-text primary validation. |
 | Archive/provenance reruns | `phase1_regional_reference_rerun`, `mindoro_march13_14_phase1_focus_trial`, `mindoro_march6_recovery_sensitivity`, `mindoro_march23_extended_public_stress_test` | Archive, provenance, or governance lanes only. |
 | Legacy prototype/debug reruns | `prototype_legacy_final_figures`, `prototype_2021_bundle`, `prototype_legacy_bundle` | Legacy support/debug only. |
-| Read-only packaging, audits, dashboard, and docs | `phase1_audit`, `phase2_audit`, `final_validation_package`, `phase5_sync`, `trajectory_gallery`, `trajectory_gallery_panel`, `figure_package_publication` | Stored-output-only or packaging-only actions. |
+| Read-only packaging, audits, dashboard, and docs | `b1_drifter_context_panel`, `phase1_audit`, `phase2_audit`, `final_validation_package`, `phase5_sync`, `trajectory_gallery`, `trajectory_gallery_panel`, `figure_package_publication` | Stored-output-only or packaging-only actions. |
 
 ## Launcher Entry Map
 
@@ -65,6 +66,7 @@ Safe inspection helpers:
 | `mindoro_march23_extended_public_stress_test` | archive/provenance | archive/support rerun | researcher | `.\start.ps1 -Entry mindoro_march23_extended_public_stress_test` | `pipeline: phase3b_extended_public -> phase3b_extended_public_scored_march23` |
 | `phase1_audit` | read-only governance | read-only | auditor | `.\start.ps1 -Entry phase1_audit` | `pipeline: phase1_finalization_audit` |
 | `phase2_audit` | read-only governance | read-only | auditor | `.\start.ps1 -Entry phase2_audit` | `pipeline: phase2_finalization_audit` |
+| `b1_drifter_context_panel` | read-only governance | read-only | panel | `.\start.ps1 -Entry b1_drifter_context_panel` | `pipeline: panel_b1_drifter_context` |
 | `final_validation_package` | read-only governance | packaging-only | auditor | `.\start.ps1 -Entry final_validation_package` | `pipeline: final_validation_package` |
 | `phase5_sync` | read-only governance | packaging-only | auditor | `.\start.ps1 -Entry phase5_sync` | `pipeline: phase5_launcher_and_docs_sync` |
 | `trajectory_gallery` | read-only governance | packaging-only | auditor | `.\start.ps1 -Entry trajectory_gallery` | `pipeline: trajectory_gallery_build` |
@@ -89,6 +91,7 @@ These IDs still work, but they are no longer the preferred wording:
 ```bash
 docker compose exec -T -e WORKFLOW_MODE=mindoro_retro_2023 -e PIPELINE_PHASE=phase1_finalization_audit pipeline python -m src
 docker compose exec -T -e WORKFLOW_MODE=mindoro_retro_2023 -e PIPELINE_PHASE=phase2_finalization_audit pipeline python -m src
+docker compose exec -T -e WORKFLOW_MODE=mindoro_retro_2023 -e PIPELINE_PHASE=panel_b1_drifter_context pipeline python -m src
 docker compose exec -T -e WORKFLOW_MODE=mindoro_retro_2023 -e PIPELINE_PHASE=final_validation_package pipeline python -m src
 docker compose exec -T -e WORKFLOW_MODE=mindoro_retro_2023 -e PIPELINE_PHASE=phase5_launcher_and_docs_sync pipeline python -m src
 docker compose exec -T -e WORKFLOW_MODE=mindoro_retro_2023 -e PIPELINE_PHASE=trajectory_gallery_build pipeline python -m src

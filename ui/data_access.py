@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 import rasterio
 import xarray as xr
+import yaml
 
 from src.core.artifact_status import (
     DWH_CASE_ID,
@@ -43,6 +44,10 @@ PHASE1_FOCUSED_DIR = Path("output") / "phase1_mindoro_focus_pre_spill_2016_2023"
 PHASE1_REFERENCE_DIR = Path("output") / "phase1_production_rerun"
 MINDORO_DIR = Path("output") / "CASE_MINDORO_RETRO_2023"
 DWH_DIR = Path("output") / "CASE_DWH_RETRO_2010_72H"
+PANEL_DRIFTER_CONTEXT_DIR = Path("output") / "panel_drifter_context"
+PHASE1_FOCUSED_CONFIG_PATH = Path("config") / "phase1_mindoro_focus_pre_spill_2016_2023.yaml"
+MINDORO_CASE_CONFIG_PATH = Path("config") / "case_mindoro_retro_2023.yaml"
+SETTINGS_PATH = Path("config") / "settings.yaml"
 
 MINDORO_ARCHIVE_SURFACE_KEYS: tuple[str, ...] = ("archive_only",)
 
@@ -71,6 +76,7 @@ DASHBOARD_STATE_PATHS: tuple[Path, ...] = (
     MINDORO_FINAL_DIR / "manifests" / "final_output_manifest.json",
     MINDORO_FINAL_DIR / "README.md",
     MINDORO_FINAL_DIR / "manifests" / "phase3b_final_output_registry.csv",
+    MINDORO_FINAL_DIR / "summary" / "opendrift_primary" / "march13_14_reinit_run_manifest.json",
     MINDORO_FINAL_ARCHIVE_DIR / "README.md",
     MINDORO_FINAL_ARCHIVE_DIR / "manifests" / "phase3b_final_output_registry.csv",
     MINDORO_FINAL_DIR / "summary" / "opendrift_primary" / "march13_14_reinit_summary.csv",
@@ -84,6 +90,8 @@ DASHBOARD_STATE_PATHS: tuple[Path, ...] = (
     PHASE1_FOCUSED_DIR / "phase1_recipe_summary.csv",
     PHASE1_FOCUSED_DIR / "phase1_accepted_segment_registry.csv",
     PHASE1_FOCUSED_DIR / "phase1_ranking_subset_registry.csv",
+    PHASE1_FOCUSED_DIR / "phase1_segment_metrics.csv",
+    PHASE1_FOCUSED_DIR / "phase1_drifter_registry.csv",
     PHASE1_FOCUSED_DIR / "phase1_loading_audit.csv",
     PHASE1_FOCUSED_DIR / "phase1_baseline_selection_candidate.yaml",
     PHASE1_FOCUSED_DIR / "phase1_ranking_subset_report.md",
@@ -121,6 +129,12 @@ DASHBOARD_STATE_PATHS: tuple[Path, ...] = (
     PHASE4_AUDIT_DIR / "phase4_crossmodel_final_verdict.md",
     PHASE4_AUDIT_DIR / "phase4_crossmodel_blockers.md",
     PHASE4_AUDIT_DIR / "phase4_crossmodel_minimal_next_steps.md",
+    PANEL_DRIFTER_CONTEXT_DIR / "b1_drifter_context_manifest.json",
+    PANEL_DRIFTER_CONTEXT_DIR / "b1_drifter_context_map.png",
+    PANEL_DRIFTER_CONTEXT_DIR / "b1_drifter_context_map.json",
+    PHASE1_FOCUSED_CONFIG_PATH,
+    MINDORO_CASE_CONFIG_PATH,
+    SETTINGS_PATH,
 )
 
 
@@ -239,6 +253,54 @@ def _cached_text(path_text: str, repo_root_text: str, _mtime_ns: int, _size: int
 
 def read_text(path: str | Path, repo_root: str | Path | None = None) -> str:
     return _cached_text(*_path_cache_signature(path, repo_root))
+
+
+@lru_cache(maxsize=64)
+def _cached_yaml(path_text: str, repo_root_text: str, _mtime_ns: int, _size: int) -> dict[str, Any]:
+    path = Path(path_text)
+    if not path.is_absolute():
+        path = resolve_repo_path(path_text, repo_root_text)
+    if path is None or not path.exists():
+        return {}
+    with open(path, "r", encoding="utf-8") as handle:
+        return yaml.safe_load(handle) or {}
+
+
+def read_yaml(path: str | Path, repo_root: str | Path | None = None) -> dict[str, Any]:
+    return copy.deepcopy(_cached_yaml(*_path_cache_signature(path, repo_root)))
+
+
+def _discover_first_matching_path(
+    candidate_groups: list[tuple[str, list[str]]],
+    *,
+    repo_root: str | Path | None = None,
+) -> dict[str, Any]:
+    root = _root(repo_root)
+    for priority_label, patterns in candidate_groups:
+        for pattern in patterns:
+            try:
+                matches = sorted(path for path in root.glob(pattern) if path.is_file())
+            except OSError:
+                matches = []
+            if matches:
+                match = matches[0]
+                return {
+                    "path": match,
+                    "relative_path": str(match.relative_to(root)),
+                    "priority_label": priority_label,
+                    "status_message": f"Loaded local artifact from {priority_label}: {match.relative_to(root)}",
+                    "searched_patterns": [item for _, group_patterns in candidate_groups for item in group_patterns],
+                }
+    return {
+        "path": None,
+        "relative_path": "",
+        "priority_label": "missing",
+        "status_message": (
+            "No local artifact was found after checking curated output packages, focused Phase 1 outputs, "
+            "persistent historical inputs, and fallback drifter CSV locations."
+        ),
+        "searched_patterns": [item for _, group_patterns in candidate_groups for item in group_patterns],
+    }
 
 
 def dashboard_state_signature(repo_root: str | Path | None = None) -> str:
@@ -820,6 +882,406 @@ def phase1_focused_ranking_subset_report(repo_root: str | Path | None = None) ->
     return read_text(PHASE1_FOCUSED_DIR / "phase1_ranking_subset_report.md", repo_root)
 
 
+def phase1_focused_segment_metrics(repo_root: str | Path | None = None) -> pd.DataFrame:
+    return read_csv(PHASE1_FOCUSED_DIR / "phase1_segment_metrics.csv", repo_root)
+
+
+def phase1_focused_drifter_registry(repo_root: str | Path | None = None) -> pd.DataFrame:
+    return read_csv(PHASE1_FOCUSED_DIR / "phase1_drifter_registry.csv", repo_root)
+
+
+def mindoro_b1_run_manifest(repo_root: str | Path | None = None) -> dict[str, Any]:
+    return read_json(MINDORO_FINAL_DIR / "summary" / "opendrift_primary" / "march13_14_reinit_run_manifest.json", repo_root)
+
+
+def _load_dataframe_discovery_payload(
+    candidate_groups: list[tuple[str, list[str]]],
+    *,
+    repo_root: str | Path | None = None,
+) -> dict[str, Any]:
+    discovery = _discover_first_matching_path(candidate_groups, repo_root=repo_root)
+    path = discovery["path"]
+    data = read_csv(path, repo_root) if path else pd.DataFrame()
+    return {**discovery, "data": data}
+
+
+def _load_json_discovery_payload(
+    candidate_groups: list[tuple[str, list[str]]],
+    *,
+    repo_root: str | Path | None = None,
+) -> dict[str, Any]:
+    discovery = _discover_first_matching_path(candidate_groups, repo_root=repo_root)
+    path = discovery["path"]
+    data = read_json(path, repo_root) if path else {}
+    return {**discovery, "data": data}
+
+
+def load_phase1_focused_manifest(repo_root: str | Path | None = None) -> dict[str, Any]:
+    return _load_json_discovery_payload(
+        [
+            (
+                "curated output package artifacts",
+                [
+                    "output/panel_drifter_context/**/*phase1*manifest*.json",
+                ],
+            ),
+            (
+                "focused Phase 1 output artifacts",
+                [
+                    "output/phase1_mindoro_focus_pre_spill_2016_2023/phase1_production_manifest.json",
+                    "output/phase1_mindoro_focus_pre_spill_2016_2023/**/*phase1*manifest*.json",
+                ],
+            ),
+            (
+                "persistent historical input inventories",
+                [
+                    "data/historical_validation_inputs/phase1_mindoro_focus_pre_spill_2016_2023/**/*manifest*.json",
+                ],
+            ),
+        ],
+        repo_root=repo_root,
+    )
+
+
+def load_phase1_focused_accepted_segments(repo_root: str | Path | None = None) -> dict[str, Any]:
+    return _load_dataframe_discovery_payload(
+        [
+            (
+                "curated output package artifacts",
+                [
+                    "output/panel_drifter_context/**/*accepted*segment*.csv",
+                    "output/panel_drifter_context/**/*accepted*.csv",
+                ],
+            ),
+            (
+                "focused Phase 1 output artifacts",
+                [
+                    "output/phase1_mindoro_focus_pre_spill_2016_2023/phase1_accepted_segment_registry.csv",
+                    "output/phase1_mindoro_focus_pre_spill_2016_2023/**/*accepted*segment*.csv",
+                    "output/phase1_mindoro_focus_pre_spill_2016_2023/**/*accepted*.csv",
+                ],
+            ),
+            (
+                "persistent historical input inventories",
+                [
+                    "data/historical_validation_inputs/phase1_mindoro_focus_pre_spill_2016_2023/**/*accepted*.csv",
+                ],
+            ),
+        ],
+        repo_root=repo_root,
+    )
+
+
+def load_phase1_focused_ranking_subset(repo_root: str | Path | None = None) -> dict[str, Any]:
+    return _load_dataframe_discovery_payload(
+        [
+            (
+                "curated output package artifacts",
+                [
+                    "output/panel_drifter_context/**/*ranking*subset*.csv",
+                ],
+            ),
+            (
+                "focused Phase 1 output artifacts",
+                [
+                    "output/phase1_mindoro_focus_pre_spill_2016_2023/phase1_ranking_subset_registry.csv",
+                    "output/phase1_mindoro_focus_pre_spill_2016_2023/**/*ranking*subset*.csv",
+                ],
+            ),
+            (
+                "persistent historical input inventories",
+                [
+                    "data/historical_validation_inputs/phase1_mindoro_focus_pre_spill_2016_2023/**/*ranking*subset*.csv",
+                ],
+            ),
+        ],
+        repo_root=repo_root,
+    )
+
+
+def load_phase1_focused_drifter_registry(repo_root: str | Path | None = None) -> dict[str, Any]:
+    return _load_dataframe_discovery_payload(
+        [
+            (
+                "curated output package artifacts",
+                [
+                    "output/panel_drifter_context/**/*drifter*registry*.csv",
+                    "output/panel_drifter_context/**/*segment*.csv",
+                ],
+            ),
+            (
+                "focused Phase 1 output artifacts",
+                [
+                    "output/phase1_mindoro_focus_pre_spill_2016_2023/phase1_drifter_registry.csv",
+                    "output/phase1_mindoro_focus_pre_spill_2016_2023/**/*drifter*registry*.csv",
+                ],
+            ),
+            (
+                "persistent historical input inventories",
+                [
+                    "data/historical_validation_inputs/phase1_mindoro_focus_pre_spill_2016_2023/**/*.csv",
+                ],
+            ),
+            (
+                "fallback drifter CSVs",
+                [
+                    "data/drifters/**/*.csv",
+                ],
+            ),
+        ],
+        repo_root=repo_root,
+    )
+
+
+def _direct_march13_14_mask(df: pd.DataFrame) -> pd.Series:
+    if df.empty:
+        return pd.Series(dtype=bool)
+    if "start_time_utc" not in df.columns and "end_time_utc" not in df.columns:
+        return pd.Series(False, index=df.index)
+    start_series = df.get("start_time_utc", pd.Series("", index=df.index)).fillna("").astype(str)
+    end_series = df.get("end_time_utc", pd.Series("", index=df.index)).fillna("").astype(str)
+    pattern = r"2023-03-13|2023-03-14"
+    return start_series.str.contains(pattern, na=False) | end_series.str.contains(pattern, na=False)
+
+
+def _segment_table_for_display(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return pd.DataFrame()
+    payload = df.copy()
+    if "start_time_utc" in payload.columns and "end_time_utc" in payload.columns:
+        start_times = pd.to_datetime(payload["start_time_utc"], errors="coerce", utc=True)
+        end_times = pd.to_datetime(payload["end_time_utc"], errors="coerce", utc=True)
+        payload["duration_h"] = ((end_times - start_times).dt.total_seconds() / 3600.0).round(2)
+        payload["month"] = start_times.dt.month.astype("Int64")
+    if "drogue_status" not in payload.columns:
+        if "drogue_attached_through_window" in payload.columns:
+            payload["drogue_status"] = payload["drogue_attached_through_window"].astype(str)
+        elif "drogue_status_complete" in payload.columns:
+            payload["drogue_status"] = payload["drogue_status_complete"].astype(str)
+    preferred_columns = [
+        "segment_id",
+        "drifter_id",
+        "platform_id",
+        "start_time_utc",
+        "end_time_utc",
+        "start_lat",
+        "start_lon",
+        "end_lat",
+        "end_lon",
+        "duration_h",
+        "drogue_status",
+        "drogue_attached_through_window",
+        "month",
+        "month_key",
+        "ranking_subset_label",
+        "ranking_subset_included",
+    ]
+    selected_columns = [column for column in preferred_columns if column in payload.columns]
+    remaining_columns = [column for column in payload.columns if column not in selected_columns]
+    return payload[selected_columns + remaining_columns].reset_index(drop=True)
+
+
+def _segment_metrics_wide(segment_metrics: pd.DataFrame, segment_ids: list[str]) -> pd.DataFrame:
+    if segment_metrics.empty or "segment_id" not in segment_metrics.columns or "recipe" not in segment_metrics.columns:
+        return pd.DataFrame()
+    payload = segment_metrics.loc[segment_metrics["segment_id"].astype(str).isin(segment_ids)].copy()
+    if payload.empty or "ncs_score" not in payload.columns:
+        return pd.DataFrame()
+    payload["recipe_metric_column"] = (
+        payload["recipe"].astype(str).str.strip().str.replace(r"[^0-9a-zA-Z]+", "_", regex=True).str.lower()
+    )
+    wide = payload.pivot_table(
+        index="segment_id",
+        columns="recipe_metric_column",
+        values="ncs_score",
+        aggfunc="first",
+    )
+    if wide.empty:
+        return pd.DataFrame()
+    wide = wide.reset_index()
+    wide.columns = [
+        "segment_id" if str(column) == "segment_id" else f"ncs_score_{column}"
+        for column in wide.columns
+    ]
+    return wide
+
+
+def _box_bounds_from_payload(*payloads: dict[str, Any], key: str) -> list[float]:
+    for payload in payloads:
+        values = payload.get(key)
+        if isinstance(values, list) and len(values) == 4:
+            try:
+                return [float(value) for value in values]
+            except (TypeError, ValueError):
+                continue
+    return []
+
+
+def load_b1_drifter_context(repo_root: str | Path | None = None) -> dict[str, Any]:
+    root = _root(repo_root)
+    manifest_payload = load_phase1_focused_manifest(root)
+    accepted_payload = load_phase1_focused_accepted_segments(root)
+    subset_payload = load_phase1_focused_ranking_subset(root)
+    drifter_registry_payload = load_phase1_focused_drifter_registry(root)
+    segment_metrics = phase1_focused_segment_metrics(root)
+    recipe_ranking = phase1_focused_recipe_ranking(root)
+    recipe_summary = phase1_focused_recipe_summary(root)
+    b1_manifest = mindoro_b1_run_manifest(root)
+    phase1_config = read_yaml(PHASE1_FOCUSED_CONFIG_PATH, root)
+    case_config = read_yaml(MINDORO_CASE_CONFIG_PATH, root)
+    settings_config = read_yaml(SETTINGS_PATH, root)
+
+    accepted = accepted_payload["data"]
+    subset = subset_payload["data"]
+    manifest = manifest_payload["data"]
+    subset_ids = subset.get("segment_id", pd.Series(dtype=str)).astype(str).tolist() if not subset.empty else []
+    subset_metrics = _segment_metrics_wide(segment_metrics, subset_ids)
+    subset_display = _segment_table_for_display(subset)
+    if not subset_display.empty and not subset_metrics.empty:
+        subset_display = subset_display.merge(subset_metrics, on="segment_id", how="left")
+    accepted_display = _segment_table_for_display(accepted)
+
+    direct_accepted = accepted.loc[_direct_march13_14_mask(accepted)].reset_index(drop=True) if not accepted.empty else pd.DataFrame()
+    direct_subset = subset.loc[_direct_march13_14_mask(subset)].reset_index(drop=True) if not subset.empty else pd.DataFrame()
+
+    panel_context_manifest = _load_json_discovery_payload(
+        [
+            (
+                "curated output package artifacts",
+                [
+                    "output/panel_drifter_context/b1_drifter_context_manifest.json",
+                    "output/panel_drifter_context/**/*b1*drifter*context*manifest*.json",
+                ],
+            ),
+        ],
+        repo_root=root,
+    )
+    panel_context_map = _discover_first_matching_path(
+        [
+            (
+                "curated output package artifacts",
+                [
+                    "output/panel_drifter_context/**/*b1*drifter*context*.png",
+                    "output/panel_drifter_context/**/*drifter*context*.png",
+                    "output/figure_package_publication/**/*accepted*segment*.png",
+                    "output/figure_package_publication/**/*phase1*drifter*.png",
+                    "output/trajectory_gallery_panel/**/*phase1*drifter*.png",
+                    "output/chapter5_generated/**/*focused*phase1*segment*map*.png",
+                ],
+            ),
+        ],
+        repo_root=root,
+    )
+    panel_context_map_metadata = _load_json_discovery_payload(
+        [
+            (
+                "curated output package artifacts",
+                [
+                    "output/panel_drifter_context/b1_drifter_context_map.json",
+                    "output/panel_drifter_context/**/*b1*drifter*context*map*.json",
+                    "output/chapter5_generated/**/*focused*phase1*segment*map*.json",
+                ],
+            ),
+        ],
+        repo_root=root,
+    )
+
+    official_recipe = (
+        str(((b1_manifest.get("recipe") or {}).get("recipe")) or "").strip()
+        or str(manifest.get("official_b1_recipe") or "").strip()
+        or (str(recipe_ranking.iloc[0]["recipe"]).strip() if not recipe_ranking.empty and "recipe" in recipe_ranking.columns else "")
+    )
+    winner = (
+        str(manifest.get("historical_four_recipe_winner") or manifest.get("winning_recipe") or "").strip()
+        or (str(recipe_ranking.iloc[0]["recipe"]).strip() if not recipe_ranking.empty and "recipe" in recipe_ranking.columns else "")
+    )
+    ranking_subset_label = str((manifest.get("ranking_subset") or {}).get("label") or "").strip()
+    ranking_subset_description = str((((manifest.get("ranking_subset") or {}).get("config") or {}).get("description")) or "").strip()
+    accepted_count = int(manifest.get("accepted_segment_count") or len(accepted))
+    ranking_subset_count = int(((manifest.get("ranking_subset") or {}).get("segment_count")) or len(subset))
+    direct_segment_note = (
+        "No direct March 13-14 2023 accepted drifter segment is stored for B1. "
+        "The displayed drifter data is the historical focused Phase 1 provenance set used for recipe selection."
+    )
+    if not direct_accepted.empty or not direct_subset.empty:
+        direct_segment_note = (
+            "Directly dated March 13-14 drifter records were found in stored files, but they remain supplementary "
+            "context only and are not treated as the B1 public-observation truth mask here."
+        )
+
+    return {
+        "title": "B1 Drifter Provenance / Transport Context",
+        "page_note": (
+            "These drifter records support the selected transport recipe used by B1. "
+            "They are not the direct truth mask for the March 13-14 public-observation validation row."
+        ),
+        "evidence_boundary_note": (
+            "The March 13 -> March 14 B1 row is validated against public observation masks, not against drifter tracks. "
+            "The drifter data shown here belongs to the separate focused Phase 1 provenance lane that selected the "
+            "transport recipe inherited by B1."
+        ),
+        "b1_case_label": "March 13 -> March 14",
+        "provenance_lane": "phase1_mindoro_focus_pre_spill_2016_2023",
+        "claim_boundary": (
+            "Drifter records support B1 recipe provenance only; they are not the direct March 13-14 "
+            "public-observation truth mask."
+        ),
+        "status_messages": [
+            manifest_payload["status_message"],
+            accepted_payload["status_message"],
+            subset_payload["status_message"],
+            drifter_registry_payload["status_message"],
+            panel_context_manifest["status_message"],
+            panel_context_map["status_message"],
+            panel_context_map_metadata["status_message"],
+        ],
+        "phase1_manifest": manifest,
+        "phase1_manifest_source_path": manifest_payload["relative_path"],
+        "accepted_segments": accepted,
+        "accepted_segments_display": accepted_display,
+        "accepted_segments_source_path": accepted_payload["relative_path"],
+        "ranking_subset": subset,
+        "ranking_subset_display": subset_display,
+        "ranking_subset_source_path": subset_payload["relative_path"],
+        "drifter_registry": drifter_registry_payload["data"],
+        "drifter_registry_source_path": drifter_registry_payload["relative_path"],
+        "segment_metrics": segment_metrics,
+        "recipe_ranking": recipe_ranking,
+        "recipe_summary": recipe_summary,
+        "b1_run_manifest": b1_manifest,
+        "panel_context_manifest": panel_context_manifest["data"],
+        "panel_context_manifest_source_path": panel_context_manifest["relative_path"],
+        "panel_context_map_figure_path": panel_context_map["relative_path"],
+        "panel_context_map_figure_status": panel_context_map["status_message"],
+        "panel_context_map_metadata": panel_context_map_metadata["data"],
+        "panel_context_map_metadata_source_path": panel_context_map_metadata["relative_path"],
+        "official_b1_recipe": official_recipe,
+        "winning_recipe": winner,
+        "accepted_segment_count": accepted_count,
+        "ranking_subset_count": ranking_subset_count,
+        "ranking_subset_label": ranking_subset_label,
+        "ranking_subset_description": ranking_subset_description,
+        "direct_accepted_segments": direct_accepted,
+        "direct_accepted_segments_display": _segment_table_for_display(direct_accepted),
+        "direct_subset_segments": direct_subset,
+        "direct_subset_segments_display": _segment_table_for_display(direct_subset),
+        "direct_dated_segments_found": bool(not direct_accepted.empty or not direct_subset.empty),
+        "direct_segment_note": direct_segment_note,
+        "phase1_validation_box": _box_bounds_from_payload(
+            manifest,
+            phase1_config,
+            settings_config,
+            key="validation_box",
+        )
+        or _box_bounds_from_payload(phase1_config, settings_config, key="phase1_validation_box"),
+        "mindoro_case_domain": _box_bounds_from_payload(case_config, settings_config, key="mindoro_case_domain"),
+        "source_point": (
+            ((manifest.get("distance_audit") or {}).get("source_point"))
+            or {}
+        ),
+    }
+
+
 def phase1_reference_manifest(repo_root: str | Path | None = None) -> dict[str, Any]:
     return read_json(PHASE1_REFERENCE_DIR / "phase1_production_manifest.json", repo_root)
 
@@ -1223,6 +1685,7 @@ def build_dashboard_state(repo_root: str | Path | None = None) -> dict[str, Any]
         "phase1_focused_loading_audit": phase1_focused_loading_audit(root),
         "phase1_focused_baseline_candidate": phase1_focused_baseline_candidate(root),
         "phase1_focused_ranking_subset_report": phase1_focused_ranking_subset_report(root),
+        "b1_drifter_context": load_b1_drifter_context(root),
         "phase1_reference_manifest": phase1_reference_manifest(root),
         "phase1_reference_recipe_ranking": phase1_reference_recipe_ranking(root),
         "phase1_reference_recipe_summary": phase1_reference_recipe_summary(root),

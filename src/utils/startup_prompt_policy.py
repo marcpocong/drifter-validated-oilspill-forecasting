@@ -38,6 +38,7 @@ READ_ONLY_PHASES = {
     "final_validation_package",
     "figure_package_publication",
     "horizon_survival_audit",
+    "panel_b1_drifter_context",
     "phase1_finalization_audit",
     "phase2_finalization_audit",
     "phase4_crossmodel_comparability_audit",

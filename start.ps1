@@ -1046,8 +1046,51 @@ function Invoke-LauncherEntry {
     }
 }
 
+function Start-DelayedBrowserLaunch {
+    param(
+        [Parameter(Mandatory = $true)][string]$Url,
+        [string]$Label = "read-only dashboard page",
+        [int]$WaitTimeoutSeconds = 30
+    )
+
+    $escapedUrl = $Url.Replace("'", "''")
+    $launcherScript = @"
+`$targetUrl = '$escapedUrl'
+`$deadline = (Get-Date).AddSeconds($WaitTimeoutSeconds)
+while ((Get-Date) -lt `$deadline) {
+    try {
+        `$client = New-Object System.Net.Sockets.TcpClient
+        `$async = `$client.BeginConnect('127.0.0.1', 8501, `$null, `$null)
+        if (`$async.AsyncWaitHandle.WaitOne(1000)) {
+            `$client.EndConnect(`$async)
+            `$client.Close()
+            break
+        }
+        `$client.Close()
+    }
+    catch {
+    }
+    Start-Sleep -Milliseconds 500
+}
+Start-Process `$targetUrl
+"@
+
+    try {
+        Start-Process -FilePath "powershell.exe" -ArgumentList @("-NoProfile", "-Command", $launcherScript) -WindowStyle Hidden | Out-Null
+        Write-Host ("Opening {0} in your browser when the local UI is ready:" -f $Label) -ForegroundColor DarkGray
+        Write-Host ("  {0}" -f $Url) -ForegroundColor DarkGray
+    }
+    catch {
+        Write-Host ("Could not schedule automatic browser opening for {0}." -f $Label) -ForegroundColor DarkYellow
+        Write-Host ("Open this URL manually once the UI starts: {0}" -f $Url) -ForegroundColor Yellow
+    }
+}
+
 function Invoke-ReadOnlyUi {
-    param([switch]$RestartPipeline)
+    param(
+        [switch]$RestartPipeline,
+        [string]$LandingPath = ""
+    )
 
     if ($RestartPipeline) {
         Write-Host "Restarting compose services for a clean UI refresh..." -ForegroundColor Yellow
@@ -1081,10 +1124,18 @@ function Invoke-ReadOnlyUi {
         throw ("{0} up -d failed with exit code {1}." -f (Get-ComposeCommandText), $composeExitCode)
     }
 
+    $landingUrl = "http://localhost:8501"
+    if ($LandingPath) {
+        $landingUrl = "{0}/{1}" -f $landingUrl.TrimEnd("/"), $LandingPath.TrimStart("/")
+    }
+
     Write-Host ""
     Write-Host "Launching read-only Streamlit UI..." -ForegroundColor Yellow
-    Write-Host "Open http://localhost:8501 while this process is running." -ForegroundColor DarkGray
+    Write-Host ("Open {0} while this process is running." -f $landingUrl) -ForegroundColor DarkGray
     Write-Host "Press Ctrl+C to stop the UI and return to the launcher." -ForegroundColor DarkGray
+    if ($LandingPath) {
+        Start-DelayedBrowserLaunch -Url $landingUrl -Label "requested dashboard page"
+    }
 
     $uiArgs = @(
         "exec",
@@ -1396,6 +1447,7 @@ function Show-Help {
     Write-Host ""
     Write-Host "Preferred user-facing entry IDs:" -ForegroundColor Yellow
     Write-Host "  phase1_mindoro_focus_provenance" -ForegroundColor White
+    Write-Host "  b1_drifter_context_panel" -ForegroundColor White
     Write-Host "  mindoro_phase3b_primary_public_validation" -ForegroundColor White
     Write-Host "  dwh_reportable_bundle" -ForegroundColor White
     Write-Host "  phase1_regional_reference_rerun" -ForegroundColor White
@@ -1407,6 +1459,7 @@ function Show-Help {
     Write-Host "  mindoro_march13_14_noaa_reinit_stress_test" -ForegroundColor Gray
     Write-Host ""
     Write-Host "Read-only / packaging-safe examples:" -ForegroundColor Yellow
+    Write-Host "  .\start.ps1 -Entry b1_drifter_context_panel" -ForegroundColor Green
     Write-Host "  .\start.ps1 -Entry phase1_audit" -ForegroundColor Green
     Write-Host "  .\start.ps1 -Entry final_validation_package" -ForegroundColor Green
     Write-Host "  .\start.ps1 -Entry phase5_sync" -ForegroundColor Green
@@ -1579,6 +1632,8 @@ function Show-PanelGuide {
     Write-Host ""
     Write-Host "This panel mode verifies stored thesis-facing outputs against the manuscript." -ForegroundColor White
     Write-Host "It does not rerun expensive scientific simulations by default." -ForegroundColor White
+    Write-Host "Panel reviewers can also open the B1 Drifter Provenance page to inspect the focused Phase 1 drifter records behind the selected B1 recipe without creating a new validation claim." -ForegroundColor White
+    Write-Host "If no direct March 13-14 2023 accepted drifter segment is stored, that page says so explicitly." -ForegroundColor White
     Write-Host "Full scientific reruns remain available through the advanced launcher for audit purposes." -ForegroundColor White
     Pause-IfNeeded
 }
@@ -1643,6 +1698,18 @@ function Invoke-PanelPaperVerification {
     }
 }
 
+function Invoke-PanelB1DrifterContext {
+    $launcherEntry = Get-LauncherEntryById -EntryId "b1_drifter_context_panel"
+    Write-Section $launcherEntry.label
+    Invoke-LauncherEntry -LauncherEntry $launcherEntry
+    Write-Host ""
+    Write-Host "Next step: the read-only dashboard should open directly on 'B1 Drifter Provenance'." -ForegroundColor Yellow
+    Write-Host "If it does not switch automatically, open http://localhost:8501/b1-drifter-provenance or click 'B1 Drifter Provenance' in the sidebar." -ForegroundColor DarkGray
+    Write-Host "These drifter records support the selected transport recipe used by B1. They are not the direct March 13-14 public-observation truth mask." -ForegroundColor DarkGray
+    Write-Host ("Stored context outputs: {0}" -f (Get-DisplayPath -Path "output\panel_drifter_context")) -ForegroundColor Green
+    Invoke-ReadOnlyUi -LandingPath "b1-drifter-provenance"
+}
+
 function Show-PanelMenu {
     while ($true) {
         Clear-Host
@@ -1662,6 +1729,8 @@ function Show-PanelMenu {
         Write-Host "     Uses the existing read-only launcher/docs/package sync." -ForegroundColor DarkGray
         Write-Host "  6. Show paper-to-output registry [READ-ONLY]" -ForegroundColor White
         Write-Host "     Opens the plain-language manuscript/output map." -ForegroundColor DarkGray
+        Write-Host "  7. View B1 drifter provenance/context [READ-ONLY]" -ForegroundColor White
+        Write-Host "     Builds the stored-output-only drifter provenance context and opens the dashboard to the B1 Drifter Provenance page." -ForegroundColor DarkGray
         Write-Host ""
         Write-Host "Advanced:" -ForegroundColor Yellow
         Write-Host "  A. Open full research launcher [ADVANCED ONLY]" -ForegroundColor White
@@ -1736,6 +1805,16 @@ function Show-PanelMenu {
                 Show-PaperOutputRegistry
                 continue
             }
+            "7" {
+                try {
+                    Invoke-PanelB1DrifterContext
+                }
+                catch {
+                    Pause-IfNeeded
+                }
+                Pause-IfNeeded
+                continue
+            }
             "A" {
                 Show-Menu -ReturnToCaller
                 continue
@@ -1751,7 +1830,7 @@ function Show-PanelMenu {
             }
         }
 
-        Write-Host "Invalid option. Use 1-6, A, H, or Q." -ForegroundColor Red
+        Write-Host "Invalid option. Use 1-7, A, H, or Q." -ForegroundColor Red
         Start-Sleep -Seconds 2
     }
 }

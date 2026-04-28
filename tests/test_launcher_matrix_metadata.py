@@ -92,6 +92,7 @@ class LauncherMatrixMetadataTests(unittest.TestCase):
 
     def test_panel_safe_entries_remain_read_only_or_packaging_only(self):
         panel_safe_entry_ids = (
+            "b1_drifter_context_panel",
             "phase1_audit",
             "phase2_audit",
             "final_validation_package",
@@ -109,6 +110,13 @@ class LauncherMatrixMetadataTests(unittest.TestCase):
     def test_b1_claim_boundary_mentions_shared_imagery_caveat(self):
         boundary = self.entry_map["mindoro_phase3b_primary_public_validation"]["claim_boundary"].lower()
         self.assertRegex(boundary, r"shared[- ]imagery")
+
+    def test_b1_drifter_context_entry_stays_read_only_and_not_direct(self):
+        entry = self.entry_map["b1_drifter_context_panel"]
+        self.assertTrue(entry["safe_default"])
+        self.assertEqual(entry["run_kind"], "read_only")
+        self.assertEqual(entry["recommended_for"], "panel")
+        self.assertIn("not the direct", entry["claim_boundary"].lower())
 
     def test_pygnome_entries_keep_comparator_only_wording(self):
         offenders = []

@@ -51,6 +51,7 @@ Use `-NoPause` only when you intentionally want the launcher to finish without t
 Read-only entries to use first:
 
 ```powershell
+.\start.ps1 -Entry b1_drifter_context_panel
 .\start.ps1 -Entry phase1_audit
 .\start.ps1 -Entry phase2_audit
 .\start.ps1 -Entry final_validation_package
@@ -100,6 +101,7 @@ docker compose exec -T -e WORKFLOW_MODE=<workflow_mode> -e PIPELINE_PHASE=<phase
 Common read-only examples:
 
 ```bash
+docker compose exec -T -e WORKFLOW_MODE=mindoro_retro_2023 -e PIPELINE_PHASE=panel_b1_drifter_context pipeline python -m src
 docker compose exec -T -e WORKFLOW_MODE=mindoro_retro_2023 -e PIPELINE_PHASE=phase1_finalization_audit pipeline python -m src
 docker compose exec -T -e WORKFLOW_MODE=mindoro_retro_2023 -e PIPELINE_PHASE=phase2_finalization_audit pipeline python -m src
 docker compose exec -T -e WORKFLOW_MODE=mindoro_retro_2023 -e PIPELINE_PHASE=final_validation_package pipeline python -m src
@@ -123,6 +125,7 @@ Then open `http://localhost:8501`.
 If you want the UI to reflect the latest packaged read-only outputs first, refresh one or more of these entries before opening it:
 
 ```powershell
+.\start.ps1 -Entry b1_drifter_context_panel
 .\start.ps1 -Entry phase5_sync
 .\start.ps1 -Entry trajectory_gallery
 .\start.ps1 -Entry trajectory_gallery_panel

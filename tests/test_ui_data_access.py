@@ -38,6 +38,7 @@ class UiDataAccessTests(unittest.TestCase):
             "phase_status",
             "phase1_focused_manifest",
             "phase1_focused_recipe_ranking",
+            "b1_drifter_context",
             "phase1_reference_recipe_ranking",
             "publication_registry",
             "publication_manifest",
@@ -157,6 +158,32 @@ class UiDataAccessTests(unittest.TestCase):
         self.assertEqual(str(ranking.iloc[0]["recipe"]).strip(), "cmems_gfs")
         self.assertFalse(accepted.empty)
         self.assertIn("start_time_utc", accepted.columns)
+
+    def test_b1_drifter_context_uses_focused_phase1_provenance_without_claiming_direct_truth(self):
+        context = data_access.load_b1_drifter_context(REPO_ROOT)
+
+        self.assertEqual(context["provenance_lane"], "phase1_mindoro_focus_pre_spill_2016_2023")
+        self.assertEqual(context["official_b1_recipe"], "cmems_gfs")
+        self.assertEqual(context["winning_recipe"], "cmems_gfs")
+        self.assertEqual(context["accepted_segment_count"], 65)
+        self.assertEqual(context["ranking_subset_count"], 19)
+        self.assertFalse(context["direct_dated_segments_found"])
+        self.assertIn("not the direct", context["claim_boundary"].lower())
+        self.assertIn("No direct March 13-14 2023 accepted drifter segment is stored for B1", context["direct_segment_note"])
+        self.assertFalse(context["accepted_segments_display"].empty)
+        self.assertFalse(context["ranking_subset_display"].empty)
+
+    def test_b1_drifter_context_loader_handles_missing_repo_state_gracefully(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            context = data_access.load_b1_drifter_context(root)
+
+        self.assertEqual(context["official_b1_recipe"], "")
+        self.assertTrue(context["accepted_segments"].empty)
+        self.assertTrue(context["ranking_subset"].empty)
+        self.assertFalse(context["direct_dated_segments_found"])
+        self.assertTrue(context["status_messages"])
+        self.assertIn("No local artifact was found", " ".join(context["status_messages"]))
 
     def test_legacy_2016_phase4_comparator_registry_is_budget_only_light_and_heavy(self):
         registry = data_access.legacy_2016_phase4_comparator_registry(REPO_ROOT)

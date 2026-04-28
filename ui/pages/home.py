@@ -63,6 +63,12 @@ def _int_text(value: Any) -> str:
 def render(state: dict, ui_state: dict) -> None:
     export_mode = bool(ui_state.get("export_mode"))
     recommended = state["home_featured_publication_figures"]
+    phase1_manifest = state.get("phase1_focused_manifest") or {}
+    phase1_ranking = state.get("phase1_focused_recipe_ranking")
+    selected_recipe = str(phase1_manifest.get("official_b1_recipe") or "").strip()
+    if not selected_recipe and phase1_ranking is not None and not phase1_ranking.empty and "recipe" in phase1_ranking.columns:
+        selected_recipe = str(phase1_ranking.iloc[0]["recipe"]).strip()
+    selected_recipe = selected_recipe or "cmems_gfs"
 
     b1_row = _find_record(state.get("mindoro_b1_summary"), branch_id="R1_previous")
     track_a_open = _find_record(state.get("mindoro_comparator_summary"), track_id="R1_previous_reinit_p50")
@@ -154,6 +160,17 @@ def render(state: dict, ui_state: dict) -> None:
                 "page_label": "Mindoro B1 Primary Validation",
             },
             {
+                "title": "B1 drifter provenance/context",
+                "classification": "Provenance context",
+                "body": (
+                    "Historical accepted drifter segments from the focused Phase 1 lane selected the "
+                    f"`{selected_recipe}` transport recipe inherited by B1. "
+                    "This page keeps the recipe-provenance chain visible without turning drifters into the March 13 -> March 14 truth mask."
+                ),
+                "note": "Supports recipe provenance only; public-observation masks remain B1 truth.",
+                "page_label": "B1 Drifter Provenance",
+            },
+            {
                 "title": "Track A comparator-only note",
                 "classification": "Comparator support",
                 "body": (
@@ -226,6 +243,16 @@ def render(state: dict, ui_state: dict) -> None:
         "artifact_count": int(len(state.get("phase1_focused_recipe_summary", []))),
         "button_label": "Open page",
     }
+    b1_drifter_context_quick_link = {
+        "package_id": "b1_drifter_provenance",
+        "label": "B1 drifter provenance/context",
+        "page_label": "B1 Drifter Provenance",
+        "relative_path": "output/phase1_mindoro_focus_pre_spill_2016_2023",
+        "description": "Panel-safe view of the historical focused Phase 1 drifter records behind the selected B1 transport recipe. This is provenance context only, not the March 13 -> March 14 truth mask.",
+        "secondary_note": "Provenance context",
+        "artifact_count": int(len(state.get("phase1_focused_accepted_segments", []))),
+        "button_label": "Open page",
+    }
 
     def _story_package(package_id: str, lane_label: str) -> dict[str, Any] | None:
         package = package_lookup.get(package_id)
@@ -295,6 +322,7 @@ def render(state: dict, ui_state: dict) -> None:
 
     primary_quick_links = [
         phase1_quick_link,
+        b1_drifter_context_quick_link,
         _story_package("mindoro_b1_final", "Thesis-facing"),
         _story_package("mindoro_comparator", "Comparator support"),
         _story_package("dwh_phase3c_final", "Thesis-facing"),

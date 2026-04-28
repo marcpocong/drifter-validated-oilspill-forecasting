@@ -41,6 +41,7 @@ Container routing via the PIPELINE_PHASE environment variable:
   PIPELINE_PHASE=mindoro_local_recipe_experiment -> Stage a Mindoro-local recipe candidate and replay the Mindoro event comparison with GFS
   PIPELINE_PHASE=phase4_oiltype_and_shoreline -> Mindoro support-layer oil-type fate and shoreline-impact workflow
   PIPELINE_PHASE=phase4_crossmodel_comparability_audit -> Read-only Phase 4 OpenDrift-vs-PyGNOME comparability audit
+  PIPELINE_PHASE=panel_b1_drifter_context -> Read-only B1 drifter provenance/context packaging from stored local artifacts only
   PIPELINE_PHASE=phase5_launcher_and_docs_sync -> Read-only launcher/docs/reproducibility support sync
   PIPELINE_PHASE=trajectory_gallery_build -> Read-only static trajectory/overlay/shoreline figure gallery
   PIPELINE_PHASE=prototype_pygnome_similarity_summary -> Read-only cross-case prototype OpenDrift-vs-PyGNOME transport summary
@@ -2262,6 +2263,29 @@ def run_phase5_launcher_and_docs_sync_phase():
     )
 
 
+def run_panel_b1_drifter_context_phase():
+    from src.services.panel_b1_drifter_context import run_panel_b1_drifter_context
+
+    print("Starting read-only B1 drifter provenance/context build...")
+    print("This phase uses stored local drifter registries and manifests only. It does not rerun science or download new data.")
+
+    results = run_panel_b1_drifter_context()
+
+    print("\nB1 drifter provenance/context build complete.")
+    print(f"Outputs saved to: {results['output_dir']}")
+    print(f"Manifest: {results['manifest_path']}")
+    print(f"Map output: {results['map_output_path']}")
+    print(f"Map metadata: {results['map_metadata_path']}")
+    print(f"Accepted segments plotted: {results['accepted_segment_count']}")
+    print(f"Ranking subset segments plotted: {results['ranking_subset_count']}")
+    print(
+        "Direct March 13-14 2023 accepted drifter segments found: "
+        f"{results['direct_march13_14_2023_accepted_segments_found']}"
+    )
+    print(f"Output role: {results['output_role']}")
+    print(f"No science rerun: {results['no_science_rerun']}")
+
+
 def run_trajectory_gallery_build_phase():
     from src.services.trajectory_gallery_build import run_trajectory_gallery_build
 
@@ -2385,6 +2409,9 @@ def main():
         return
     if phase == "phase4_crossmodel_comparability_audit":
         run_phase4_crossmodel_comparability_audit_phase()
+        return
+    if phase == "panel_b1_drifter_context":
+        run_panel_b1_drifter_context_phase()
         return
     if phase == "phase5_launcher_and_docs_sync":
         run_phase5_launcher_and_docs_sync_phase()
@@ -2520,6 +2547,8 @@ def main():
         run_phase4_oiltype_and_shoreline_phase()
     elif phase == "phase4_crossmodel_comparability_audit":
         run_phase4_crossmodel_comparability_audit_phase()
+    elif phase == "panel_b1_drifter_context":
+        run_panel_b1_drifter_context_phase()
     elif phase == "phase5_launcher_and_docs_sync":
         run_phase5_launcher_and_docs_sync_phase()
     elif phase == "trajectory_gallery_build":

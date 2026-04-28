@@ -61,10 +61,11 @@ class UiReadonlySemanticsTests(unittest.TestCase):
         self.assertGreaterEqual(len(relative_paths), 6)
         self.assertEqual(relative_paths[0], "output/Phase 3B March13-14 Final Output")
         self.assertEqual(relative_paths[1], "output/Phase 3B March13-14 Final Output/publication/comparator_pygnome")
-        self.assertEqual(relative_paths[2], "output/Phase 3C DWH Final Output")
-        self.assertEqual(relative_paths[3], "output/2016 Legacy Runs FINAL Figures")
-        self.assertNotIn("output/CASE_MINDORO_RETRO_2023", relative_paths[:4])
-        self.assertNotIn("output/CASE_DWH_RETRO_2010_72H", relative_paths[:4])
+        self.assertEqual(relative_paths[2], "output/final_validation_package")
+        self.assertEqual(relative_paths[3], "output/Phase 3C DWH Final Output")
+        self.assertIn("output/2016 Legacy Runs FINAL Figures", relative_paths)
+        self.assertNotIn("output/CASE_MINDORO_RETRO_2023", relative_paths[:5])
+        self.assertNotIn("output/CASE_DWH_RETRO_2010_72H", relative_paths[:5])
 
     def test_panel_mode_page_map_matches_presentation_order(self):
         state = build_dashboard_state(REPO_ROOT)
@@ -73,10 +74,12 @@ class UiReadonlySemanticsTests(unittest.TestCase):
         self.assertEqual(
             panel_labels,
             [
-                "Home / Overview",
+                "Defense / Panel Review",
                 "Phase 1 Recipe Selection",
+                "B1 Drifter Provenance",
                 "Mindoro B1 Primary Validation",
                 "Mindoro Cross-Model Comparator",
+                "Mindoro Validation Archive",
                 "DWH Phase 3C Transfer Validation",
                 "Phase 4 Oil-Type and Shoreline Context",
                 "Legacy 2016 Support Package",
@@ -102,6 +105,7 @@ class UiReadonlySemanticsTests(unittest.TestCase):
         files_to_check = (
             REPO_ROOT / "ui" / "pages" / "home.py",
             REPO_ROOT / "ui" / "pages" / "phase1_recipe_selection.py",
+            REPO_ROOT / "ui" / "pages" / "b1_drifter_context.py",
             REPO_ROOT / "ui" / "pages" / "mindoro_validation.py",
             REPO_ROOT / "ui" / "pages" / "cross_model_comparison.py",
             REPO_ROOT / "ui" / "pages" / "dwh_transfer_validation.py",
@@ -132,6 +136,7 @@ class UiReadonlySemanticsTests(unittest.TestCase):
     def test_export_mode_page_sources_are_wired(self):
         sequential_pages = (
             REPO_ROOT / "ui" / "pages" / "phase1_recipe_selection.py",
+            REPO_ROOT / "ui" / "pages" / "b1_drifter_context.py",
             REPO_ROOT / "ui" / "pages" / "mindoro_validation.py",
             REPO_ROOT / "ui" / "pages" / "dwh_transfer_validation.py",
             REPO_ROOT / "ui" / "pages" / "legacy_2016_support.py",
@@ -202,6 +207,7 @@ class UiReadonlySemanticsTests(unittest.TestCase):
 
     def test_phase4_wording_matches_settled_decisions(self):
         phase1_text = (REPO_ROOT / "ui" / "pages" / "phase1_recipe_selection.py").read_text(encoding="utf-8")
+        b1_drifter_text = (REPO_ROOT / "ui" / "pages" / "b1_drifter_context.py").read_text(encoding="utf-8")
         phase4_text = (REPO_ROOT / "ui" / "pages" / "phase4_oiltype_and_shoreline.py").read_text(encoding="utf-8")
         legacy_text = (REPO_ROOT / "ui" / "pages" / "legacy_2016_support.py").read_text(encoding="utf-8")
 
@@ -215,6 +221,10 @@ class UiReadonlySemanticsTests(unittest.TestCase):
         self.assertIn("Study Box 2 is the broader `mindoro_case_domain` overview extent", phase1_text)
         self.assertIn("Study Box 1, the focused Phase 1 validation box, and Study Box 3", phase1_text)
         self.assertIn("first-code search box", phase1_text)
+        self.assertIn("They are not the direct truth mask", b1_drifter_text)
+        self.assertIn("Missing-data honesty panel", b1_drifter_text)
+        self.assertIn("direct_segment_note", b1_drifter_text)
+        self.assertIn("Focused Phase 1 drifter provenance -> selected cmems_gfs recipe -> March 13 -> March 14 B1 public-observation validation.", b1_drifter_text)
         self.assertIn("No matched PyGNOME Phase 4 comparison is packaged yet.", phase4_text)
         self.assertIn("Current Mindoro Phase 4 results are OpenDrift/OpenOil scenario outputs only.", phase4_text)
         self.assertIn("Budget-only deterministic PyGNOME comparator pilot.", legacy_text)

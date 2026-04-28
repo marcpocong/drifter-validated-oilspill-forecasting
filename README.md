@@ -17,6 +17,7 @@ or:
 ```
 
 This opens a read-only review mode that verifies stored software outputs against the manuscript and opens the dashboard. The full research launcher remains available under `Advanced`.
+Panel members can also use the new `B1 Drifter Provenance` page to inspect the historical focused Phase 1 drifter records behind the selected B1 recipe without creating a new validation claim.
 
 See [PANEL_QUICK_START.md](PANEL_QUICK_START.md) and [docs/PANEL_REVIEW_GUIDE.md](docs/PANEL_REVIEW_GUIDE.md) for the panel-facing walkthrough.
 
@@ -76,7 +77,7 @@ Preferred user-facing entry IDs:
 - support/context: `mindoro_phase4_only`, `mindoro_appendix_sensitivity_bundle`
 - archive/provenance: `phase1_regional_reference_rerun`, `mindoro_march13_14_phase1_focus_trial`, `mindoro_march6_recovery_sensitivity`, `mindoro_march23_extended_public_stress_test`
 - legacy support/debug: `prototype_legacy_final_figures`, `prototype_2021_bundle`, `prototype_legacy_bundle`
-- read-only governance: `phase1_audit`, `phase2_audit`, `final_validation_package`, `phase5_sync`, `trajectory_gallery`, `trajectory_gallery_panel`, `figure_package_publication`
+- read-only governance: `b1_drifter_context_panel`, `phase1_audit`, `phase2_audit`, `final_validation_package`, `phase5_sync`, `trajectory_gallery`, `trajectory_gallery_panel`, `figure_package_publication`
 
 Compatibility aliases still work:
 
@@ -90,6 +91,7 @@ Compatibility aliases still work:
 | --- | --- |
 | Defense / panel inspection | `.\panel.ps1` |
 | Open dashboard only | panel option `1`, or `docker compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501` |
+| Inspect drifter provenance behind B1 | panel option `7`, or `.\start.ps1 -Entry b1_drifter_context_panel` |
 | Verify manuscript numbers | panel option `2` |
 | Rebuild publication figures only | panel option `3`, or `.\start.ps1 -Entry figure_package_publication` |
 | Rebuild B1 validation | `.\start.ps1 -Entry mindoro_phase3b_primary_public_validation` |
@@ -166,6 +168,7 @@ What it shows first:
 - curated final package roots for Mindoro B1, the Mindoro validation archive, Mindoro comparator support, DWH Phase 3C, and the legacy 2016 support package
 - publication-grade recommended defense figures and a plain-language study structure overview
 - a dedicated Phase 1 page that explains the focused Mindoro provenance rerun and how B1 inherits the selected recipe
+- a dedicated B1 Drifter Provenance page that shows the historical focused Phase 1 accepted/ranking drifter records behind the selected B1 recipe while keeping public-observation truth separate
 - that same Phase 1 page now also surfaces a shared panel-ready thesis study-box reference figure that foregrounds boxes `2` and `4`, while keeping the focused Phase 1 and scoring-grid geography panels preserved as archived secondary references built from stored config, manifest, and legacy provenance metadata only
 - a dedicated Mindoro B1 page that keeps only the March 13 -> March 14 R1 primary validation row thesis-facing while keeping Track A comparator-only
 - a dedicated Mindoro Validation Archive page for the March 13 -> March 14 R0 archived baseline, older R0-including March13-14 outputs, and the preserved March-family legacy rows
@@ -177,8 +180,9 @@ What it shows first:
 
 Page map:
 
-- `Home / Overview`
+- `Defense / Panel Review`
 - `Phase 1 Recipe Selection`
+- `B1 Drifter Provenance`
 - `Mindoro B1 Primary Validation`
 - `Mindoro Validation Archive`
 - `Mindoro Cross-Model Comparator`

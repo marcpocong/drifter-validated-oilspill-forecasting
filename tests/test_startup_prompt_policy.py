@@ -115,6 +115,13 @@ class StartupPromptPolicyTests(unittest.TestCase):
         self.assertFalse(payload["should_prompt_wait_budget"])
         self.assertFalse(payload["has_eligible_input_cache"])
 
+    def test_b1_drifter_context_launcher_entry_probe_stays_non_prompting(self):
+        payload = policy.build_launcher_entry_probe("b1_drifter_context_panel")
+
+        self.assertEqual(payload["entry_id"], "b1_drifter_context_panel")
+        self.assertFalse(payload["should_prompt_wait_budget"])
+        self.assertFalse(payload["has_eligible_input_cache"])
+
     def test_prototype_legacy_bundle_probe_includes_ensemble_reuse_prompt_flag(self):
         payload = policy.build_launcher_entry_probe("prototype_legacy_bundle")
 

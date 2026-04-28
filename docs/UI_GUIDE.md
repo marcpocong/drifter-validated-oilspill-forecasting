@@ -72,8 +72,9 @@ Advanced mode stays read-only, but opens lower-level inspection:
 
 Primary thesis-story pages in panel mode:
 
-- `Home / Overview`
+- `Defense / Panel Review`
 - `Phase 1 Recipe Selection`
+- `B1 Drifter Provenance`
 - `Mindoro B1 Primary Validation`
 - `Mindoro Cross-Model Comparator`
 - `DWH Phase 3C Transfer Validation`
@@ -94,8 +95,9 @@ Advanced-only page:
 
 ## Output Roots Behind The Main Pages
 
-- `Home / Overview`: curated package roots plus `output/figure_package_publication/`, with featured figures now ordered from publication-governance `page_target` and `display_order` fields so workflow/provenance context leads before Mindoro B1, comparator support, DWH, and Phase 4
+- `Defense / Panel Review`: curated package roots plus `output/figure_package_publication/`, with featured figures now ordered from publication-governance `page_target` and `display_order` fields so workflow/provenance context leads before Mindoro B1, comparator support, DWH, and Phase 4
 - `Phase 1 Recipe Selection`: `output/phase1_mindoro_focus_pre_spill_2016_2023/`, `output/phase1_production_rerun/`, and the shared thesis study-box reference figure set from `output/figure_package_publication/`, where the default overview now foregrounds Study Boxes `2` and `4` while Study Boxes `1` and `3` remain archived secondary references
+- `B1 Drifter Provenance`: `output/phase1_mindoro_focus_pre_spill_2016_2023/`, `output/panel_drifter_context/`, and the stored focused Phase 1 ranking/segment registries used to explain the transport-provenance chain behind B1 without turning drifters into validation truth
 - `Mindoro B1 Primary Validation`: `output/Phase 3B March13-14 Final Output/`, filtered so the main thesis-facing page shows only the March 13 -> March 14 R1 primary validation row plus Track A comparator support
 - `Mindoro Validation Archive`: `output/final_validation_package/`, `output/Phase 3B March13-14 Final Output/`, and repo-preserved archived March-family materials routed through archive-only curation
 - `Mindoro Cross-Model Comparator`: `output/Phase 3B March13-14 Final Output/publication/comparator_pygnome/`

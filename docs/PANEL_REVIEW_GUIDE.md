@@ -22,9 +22,10 @@ Panel mode is meant to help a reviewer do the practical checks first:
 1. open the read-only dashboard
 2. verify manuscript numbers against stored scorecards
 3. rebuild publication figures from stored outputs only
-4. refresh the final validation package from stored outputs only
-5. refresh the reproducibility / docs package from stored outputs only
-6. open the paper-to-output registry
+4. inspect the B1 drifter provenance / transport context page
+5. refresh the final validation package from stored outputs only
+6. refresh the reproducibility / docs package from stored outputs only
+7. open the paper-to-output registry
 
 None of those actions are meant to rerun expensive science.
 
@@ -90,6 +91,7 @@ docker compose exec pipeline python -m streamlit run ui/app.py --server.address 
 Read-only / packaging-only launcher entries:
 
 ```powershell
+.\start.ps1 -Entry b1_drifter_context_panel
 .\start.ps1 -Entry final_validation_package
 .\start.ps1 -Entry phase5_sync
 .\start.ps1 -Entry figure_package_publication
@@ -97,7 +99,21 @@ Read-only / packaging-only launcher entries:
 .\start.ps1 -Entry trajectory_gallery_panel
 ```
 
-## 7. Which Commands Are Researcher / Audit Reruns
+## 7. Inspecting Drifter Provenance Behind `B1`
+
+Panel members can use panel option `7` or:
+
+```powershell
+.\start.ps1 -Entry b1_drifter_context_panel
+```
+
+That stored-output-only view shows the historical focused Phase 1 drifter records behind the selected B1 recipe.
+
+- It does not turn drifters into the March 13 -> March 14 validation truth mask.
+- `B1` remains public-observation validation.
+- The page explicitly says when no direct March 13-14 2023 accepted drifter segment is stored for `B1`.
+
+## 8. Which Commands Are Researcher / Audit Reruns
 
 These belong to the full launcher and are not the default defense path:
 
@@ -112,7 +128,7 @@ These belong to the full launcher and are not the default defense path:
 
 Those commands can rerun major workflow phases and are better treated as intentional researcher or audit actions.
 
-## 8. Why `B1` Is The Main Mindoro Row
+## 9. Why `B1` Is The Main Mindoro Row
 
 `B1` is the promoted March 13 -> March 14 `R1_previous` row carried into the thesis-facing validation argument.
 
@@ -122,13 +138,13 @@ Those commands can rerun major workflow phases and are better treated as intenti
 
 If a panelist asks which Mindoro row should be compared with the paper first, the answer is `B1`.
 
-## 9. Why The Shared-Imagery Caveat Matters
+## 10. Why The Shared-Imagery Caveat Matters
 
 The March 13 and March 14 NOAA/NESDIS products both cite March 12 WorldView-3 imagery.
 
 That means the row is still useful, but it should be described honestly as a reinitialization-based validation pair rather than a fully independent day-to-day pair. The panel-facing surfaces keep that caveat visible on purpose.
 
-## 10. How To Open The Full Launcher
+## 11. How To Open The Full Launcher
 
 From panel mode, choose:
 

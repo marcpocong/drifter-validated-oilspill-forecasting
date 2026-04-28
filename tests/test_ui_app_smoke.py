@@ -70,6 +70,15 @@ def _mindoro_validation_wrapper_for_test() -> None:
     mindoro_validation.render(state, panel_state)
 
 
+def _b1_drifter_context_wrapper_for_test() -> None:
+    from ui.data_access import build_dashboard_state
+    from ui.pages import b1_drifter_context
+
+    state = build_dashboard_state()
+    panel_state = {"advanced": False, "mode_label": "Panel-friendly", "visual_layer": "publication", "export_mode": False}
+    b1_drifter_context.render(state, panel_state)
+
+
 def _mindoro_validation_archive_wrapper_for_test() -> None:
     from ui.data_access import build_dashboard_state
     from ui.pages import mindoro_validation_archive
@@ -272,7 +281,7 @@ class UiAppSmokeTests(unittest.TestCase):
         at.run()
         self.assertFalse(at.exception)
         titles = [element.value for element in at.title]
-        self.assertIn("Home / Overview", titles)
+        self.assertIn("Defense / Panel Review", titles)
         self.assertEqual(len(at.sidebar.radio), 1)
         self.assertEqual(at.sidebar.radio[0].label, "Viewing mode")
         self.assertEqual(len(at.sidebar.selectbox), 0)
@@ -282,12 +291,13 @@ class UiAppSmokeTests(unittest.TestCase):
         at.run()
         self.assertFalse(at.exception)
         titles = [element.value for element in at.title]
-        self.assertIn("Home / Overview", titles)
+        self.assertIn("Defense / Panel Review", titles)
 
     def test_pages_render_via_wrapper_functions(self):
         for wrapper, expected_title in (
-            (_home_panel_wrapper_for_test, "Home / Overview"),
-            (_home_advanced_wrapper_for_test, "Home / Overview"),
+            (_home_panel_wrapper_for_test, "Defense / Panel Review"),
+            (_home_advanced_wrapper_for_test, "Defense / Panel Review"),
+            (_b1_drifter_context_wrapper_for_test, "B1 Drifter Provenance"),
             (_mindoro_validation_wrapper_for_test, "Mindoro B1 Primary Validation"),
             (_mindoro_validation_archive_wrapper_for_test, "Mindoro Validation Archive"),
             (_cross_model_wrapper_for_test, "Mindoro Cross-Model Comparator"),
@@ -296,7 +306,7 @@ class UiAppSmokeTests(unittest.TestCase):
             (_phase1_wrapper_for_test, "Phase 1 Recipe Selection"),
             (_phase1_advanced_wrapper_for_test, "Phase 1 Recipe Selection"),
             (_phase4_wrapper_for_test, "Phase 4 Oil-Type and Shoreline Context"),
-            (_home_export_wrapper_for_test, "Home / Overview"),
+            (_home_export_wrapper_for_test, "Defense / Panel Review"),
             (_phase1_export_wrapper_for_test, "Phase 1 Recipe Selection"),
         ):
             at = AppTest.from_function(wrapper, default_timeout=60)
@@ -318,9 +328,10 @@ class UiAppSmokeTests(unittest.TestCase):
         self.assertEqual(self._gallery_tile_count(at), expected_count)
         text_blocks = self._visible_text(at, "markdown", "subheader")
         self.assertNotIn("keyboard_double", text_blocks)
-        self.assertIn("Primary thesis story", text_blocks)
+        self.assertIn("Quick panel summary", text_blocks)
+        self.assertIn("What each thesis lane means", text_blocks)
         self.assertIn("Secondary lanes", text_blocks)
-        self.assertIn("Workflow / provenance context", text_blocks)
+        self.assertIn("Story shortcuts", text_blocks)
         self.assertIn("Archive only", text_blocks)
         self.assertIn("Legacy support", text_blocks)
         self.assertNotIn("Legacy 2016 support triptychs first", text_blocks)
@@ -330,7 +341,8 @@ class UiAppSmokeTests(unittest.TestCase):
         at.run()
         self.assertFalse(at.exception)
         text_blocks = self._visible_text(at, "markdown", "subheader", "caption")
-        self.assertIn("Mindoro archive, legacy March-family, R0, and Phase 4 figures remain available", text_blocks)
+        self.assertIn("Archive and legacy outputs stay available for audit", text_blocks)
+        self.assertIn("Archive and legacy figures remain on their own pages.", text_blocks)
         self.assertNotIn("Mindoro March 3 -> March 6", text_blocks)
         self.assertNotIn("Mindoro March 6", text_blocks)
 
@@ -379,7 +391,7 @@ class UiAppSmokeTests(unittest.TestCase):
         at.run()
         self.assertFalse(at.exception)
         text_blocks = " ".join(element.value for element in at.markdown)
-        self.assertIn("Export mode converts the dashboard into a print-friendly snapshot", text_blocks)
+        self.assertIn("Export mode converts this page into a print-friendly defense snapshot", text_blocks)
         button_labels = [element.label for element in at.button]
         self.assertNotIn("Enlarge figure", button_labels)
         self.assertEqual(self._gallery_tile_count(at), 2)
@@ -398,6 +410,15 @@ class UiAppSmokeTests(unittest.TestCase):
         self.assertFalse(at.exception)
         info_text = " ".join(element.value for element in at.warning)
         self.assertIn("falls back to the broader regional reference artifacts", info_text)
+
+    def test_b1_drifter_context_page_keeps_transport_provenance_boundary_explicit(self):
+        at = AppTest.from_function(_b1_drifter_context_wrapper_for_test, default_timeout=60)
+        at.run()
+        self.assertFalse(at.exception)
+        text_blocks = self._visible_text(at, "markdown", "subheader", "caption", "info", "warning", "success")
+        self.assertIn("They are not the direct truth mask for the March 13-14 public-observation validation row.", text_blocks)
+        self.assertIn("No direct March 13-14 2023 accepted drifter segment is stored for B1.", text_blocks)
+        self.assertIn("Focused Phase 1 drifter provenance -> selected cmems_gfs recipe -> March 13 -> March 14 B1 public-observation validation.", text_blocks)
 
     def test_phase1_page_calls_out_cmems_gfs_and_keeps_cmems_era5_as_runner_up(self):
         at = AppTest.from_function(_phase1_wrapper_for_test, default_timeout=60)

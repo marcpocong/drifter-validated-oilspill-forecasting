@@ -21,9 +21,10 @@ Panel mode is the recommended first path for:
 1. opening the read-only dashboard
 2. verifying that stored manuscript numbers match stored scorecards
 3. rebuilding publication figures from stored outputs only
-4. refreshing the final validation package from stored outputs only
-5. refreshing the reproducibility / docs package from stored outputs only
-6. opening the paper-to-output registry
+4. inspecting the drifter provenance / transport context behind the March 13 -> March 14 `B1` recipe
+5. refreshing the final validation package from stored outputs only
+6. refreshing the reproducibility / docs package from stored outputs only
+7. opening the paper-to-output registry
 
 ## What Panel Mode Does Not Do By Default
 
@@ -40,6 +41,18 @@ Panel mode is the recommended first path for:
 - `DWH` is external transfer validation, not Mindoro recalibration.
 - Mindoro oil-type and shoreline outputs are support/context only.
 - `prototype_2016` is legacy/archive support only.
+
+## Inspect Drifter Provenance Behind `B1`
+
+Use either:
+
+```powershell
+.\start.ps1 -Entry b1_drifter_context_panel
+```
+
+or panel option `7`.
+
+This opens the panel-safe `B1 Drifter Provenance` surface. It shows the historical focused Phase 1 drifter records behind the selected B1 recipe. It does not create a new validation claim: `B1` remains public-observation validation, and if no direct March 13-14 2023 accepted drifter records are stored, the page says so explicitly.
 
 ## If You Intentionally Need The Full Launcher
 

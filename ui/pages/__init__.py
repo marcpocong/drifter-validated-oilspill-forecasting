@@ -7,6 +7,7 @@ from typing import Callable
 
 from ui.pages import (
     artifacts_logs,
+    b1_drifter_context,
     cross_model_comparison,
     dwh_transfer_validation,
     home,
@@ -33,6 +34,7 @@ class PageDefinition:
 PAGE_DEFINITIONS = [
     PageDefinition("home", "Defense / Panel Review", home.render, navigation_section="Study", url_path="home"),
     PageDefinition("phase1_recipe_selection", "Phase 1 Recipe Selection", phase1_recipe_selection.render, navigation_section="Study", url_path="phase1-recipe-selection"),
+    PageDefinition("b1_drifter_context", "B1 Drifter Provenance", b1_drifter_context.render, navigation_section="Study", url_path="b1-drifter-provenance"),
     PageDefinition("mindoro_validation", "Mindoro B1 Primary Validation", mindoro_validation.render, navigation_section="Study", url_path="mindoro-b1-primary-validation"),
     PageDefinition("cross_model_comparison", "Mindoro Cross-Model Comparator", cross_model_comparison.render, navigation_section="Study", url_path="mindoro-cross-model-comparator"),
     PageDefinition("mindoro_validation_archive", "Mindoro Validation Archive", mindoro_validation_archive.render, navigation_section="Archive", url_path="mindoro-validation-archive"),

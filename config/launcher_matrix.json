@@ -589,6 +589,31 @@
       ]
     },
     {
+      "entry_id": "b1_drifter_context_panel",
+      "menu_order": 71.5,
+      "category_id": "read_only_packaging_help_utilities",
+      "workflow_mode": "mindoro_retro_2023",
+      "label": "B1 drifter provenance panel",
+      "description": "Builds or opens the stored-output-only panel surface showing the focused Phase 1 drifter provenance behind the March 13 -> March 14 B1 recipe.",
+      "service_profile": "pipeline_only",
+      "rerun_cost": "cheap_read_only",
+      "safe_default": true,
+      "thesis_role": "read_only_governance",
+      "draft_section": "Evidence 1 -> Evidence 3 bridge / Phase 1 provenance to Mindoro B1",
+      "claim_boundary": "Drifter records support B1 recipe provenance only; they are not the direct March 13-14 public-observation truth mask.",
+      "run_kind": "read_only",
+      "recommended_for": "panel",
+      "confirms_before_run": false,
+      "notes": "Uses stored local Phase 1 registries and manifests only. It does not rerun Phase 1 or B1 science, does not download new drifter data by default, and explicitly says so when no direct March 13-14 2023 accepted drifter segment is stored.",
+      "steps": [
+        {
+          "phase": "panel_b1_drifter_context",
+          "service": "pipeline",
+          "description": "Read-only B1 drifter provenance/context packaging"
+        }
+      ]
+    },
+    {
       "entry_id": "final_validation_package",
       "menu_order": 72,
       "category_id": "read_only_packaging_help_utilities",
