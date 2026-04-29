@@ -104,6 +104,6 @@ If you want the freshest read-only packaging before opening it, refresh one or m
 
 ## Where To Look Next
 
-- [docs/COMMAND_MATRIX.md](docs/COMMAND_MATRIX.md)
-- [docs/QUICKSTART.md](docs/QUICKSTART.md)
-- [docs/UI_GUIDE.md](docs/UI_GUIDE.md)
+- [COMMAND_MATRIX.md](COMMAND_MATRIX.md)
+- [QUICKSTART.md](QUICKSTART.md)
+- [UI_GUIDE.md](UI_GUIDE.md)

@@ -208,6 +208,21 @@ def relpath(path: str | Path) -> str:
         return str(value).replace("\\", "/")
 
 
+def redact_repo_root(text: str, *, replacement: str = ".") -> str:
+    if not text:
+        return text
+    sanitized = text
+    repo_root_windows = str(REPO_ROOT)
+    repo_root_posix = repo_root_windows.replace("\\", "/")
+    for needle in sorted({repo_root_windows, repo_root_posix}, key=len, reverse=True):
+        sanitized = sanitized.replace(needle, replacement)
+    return sanitized
+
+
+def repo_relative_command_text(text: str) -> str:
+    return redact_repo_root(text, replacement=".")
+
+
 def output_snippet(text: str, *, limit: int = 2400) -> str:
     cleaned = (text or "").strip()
     if len(cleaned) <= limit:
@@ -712,6 +727,12 @@ def support_value_warnings() -> list[str]:
     warnings: list[str] = []
     if not PHASE4_BUDGET_PATH.exists():
         return warnings
+    warnings.append(
+        "Phase 4 thesis-facing support values are final beached percentages, first-arrival time, impacted shoreline segments, and QC status."
+    )
+    warnings.append(
+        "Raw total_beached_kg in output/phase4/CASE_MINDORO_RETRO_2023/phase4_oil_budget_summary.csv is not treated as a primary manuscript claim in this readiness check unless it is separately re-audited."
+    )
     rows = read_csv_rows(PHASE4_BUDGET_PATH)
     expected_kg = {
         "lighter_oil": 10.0,
@@ -906,7 +927,11 @@ def base_report_payload(*, mode_name: str, quick: bool, require_docker: bool, re
         "quick": quick,
         "require_docker": require_docker,
         "require_dashboard": require_dashboard,
-        "git_commit": git_commit_hash(),
+        "checked_git_commit": git_commit_hash(),
+        "checked_git_commit_note": (
+            "Generated report records the code commit checked at runtime; if the report is later committed, "
+            "the repository commit containing this report may be one commit newer."
+        ),
         "platform": {
             "system": platform.system(),
             "release": platform.release(),
@@ -952,7 +977,8 @@ def write_report(report_path_json: Path, report_path_md: Path, payload: dict[str
         "# Defense Readiness Report",
         "",
         f"- Generated at: `{payload.get('generated_at_utc', '')}`",
-        f"- Git commit: `{payload.get('git_commit', '')}`",
+        f"- Checked git commit: `{payload.get('checked_git_commit', '')}`",
+        f"- Commit note: {payload.get('checked_git_commit_note', '')}",
         f"- Mode: `{payload.get('mode', '')}`",
         f"- Compose mode detected: `{payload.get('compose_mode_detected', 'not found')}`",
         f"- Python: `{payload.get('platform', {}).get('python_version', '')}`",
@@ -982,7 +1008,7 @@ def write_report(report_path_json: Path, report_path_md: Path, payload: dict[str
     else:
         lines.append("- None")
 
-    lines.extend(["", "## Commands Run", ""])
+    lines.extend(["", "## Commands Run", "", "- Repo-relative commands are shown below; the local repo root has been redacted.", ""])
     if commands_run:
         lines.extend(f"- `{item}`" for item in commands_run)
     else:
@@ -1016,4 +1042,10 @@ def write_report(report_path_json: Path, report_path_md: Path, payload: dict[str
 
 
 def check_result_payload(result: CheckResult) -> dict[str, Any]:
-    return asdict(result)
+    payload = asdict(result)
+    command = payload.get("command", "")
+    if command:
+        payload["repo_relative_command"] = repo_relative_command_text(command)
+        payload["raw_command_redacted"] = redact_repo_root(command, replacement="<REPO_ROOT>")
+        payload["command"] = payload["repo_relative_command"]
+    return payload

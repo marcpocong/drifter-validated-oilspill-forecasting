@@ -142,4 +142,4 @@ docker compose exec -T -e WORKFLOW_MODE=dwh_retro_2010 -e PIPELINE_PHASE=phase3c
 - DWH is external transfer validation, not Mindoro recalibration.
 - Mindoro oil-type and shoreline outputs remain support/context only.
 - `prototype_2016` is legacy/archive support only; some internal package names may still contain Phase 4/Phase 5 labels, but those are not primary defended evidence.
-- `output/phase1_production_rerun/phase1_baseline_selection_candidate.yaml` remains staged only; promotion into `config/phase1_baseline_selection.yaml` stays explicit and manual.
+- `output/phase1_production_rerun/phase1_baseline_selection_candidate.yaml` remains a staged-only candidate for the broader regional/reference lane; any promotion into `config/phase1_baseline_selection.yaml` stays explicit and manual, and this does not affect the finalized focused Mindoro `B1` `cmems_gfs` provenance.

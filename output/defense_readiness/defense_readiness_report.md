@@ -1,35 +1,34 @@
 # Defense Readiness Report
 
-- Generated at: `2026-04-29T00:04:52Z`
-- Git commit: `f0f6150084008cc9abd85062d44aec57b530a1f1`
-- Mode: `docker`
+- Generated at: `2026-04-29T00:21:31Z`
+- Checked git commit: `a28984be37240c63c7226f53b788f5eb25cf9630`
+- Commit note: Generated report records the code commit checked at runtime; if the report is later committed, the repository commit containing this report may be one commit newer.
+- Mode: `local`
 - Compose mode detected: `docker compose`
 - Python: `3.14.4`
 - Platform: `Windows 11`
 
 ## Summary
 
-- PASS: 34
-- WARN: 3
+- PASS: 23
+- WARN: 5
 - FAIL: 0
 
 ## Topic Status
 
 - artifacts: `PASS`
 - claim_boundaries: `PASS`
-- dashboard: `PASS`
+- dashboard: `WARN`
 - docker: `PASS`
 - environment: `PASS`
 - launcher_commands: `PASS`
-- launcher_entries: `PASS`
+- launcher_entries: `WARN`
 - launcher_matrix: `PASS`
 - launcher_safety: `PASS`
 - manuscript_numbers: `PASS`
-- no_science_guard: `PASS`
 - package_imports: `WARN`
 - panel_commands: `PASS`
 - stored_values: `WARN`
-- working_tree: `PASS`
 
 ## Hard Failures
 
@@ -40,23 +39,25 @@
 - support/context Phase 4 machine-readable values reviewed
 - host Python package availability checked
 - gnome container import check completed
+- Streamlit runtime smoke was not required for this run
+- quick mode skipped the longer read-only entry batch
 
 ## Commands Run
 
-- `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -Help -NoPause`
-- `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -List -NoPause`
-- `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -ListRole primary_evidence -NoPause`
-- `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -ListRole read_only_governance -NoPause`
-- `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -Explain mindoro_phase3b_primary_public_validation -NoPause`
-- `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -Explain phase1_mindoro_focus_provenance -NoPause`
-- `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -Explain dwh_reportable_bundle -NoPause`
-- `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -Explain b1_drifter_context_panel -NoPause`
-- `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -Panel -NoPause`
-- `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\panel.ps1 -NoPause`
-- `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -Entry phase1_mindoro_focus_provenance`
+- Repo-relative commands are shown below; the local repo root has been redacted.
+
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -Help -NoPause`
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -List -NoPause`
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -ListRole primary_evidence -NoPause`
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -ListRole read_only_governance -NoPause`
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -Explain mindoro_phase3b_primary_public_validation -NoPause`
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -Explain phase1_mindoro_focus_provenance -NoPause`
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -Explain dwh_reportable_bundle -NoPause`
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -Explain b1_drifter_context_panel -NoPause`
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -Panel -NoPause`
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\panel.ps1 -NoPause`
+- `powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -Entry phase1_mindoro_focus_provenance`
 - `docker compose config`
-- `docker compose up -d`
-- `docker compose ps`
 - `docker compose exec -T pipeline python -c "import importlib
 mods = ['streamlit', 'pandas', 'numpy', 'geopandas', 'rasterio', 'shapely', 'xarray', 'yaml', 'matplotlib']
 failures = []
@@ -84,71 +85,10 @@ mods = ['ui.app', 'ui.data_access', 'ui.app', 'ui.data_access', 'ui.pages.home',
 for name in mods:
     importlib.import_module(name)
 print('IMPORT_OK')"`
-- `docker compose exec -T pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501 --server.headless true`
-- `docker compose exec -T pipeline python src/services/panel_review_check.py`
-- `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -Entry b1_drifter_context_panel -NoPause`
-- `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -Entry final_validation_package -NoPause`
-- `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -Entry phase5_sync -NoPause`
-- `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -Entry figure_package_publication -NoPause`
-- `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -Entry trajectory_gallery_panel -NoPause`
 
 ## Files Changed By Readiness Test
 
-- `logs/run_b1_drifter_context_panel_20260429_080403.log`
-- `logs/run_figure_package_publication_20260429_080446.log`
-- `logs/run_final_validation_package_20260429_080410.log`
-- `logs/run_phase5_sync_20260429_080420.log`
-- `logs/run_trajectory_gallery_panel_20260429_080448.log`
-- `output/Phase 3B March13-14 Final Output/README.md`
-- `output/Phase 3B March13-14 Final Output/final_output_manifest.json`
-- `output/Phase 3B March13-14 Final Output/manifests/final_output_manifest.json`
-- `output/Phase 3B March13-14 Final Output/manifests/phase3b_final_output_registry.csv`
-- `output/Phase 3B March13-14 Final Output/manifests/phase3b_final_output_registry.json`
-- `output/Phase 3B March13-14 Final Output/publication/comparator_pygnome/march14_crossmodel_pygnome_overlay.png`
-- `output/Phase 3B March13-14 Final Output/publication/comparator_pygnome/march14_crossmodel_r1_overlay.png`
-- `output/Phase 3B March13-14 Final Output/publication/comparator_pygnome/mindoro_crossmodel_board.png`
-- `output/Phase 3B March13-14 Final Output/publication/comparator_pygnome/mindoro_observed_masks_ensemble_pygnome_board.png`
-- `output/Phase 3B March13-14 Final Output/publication/observations/march13_seed_mask_on_grid.png`
-- `output/Phase 3B March13-14 Final Output/publication/observations/march13_seed_vs_march14_target.png`
-- `output/Phase 3B March13-14 Final Output/publication/observations/march14_target_mask_on_grid.png`
-- `output/Phase 3B March13-14 Final Output/publication/opendrift_primary/march14_r1_previous_overlay.png`
-- `output/Phase 3B March13-14 Final Output/publication/opendrift_primary/mindoro_primary_validation_board.png`
-- `output/Phase 3B March13-14 Final Output/scientific_source_pngs/comparator_pygnome/qa_march14_crossmodel_R1_previous_reinit_p50_overlay.png`
-- `output/Phase 3B March13-14 Final Output/scientific_source_pngs/opendrift_primary/qa_march13_seed_mask_on_grid.png`
-- `output/Phase 3B March13-14 Final Output/scientific_source_pngs/opendrift_primary/qa_march13_seed_vs_march14_target.png`
-- `output/Phase 3B March13-14 Final Output/scientific_source_pngs/opendrift_primary/qa_march14_reinit_R1_previous_overlay.png`
-- `output/Phase 3C DWH Final Output/README.md`
-- `output/Phase 3C DWH Final Output/manifests/phase3c_final_output_manifest.json`
-- `output/Phase 3C DWH Final Output/manifests/phase3c_final_output_registry.csv`
-- `output/Phase 3C DWH Final Output/manifests/phase3c_final_output_registry.json`
-- `output/Phase 3C DWH Final Output/summary/comparison/phase3c_interpretation_note.md`
-- `output/Phase 3C DWH Final Output/summary/comparison/phase3c_main_scorecard.csv`
-- `output/Phase 3C DWH Final Output/summary/comparison/phase3c_output_matrix_decision_note.md`
-- `output/final_reproducibility_package/final_case_registry.csv`
-- `output/final_reproducibility_package/final_config_snapshot_index.csv`
-- `output/final_reproducibility_package/final_log_index.csv`
-- `output/final_reproducibility_package/final_manifest_index.csv`
-- `output/final_reproducibility_package/final_output_catalog.csv`
-- `output/final_reproducibility_package/final_phase_status_registry.csv`
-- `output/final_reproducibility_package/final_reproducibility_manifest.json`
-- `output/final_reproducibility_package/final_reproducibility_summary.md`
-- `output/final_reproducibility_package/launcher_user_guide.md`
-- `output/final_reproducibility_package/phase5_final_verdict.md`
-- `output/final_reproducibility_package/phase5_packaging_sync_memo.md`
-- `output/final_reproducibility_package/software_versions.csv`
-- `output/final_validation_package/final_validation_benchmark_table.csv`
-- `output/final_validation_package/final_validation_case_registry.csv`
-- `output/final_validation_package/final_validation_chapter_sync_memo.md`
-- `output/final_validation_package/final_validation_claims_guardrails.md`
-- `output/final_validation_package/final_validation_interpretation_memo.md`
-- `output/final_validation_package/final_validation_limitations.csv`
-- `output/final_validation_package/final_validation_main_table.csv`
-- `output/final_validation_package/final_validation_manifest.json`
-- `output/final_validation_package/final_validation_observation_table.csv`
-- `output/final_validation_package/final_validation_summary.md`
-- `output/panel_drifter_context/b1_drifter_context_manifest.json`
-- `output/panel_drifter_context/b1_drifter_context_map.json`
-- `output/panel_drifter_context/b1_drifter_context_map.png`
+- None detected
 
 ## Check Details
 
@@ -184,6 +124,8 @@ print('IMPORT_OK')"`
 
 - Topic: `stored_values`
 - Summary: support/context Phase 4 machine-readable values reviewed
+- Phase 4 thesis-facing support values are final beached percentages, first-arrival time, impacted shoreline segments, and QC status.
+- Raw total_beached_kg in output/phase4/CASE_MINDORO_RETRO_2023/phase4_oil_budget_summary.csv is not treated as a primary manuscript claim in this readiness check unless it is separately re-audited.
 - phase4 support-layer kg value for lighter_oil is 5261.2 kg, not the expected approximately 10.0 kg
 - phase4 support-layer kg value for fixed_base_medium_heavy_proxy is 34864.9 kg, not the expected approximately 305.0 kg
 - phase4 support-layer kg value for heavier_oil is 37393.6 kg, not the expected approximately 315.0 kg
@@ -211,7 +153,7 @@ print('IMPORT_OK')"`
 
 - Topic: `launcher_commands`
 - Summary: start.ps1 -Help -NoPause returned readable launcher help
-- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -Help -NoPause`
+- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -Help -NoPause`
 - Output snippet:
 
 ```text
@@ -287,7 +229,7 @@ Not implemented yet:
 
 - Topic: `launcher_commands`
 - Summary: start.ps1 -List -NoPause returned the launcher catalog
-- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -List -NoPause`
+- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -List -NoPause`
 - Output snippet:
 
 ```text
@@ -479,7 +421,7 @@ Optional future work not implemented in the launcher:
 
 - Topic: `launcher_commands`
 - Summary: primary_evidence role listing returned readable output
-- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -ListRole primary_evidence -NoPause`
+- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -ListRole primary_evidence -NoPause`
 - Output snippet:
 
 ```text
@@ -541,7 +483,7 @@ Optional future work not implemented in the launcher:
 
 - Topic: `launcher_commands`
 - Summary: read_only_governance role listing returned readable output
-- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -ListRole read_only_governance -NoPause`
+- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -ListRole read_only_governance -NoPause`
 - Output snippet:
 
 ```text
@@ -621,7 +563,7 @@ Optional future work not implemented in the launcher:
 
 - Topic: `launcher_commands`
 - Summary: -Explain mindoro_phase3b_primary_public_validation returned the thesis-boundary preview
-- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -Explain mindoro_phase3b_primary_public_validation -NoPause`
+- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -Explain mindoro_phase3b_primary_public_validation -NoPause`
 - Output snippet:
 
 ```text
@@ -649,7 +591,7 @@ Notes: Canonical B1 builder. This does not delete or relabel the repo-preserved 
 
 - Topic: `launcher_commands`
 - Summary: -Explain phase1_mindoro_focus_provenance returned the thesis-boundary preview
-- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -Explain phase1_mindoro_focus_provenance -NoPause`
+- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -Explain phase1_mindoro_focus_provenance -NoPause`
 - Output snippet:
 
 ```text
@@ -677,7 +619,7 @@ Notes: Mindoro-specific provenance lane only. This does not rewrite the stored M
 
 - Topic: `launcher_commands`
 - Summary: -Explain dwh_reportable_bundle returned the thesis-boundary preview
-- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -Explain dwh_reportable_bundle -NoPause`
+- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -Explain dwh_reportable_bundle -NoPause`
 - Output snippet:
 
 ```text
@@ -705,7 +647,7 @@ Notes: Separate external transfer-validation story only. Mindoro remains the mai
 
 - Topic: `launcher_commands`
 - Summary: -Explain b1_drifter_context_panel returned the thesis-boundary preview
-- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -Explain b1_drifter_context_panel -NoPause`
+- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -Explain b1_drifter_context_panel -NoPause`
 - Output snippet:
 
 ```text
@@ -733,7 +675,7 @@ Notes: Uses stored local Phase 1 registries and manifests only. It does not reru
 
 - Topic: `panel_commands`
 - Summary: start.ps1 -Panel -NoPause returned a noninteractive panel summary
-- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -Panel -NoPause`
+- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -Panel -NoPause`
 - Output snippet:
 
 ```text
@@ -767,7 +709,7 @@ Smoke-test-safe examples:
 
 - Topic: `panel_commands`
 - Summary: panel.ps1 -NoPause returned the read-only panel wrapper preview
-- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\panel.ps1 -NoPause`
+- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File .\panel.ps1 -NoPause`
 - Output snippet:
 
 ```text
@@ -801,7 +743,7 @@ Smoke-test-safe examples:
 
 - Topic: `launcher_safety`
 - Summary: noninteractive execution of an expensive launcher entry stopped at the confirmation guard
-- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -Entry phase1_mindoro_focus_provenance`
+- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1 -Entry phase1_mindoro_focus_provenance`
 - Output snippet:
 
 ```text
@@ -967,33 +909,6 @@ networks:
 - gnome
 - pipeline
 
-### docker_compose_up (PASS)
-
-- Topic: `docker`
-- Summary: docker compose up -d completed
-- Command: `docker compose up -d`
-- Output snippet:
-
-```text
- Container phase3 Running 
- Container phase1 Running 
-
-```
-
-### docker_compose_ps (PASS)
-
-- Topic: `docker`
-- Summary: docker compose ps completed
-- Command: `docker compose ps`
-- Output snippet:
-
-```text
-NAME      IMAGE                     COMMAND               SERVICE    CREATED          STATUS          PORTS
-phase1    oil-spill-phase1:latest   "tail -f /dev/null"   pipeline   13 minutes ago   Up 13 minutes   0.0.0.0:8501->8501/tcp, [::]:8501->8501/tcp
-phase3    oil-spill-phase3:latest   "tail -f /dev/null"   gnome      13 minutes ago   Up 13 minutes   
-
-```
-
 ### pipeline_package_imports (PASS)
 
 - Topic: `package_imports`
@@ -1052,311 +967,22 @@ print('IMPORT_OK')"`
 
 ```text
 IMPORT_OK
-2026-04-29 00:03:58.570 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
-2026-04-29 00:03:58.580 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
-2026-04-29 00:03:59.104 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-04-29 00:21:30.396 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-04-29 00:21:30.404 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-04-29 00:21:31.013 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
 ```
 
-### streamlit_runtime_smoke (PASS)
+### streamlit_runtime_smoke (WARN)
 
 - Topic: `dashboard`
-- Summary: headless Streamlit runtime smoke passed
-- Command: `docker compose exec -T pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501 --server.headless true`
-- ok
+- Summary: Streamlit runtime smoke was not required for this run
+- rerun with --require-dashboard to make the headless UI health check mandatory
 
-### panel_review_generation (PASS)
-
-- Topic: `manuscript_numbers`
-- Summary: panel review check regenerated from stored outputs only
-- Command: `docker compose exec -T pipeline python src/services/panel_review_check.py`
-- Output snippet:
-
-```text
-Panel review verification complete.
-CSV: output/panel_review_check/panel_results_match_check.csv
-JSON: output/panel_review_check/panel_results_match_check.json
-MD: output/panel_review_check/panel_results_match_check.md
-Manifest: output/panel_review_check/panel_review_manifest.json
-Summary: PASS=31 FAIL=0 MISSING_SOURCE=0 LOOKUP_ERROR=0
-
-```
-
-### entry_b1_drifter_context_panel (PASS)
+### safe_entry_batch (WARN)
 
 - Topic: `launcher_entries`
-- Summary: b1_drifter_context_panel completed without triggering a scientific rerun
-- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -Entry b1_drifter_context_panel -NoPause`
-- Output snippet:
-
-```text
-
-============================================================
-   B1 drifter provenance panel
-============================================================
-Starting Docker containers...
- Container phase3 Running 
- Container phase1 Running 
-
-Run-start policy:
-  INPUT_CACHE_POLICY=reuse_if_valid
-  FORCING_SOURCE_BUDGET_SECONDS=300
-  PROTOTYPE_2016_ENSEMBLE_POLICY=full_rerun
-
-[1/1]
->>> Read-only B1 drifter provenance/context packaging
-    WORKFLOW_MODE=mindoro_retro_2023 PIPELINE_PHASE=panel_b1_drifter_context SERVICE=pipeline
-Starting read-only B1 drifter provenance/context build...
-This phase uses stored local drifter registries and manifests only. It does not rerun science or download new data.
-
-B1 drifter provenance/context build complete.
-Outputs saved to: /app/output/panel_drifter_context
-Manifest: /app/output/panel_drifter_context/b1_drifter_context_manifest.json
-Map output: /app/output/panel_drifter_context/b1_drifter_context_map.png
-Map metadata: /app/output/panel_drifter_context/b1_drifter_context_map.json
-Accepted segments plotted: 65
-Ranking subset segments plotted: 19
-Direct March 13-14 2023 accepted drifter segments found: False
-Output role: transport_provenance_context_only
-No science rerun: True
-
-[SUCCESS] Launcher entry completed.
-Entry ID: b1_drifter_context_panel
-Runtime: 00h 00m 06s
-Log saved to: logs\run_b1_drifter_context_panel_20260429_080403.log
-
-```
-
-### entry_final_validation_package (PASS)
-
-- Topic: `launcher_entries`
-- Summary: final_validation_package completed without triggering a scientific rerun
-- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -Entry final_validation_package -NoPause`
-- Output snippet:
-
-```text
-
-============================================================
-   Final validation package refresh
-============================================================
-Starting Docker containers...
- Container phase3 Running 
- Container phase1 Running 
-
-Run-start policy:
-  INPUT_CACHE_POLICY=reuse_if_valid
-  FORCING_SOURCE_BUDGET_SECONDS=300
-  PROTOTYPE_2016_ENSEMBLE_POLICY=full_rerun
-
-[1/1]
->>> Read-only final validation packaging
-    WORKFLOW_MODE=mindoro_retro_2023 PIPELINE_PHASE=final_validation_package SERVICE=pipeline
-Starting final validation packaging...
-This phase is read-only and will not rerun the completed scientific workflows.
-
-Final validation package complete.
-Outputs saved to: output/final_validation_package
-Recommended final chapter structure:
-  - Phase 1 = Transport Validation and Baseline Configuration Selection
-  - Phase 2 = Standardized Machine-Readable Forecast Product Generation
-  - Phase 3A = Mindoro March 13 -> March 14 Same-Case Comparator Support Track
-  - Phase 3B1 = Mindoro March 13 -> March 14 NOAA Reinit Primary Validation
-  - Phase 3B2 = Mindoro Legacy March 6 Sparse Strict Reference
-  - Phase 3B3 = Mindoro Legacy March 3-6 Broader-Support Reference
-  - Phase 3C = External Rich-Data Spill Transfer Validation (Deepwater Horizon 2010)
-  - Phase 4 = Oil-Type Fate and Shoreline Impact Analysis
-  - Phase 5 = Reproducibility, Packaging, and Deliverables
-Headline Mindoro promoted primary result:
-  - FSS(1/3/5/10 km) = 0.0000, 0.0441, 0.1371, 0.2490
-  - Thesis-facing title: Phase 3B Observation-Based Spatial Validation Using Public Mindoro Spill Extents
-  - Recipe confirmation: stored=cmems_gfs, later_drifter_rerun=cmems_gfs, matches=True
-Headline Mindoro legacy broader-support result:
-  - FSS(1/3/5/10 km) = 0.1722, 0.2004, 0.2166, 0.2438
-Headline Mindoro legacy sparse March 6 result:
-  - FSS(1/3/5/10 km) = 0.0000, 0.0000, 0.0000, 0.0000
-Headline DWH deterministic result:
-  - FSS(1/3/5/10 km) = 0.5033, 0.5523, 0.5700, 0.6018
-Headline DWH ensemble result:
-  - p50 event-corridor FSS(1/3/5/10 km) = 0.4997, 0.5299, 0.5467, 0.5790
-  - p90 event-corridor FSS(1/3/5/10 km) = 0.4542, 0.4892, 0.5062, 0.5368
-Headline DWH PyGNOME-comparison result:
-  - FSS(1/3/5/10 km) = 0.3197, 0.3495, 0.3689, 0.4068
-Final recommendation: Main text should emphasize Mindoro B1 as the March 13 -> March 14 NOAA reinit validation with an explicit caveat that both NOAA products cite March 12 WorldView-3 imagery, while DWH Phase 3C remains the rich-data transfer-validation success with deterministic as the clean baseline, p50 as the preferred probabilistic extension, p90 as support/comparison only, and PyGNOME as comparator-only; comparative discussion should emphasize the same-case Mindoro A comparator support track attached to B1 and the DWH deterministic-vs-ensemble-vs-PyGNOME comparison; legacy/reference and appendix sections should retain the Mindoro March 6 sparse reference, the March 3-6 broader-support reference, recipe/init/source-history sensitivities, and any future DWH threshold or harmonization extensions.
-Main table: output/final_validation_package/final_validation_main_table.csv
-Summary memo: output/final_validation_package/final_validation_summary.md
-Curated B1 final-output export: output/Phase 3B March13-14 Final Output
-Curated B1 final-output manifest: output/Phase 3B March13-14 Final Output/manifests/final_output_manifest.json
-
-[SUCCESS] Launcher entry completed.
-Entry ID: final_validation_package
-Runtime: 00h 00m 09s
-Log saved to: logs\run_final_validation_package_20260429_080410.log
-
-```
-
-### entry_phase5_sync (PASS)
-
-- Topic: `launcher_entries`
-- Summary: phase5_sync completed without triggering a scientific rerun
-- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -Entry phase5_sync -NoPause`
-- Output snippet:
-
-```text
-
-============================================================
-   Phase 5 launcher/docs/package sync
-============================================================
-Starting Docker containers...
- Container phase3 Running 
- Container phase1 Running 
-
-Run-start policy:
-  INPUT_CACHE_POLICY=reuse_if_valid
-  FORCING_SOURCE_BUDGET_SECONDS=300
-  PROTOTYPE_2016_ENSEMBLE_POLICY=full_rerun
-
-[1/1]
->>> Phase 5 launcher/docs/package synchronization
-    WORKFLOW_MODE=mindoro_retro_2023 PIPELINE_PHASE=phase5_launcher_and_docs_sync SERVICE=pipeline
-Starting read-only launcher/docs/package support sync...
-This phase is read-only with respect to scientific outputs and will not rerun expensive science by default.
-
-Support sync complete.
-Outputs saved to: /app/output/final_reproducibility_package
-Launcher entrypoint: ./start.ps1 -List -NoPause
-Menu categories: Scientific / reportable tracks, Sensitivity / appendix tracks, Read-only packaging / help utilities, Legacy prototype tracks
-Safe read-only launcher IDs: mindoro_march6_recovery_sensitivity, phase1_audit, phase2_audit, b1_drifter_context_panel, final_validation_package, phase5_sync, trajectory_gallery, trajectory_gallery_panel, figure_package_publication, prototype_legacy_final_figures
-Docs updated: README.md, docs/PHASE_STATUS.md, docs/ARCHITECTURE.md, docs/OUTPUT_CATALOG.md, docs/FIGURE_GALLERY.md, docs/QUICKSTART.md, docs/COMMAND_MATRIX.md, docs/LAUNCHER_USER_GUIDE.md, docs/MINDORO_PRIMARY_VALIDATION_MIGRATION.md, docs/PHASE4_COMPARATOR_DECISION.md, docs/DWH_PHASE3C_FINAL.md, docs/UI_GUIDE.md
-Phase status registry: /app/output/final_reproducibility_package/final_phase_status_registry.csv
-Manifest index: /app/output/final_reproducibility_package/final_manifest_index.csv
-Output catalog: /app/output/final_reproducibility_package/final_output_catalog.csv
-Summary: /app/output/final_reproducibility_package/final_reproducibility_summary.md
-Verdict: /app/output/final_reproducibility_package/phase5_final_verdict.md
-Support sync current and usable: True
-Launcher/menu honest and current: True
-Phase 1 freeze remains incomplete (candidate baseline not yet adopted as default): False
-Legacy recipe drift still leaks into official mode: True
-Biggest remaining project-science blocker: The repo still lacks the accepted/rejected drogued 72 h segment registry generated from a true 2016-2022 regional drifter pool, so the frozen baseline cannot yet be defended as the final Chapter 3 Phase 1 study.
-
-[SUCCESS] Launcher entry completed.
-Entry ID: phase5_sync
-Runtime: 00h 00m 24s
-Log saved to: logs\run_phase5_sync_20260429_080420.log
-
-```
-
-### entry_figure_package_publication (PASS)
-
-- Topic: `launcher_entries`
-- Summary: figure_package_publication completed without triggering a scientific rerun
-- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -Entry figure_package_publication -NoPause`
-- Output snippet:
-
-```text
-
-============================================================
-   Publication-grade figure package
-============================================================
-Starting Docker containers...
- Container phase1 Running 
- Container phase3 Running 
-
-Run-start policy:
-  INPUT_CACHE_POLICY=reuse_if_valid
-  FORCING_SOURCE_BUDGET_SECONDS=300
-  PROTOTYPE_2016_ENSEMBLE_POLICY=full_rerun
-
-[1/1]
->>> Read-only publication-grade figure package build
-    WORKFLOW_MODE=mindoro_retro_2023 PIPELINE_PHASE=figure_package_publication SERVICE=pipeline
-Starting publication-grade figure package build...
-Defense smoke mode: verifying the stored publication package only. No figure redraw will run in this bounded smoke check.
-
-Publication-grade figure package smoke check complete.
-Outputs saved to: output/figure_package_publication
-Registry: output/figure_package_publication/publication_figure_registry.csv
-Manifest: output/figure_package_publication/publication_figure_manifest.json
-Captions: output/figure_package_publication/publication_figure_captions.md
-Talking points: output/figure_package_publication/publication_figure_talking_points.md
-Registry rows: 127
-Recommended main-defense figures:
-  - case_mindoro_retro_2023__phase3b_reinit_primary__opendrift__comparison_board__2023_03_13_to_2023_03_14__board__slide__mindoro_primary_validation_board
-  - case_mindoro_retro_2023__phase3b_reinit_primary__opendrift__single_primary_overlay__2023_03_14__single__paper__march14_r1_previous_overlay
-  - case_mindoro_retro_2023__phase3a_reinit_crossmodel__opendrift_vs_pygnome__comparison_board__2023_03_14__board__slide__mindoro_crossmodel_board
-  - case_mindoro_retro_2023__phase3a_reinit_crossmodel__opendrift__single_model_overlay__2023_03_14__single__paper__march14_crossmodel_r1_overlay
-  - case_dwh_retro_2010_72h__phase3c_external_case_run__opendrift__comparison_board__2010_05_21_to_2010_05_23__board__slide__daily_deterministic_footprint_overview_board
-  - case_dwh_retro_2010_72h__phase3c_external_case_ensemble_comparison__opendrift__comparison_board__2010_05_21_to_2010_05_23__board__slide__observed_deterministic_mask_p50_mask_p90_board
-  - case_dwh_retro_2010_72h__phase3c_dwh_pygnome_comparator__opendrift_vs_pygnome__comparison_board__2010_05_21_to_2010_05_23__board__slide__observed_deterministic_mask_p50_pygnome_board
-  - case_mindoro_retro_2023__phase4__openoil__comparison_board__2023_03_03_to_2023_03_06__all_scenarios__board__slide__oil_budget_board
-  - case_mindoro_retro_2023__phase4__openoil__comparison_board__2023_03_03_to_2023_03_06__all_scenarios__board__slide__shoreline_impact_board
-  - case_mindoro_retro_2023__phase4__openoil__single_summary__2023_03_03_to_2023_03_06__single__paper__shoreline_arrival
-
-[SUCCESS] Launcher entry completed.
-Entry ID: figure_package_publication
-Runtime: 00h 00m 01s
-Log saved to: logs\run_figure_package_publication_20260429_080446.log
-
-```
-
-### entry_trajectory_gallery_panel (PASS)
-
-- Topic: `launcher_entries`
-- Summary: trajectory_gallery_panel completed without triggering a scientific rerun
-- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\marcp\Downloads\drifter-validated-oilspill-forecasting-rc-v1.0\drifter-validated-oilspill-forecasting-rc-v1.0\start.ps1 -Entry trajectory_gallery_panel -NoPause`
-- Output snippet:
-
-```text
-
-============================================================
-   Trajectory gallery panel polish
-============================================================
-Starting Docker containers...
- Container phase3 Running 
- Container phase1 Running 
-
-Run-start policy:
-  INPUT_CACHE_POLICY=reuse_if_valid
-  FORCING_SOURCE_BUDGET_SECONDS=300
-  PROTOTYPE_2016_ENSEMBLE_POLICY=full_rerun
-
-[1/1]
->>> Read-only polished trajectory gallery board build
-    WORKFLOW_MODE=mindoro_retro_2023 PIPELINE_PHASE=trajectory_gallery_panel_polish SERVICE=pipeline
-Starting trajectory gallery panel polish...
-Defense smoke mode: verifying the stored panel package only. No figure redraw will run in this bounded smoke check.
-
-Trajectory gallery panel smoke check complete.
-Outputs saved to: output/trajectory_gallery_panel
-Registry: output/trajectory_gallery_panel/panel_figure_registry.csv
-Manifest: output/trajectory_gallery_panel/panel_figure_manifest.json
-Captions: output/trajectory_gallery_panel/panel_figure_captions.md
-Talking points: output/trajectory_gallery_panel/panel_figure_talking_points.md
-Registry rows: 10
-Recommended main-defense figures:
-  - case_mindoro_retro_2023__phase3b_reinit_primary__opendrift__panel_board__2023_03_13_to_2023_03_14__panel__mindoro_primary_reinit_board
-  - case_mindoro_retro_2023__phase3a_reinit_crossmodel__opendrift_vs_pygnome__panel_board__2023_03_14__panel__mindoro_crossmodel_reinit_board
-  - case_mindoro_retro_2023__phase2_official__opendrift__panel_board__2023_03_03_to_2023_03_06__panel__mindoro_trajectory_board
-  - case_mindoro_retro_2023__phase4__openoil__panel_board__2023_03_03_to_2023_03_06__all_scenarios__panel__mindoro_phase4_oil_budget_board
-  - case_mindoro_retro_2023__phase4__openoil__panel_board__2023_03_03_to_2023_03_06__all_scenarios__panel__mindoro_phase4_shoreline_board
-  - case_dwh_retro_2010_72h__phase3c_external_case_run__opendrift__panel_board__2010_05_21_to_2010_05_23__panel__dwh_deterministic_board
-  - case_dwh_retro_2010_72h__phase3c_ensemble__opendrift__panel_board__2010_05_21_to_2010_05_23__panel__dwh_deterministic_vs_ensemble_board
-  - case_dwh_retro_2010_72h__phase3c_pygnome_comparator__opendrift_vs_pygnome__panel_board__2010_05_21_to_2010_05_23__panel__dwh_model_comparison_board
-
-[SUCCESS] Launcher entry completed.
-Entry ID: trajectory_gallery_panel
-Runtime: 00h 00m 01s
-Log saved to: logs\run_trajectory_gallery_panel_20260429_080448.log
-
-```
-
-### no_science_guard (PASS)
-
-- Topic: `no_science_guard`
-- Summary: scientific and config roots stayed unchanged during read-only smoke
-
-### git_delta_after_safe_entries (PASS)
-
-- Topic: `working_tree`
-- Summary: read-only smoke only touched documented packaging, report, and log paths
+- Summary: quick mode skipped the longer read-only entry batch
+- rerun without --quick to exercise final_validation_package, phase5_sync, figure_package_publication, and trajectory_gallery_panel
 
 ### manuscript_numbers (PASS)
 

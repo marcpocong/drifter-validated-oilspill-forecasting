@@ -47,6 +47,7 @@ from scripts.defense_readiness_common import (
     phase1_value_findings,
     read_panel_review_payload,
     relpath,
+    repo_relative_command_text,
     report_topic_status,
     run_command,
     run_gnome_import_check,
@@ -734,7 +735,7 @@ def main(argv: list[str] | None = None) -> int:
             details=env_details,
         )
 
-    report["commands_run"] = commands_run
+    report["commands_run"] = [repo_relative_command_text(command) for command in commands_run]
     report["files_changed_by_readiness_test"] = sorted(dict.fromkeys(changed_allowed))
     report["checks"] = [check_result_payload(check) for check in checks]
     report["summary"] = summarize_checks(checks)

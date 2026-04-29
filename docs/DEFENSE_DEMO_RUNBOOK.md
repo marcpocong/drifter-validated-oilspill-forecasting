@@ -67,6 +67,11 @@ If the panel asks about DWH:
 
 > DWH is external transfer validation and does not recalibrate Mindoro.
 
+## Phase 4 Support Note
+
+- Thesis-facing oil-type support values are final beached percentages, first-arrival time, impacted shoreline segments, and QC status.
+- Raw `total_beached_kg` in `output/phase4/CASE_MINDORO_RETRO_2023/phase4_oil_budget_summary.csv` is not a primary manuscript claim unless it is separately re-audited.
+
 ## Fallback Plans
 
 If Docker is not running:
