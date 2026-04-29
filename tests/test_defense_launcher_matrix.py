@@ -31,6 +31,7 @@ def test_phase1_aliases_remain_backward_compatible():
     entries = launcher_entry_map()
     assert entries["phase1_mindoro_focus_pre_spill_experiment"]["alias_of"] == "phase1_mindoro_focus_provenance"
     assert entries["phase1_production_rerun"]["alias_of"] == "phase1_regional_reference_rerun"
+    assert entries["mindoro_march13_14_noaa_reinit_stress_test"]["alias_of"] == "mindoro_phase3b_primary_public_validation"
 
 
 def test_primary_claim_boundaries_keep_required_language():

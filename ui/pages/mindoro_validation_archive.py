@@ -24,11 +24,15 @@ from src.core.artifact_status import get_artifact_status
 from ui.data_access import figure_subset
 from ui.evidence_contract import ROLE_ARCHIVE
 from ui.pages.common import (
+    render_archive_notice,
     render_badge_strip,
     render_export_note,
+    render_feature_grid,
     render_figure_gallery,
+    render_key_takeaway,
     render_markdown_block,
-    render_page_intro,
+    render_modern_hero,
+    render_section_header,
     render_section_stack,
     render_status_callout,
     render_table,
@@ -101,10 +105,13 @@ def render(state: dict, ui_state: dict) -> None:
     b3_figures = figure_subset("publication", case_id=case_id, status_keys=[b3_status.key], surface_keys=["archive_only"])
     transport_context_figures = figure_subset("panel", case_id=case_id, surface_keys=["advanced_only"])
 
-    render_page_intro(
+    render_modern_hero(
         "Archive — Mindoro Validation Provenance",
         "This page centralizes archived Mindoro validation material that remains repo-preserved for provenance, audit, and reproducibility. The main paper and thesis-facing Mindoro reporting will use the March 13 -> March 14 R1 primary validation row only.",
         badge=ROLE_ARCHIVE,
+        eyebrow="Archive / support only",
+        meta=["Provenance layer", "Not primary claim", "Read-only artifacts"],
+        tone="archive",
     )
 
     if export_mode:
@@ -114,6 +121,41 @@ def render(state: dict, ui_state: dict) -> None:
                 "Do not cite this page as the main Mindoro validation row; the main paper uses the March 13 -> March 14 R1 primary validation row only.",
             ]
         )
+
+    render_key_takeaway(
+        "Archive material stays secondary.",
+        "The March 13 -> March 14 R1 primary validation row is the only thesis-facing Mindoro Phase 3B validation row used in the main paper.",
+        tone="archive",
+        badge=ROLE_ARCHIVE,
+    )
+    render_archive_notice(
+        "Archive boundary",
+        "B2, B3, R0, and older R0-including outputs remain preserved for audit and reproducibility only. They are not part of the main Mindoro validation claim.",
+    )
+    render_feature_grid(
+        [
+            {
+                "title": "Main paper rule",
+                "body": "Use B1 R1_previous on the main Mindoro page for the thesis-facing public-observation validation claim.",
+                "badge": ROLE_ARCHIVE,
+                "tone": "archive",
+            },
+            {
+                "title": "Naming note",
+                "body": "March 13 -> March 14 R1 refers to the Phase 3B validation branch, not the Phase 1 Recipe Code R1 family.",
+                "badge": ROLE_ARCHIVE,
+                "tone": "archive",
+            },
+            {
+                "title": "Review posture",
+                "body": "This page is for provenance review: preserved figures, archived rows, limitations, and decision notes.",
+                "badge": ROLE_ARCHIVE,
+                "tone": "archive",
+            },
+        ],
+        columns_per_row=3,
+        export_mode=export_mode,
+    )
 
     render_status_callout("ARCHIVE / SUPPORT ONLY — not part of the main Mindoro validation claim.", "ARCHIVE / SUPPORT ONLY — not part of the main Mindoro validation claim.", "warning")
     render_status_callout(
@@ -244,7 +286,7 @@ def render(state: dict, ui_state: dict) -> None:
     def _transport_context() -> None:
         render_badge_strip([ROLE_ARCHIVE])
         if transport_context_figures is None or transport_context_figures.empty:
-            st.info("Not packaged in current repo state.")
+            render_status_callout("Unavailable", "Not packaged in current repo state.", "neutral")
             return
         render_figure_gallery(
             transport_context_figures,
@@ -286,6 +328,11 @@ def render(state: dict, ui_state: dict) -> None:
     if ui_state["advanced"]:
         sections.insert(5, ("Transport-Context Archive Support", _transport_context))
 
+    render_section_header(
+        "Archive Details",
+        "Raw archive figures and tables are grouped below so they remain inspectable without being visually equal to the main thesis pages.",
+        badge=ROLE_ARCHIVE,
+    )
     render_section_stack(
         sections,
         export_mode=export_mode,

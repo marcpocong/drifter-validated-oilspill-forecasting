@@ -74,6 +74,8 @@ def test_panel_menu_options_match_command_matrix():
 
     assert visible["7"] == {"View B1 drifter provenance/context"}
     assert documented["7"] == "View B1 drifter provenance/context"
+    assert visible["8"] == {"View data sources and provenance registry"}
+    assert documented["8"] == "View data sources and provenance registry"
     assert "b1_drifter_context_panel" in _entry_map()
 
 
@@ -138,6 +140,8 @@ def test_comparator_dwh_and_b1_guardrail_wording_is_present():
         if entry["entry_id"] == "mindoro_phase3b_primary_public_validation":
             assert "only main philippine public-observation validation claim" in combined
             assert "shared-imagery" in combined
+        if entry["entry_id"] == "mindoro_march13_14_noaa_reinit_stress_test":
+            assert entry.get("alias_of") == "mindoro_phase3b_primary_public_validation"
         if entry["entry_id"] == "b1_drifter_context_panel":
             assert "not the direct" in combined
 

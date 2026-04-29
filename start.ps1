@@ -28,6 +28,7 @@ param(
     [string]$ListRole,
     [switch]$Panel,
     [switch]$DryRun,
+    [switch]$ExportPlan,
     [switch]$NoPause
 )
 
@@ -610,6 +611,12 @@ function Resolve-LauncherChoice {
     if (($normalizedAllowedActions -contains "explain") -and $upperInput -in @("X", "E", "I", "EXPLAIN", "INSPECT")) {
         return New-LauncherChoiceResult -Action "explain" -RawInput $trimmedInput -AllowedOptions $AllowedOptions
     }
+    if (($normalizedAllowedActions -contains "search") -and $upperInput -in @("S", "SEARCH")) {
+        return New-LauncherChoiceResult -Action "search" -RawInput $trimmedInput -AllowedOptions $AllowedOptions
+    }
+    if (($normalizedAllowedActions -contains "export") -and $upperInput -in @("E", "EXPORT", "EXPORTPLAN", "EXPORT_PLAN")) {
+        return New-LauncherChoiceResult -Action "export" -RawInput $trimmedInput -AllowedOptions $AllowedOptions
+    }
     if (($normalizedAllowedActions -contains "more") -and $upperInput -in @("M", "MORE")) {
         return New-LauncherChoiceResult -Action "more" -RawInput $trimmedInput -AllowedOptions $AllowedOptions
     }
@@ -692,17 +699,262 @@ function Get-LauncherEntryShortStepSummary {
     return ((@($LauncherEntry.steps) | ForEach-Object { "{0}:{1}" -f [string]$_.service, [string]$_.phase }) -join " -> ")
 }
 
+function Get-LauncherEntryInteractiveCommand {
+    param([Parameter(Mandatory = $true)]$LauncherEntry)
+
+    return (".\start.ps1 -Entry {0}" -f [string]$LauncherEntry.entry_id)
+}
+
+function Get-LauncherEntryExpectedOutputDirs {
+    param([Parameter(Mandatory = $true)]$LauncherEntry)
+
+    $entryId = [string]$LauncherEntry.entry_id
+    $knownDirs = switch ($entryId) {
+        "phase1_mindoro_focus_provenance" {
+            @("output/phase1_mindoro_focus_pre_spill_2016_2023")
+            break
+        }
+        "mindoro_phase3b_primary_public_validation" {
+            @(
+                "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public",
+                "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit",
+                "output/Phase 3B March13-14 Final Output"
+            )
+            break
+        }
+        "dwh_reportable_bundle" {
+            @(
+                "output/CASE_DWH_RETRO_2010_72H",
+                "output/Phase 3C DWH Final Output"
+            )
+            break
+        }
+        "mindoro_reportable_core" {
+            @(
+                "output/CASE_MINDORO_RETRO_2023",
+                "output/Phase 3B March13-14 Final Output",
+                "output/phase4/CASE_MINDORO_RETRO_2023"
+            )
+            break
+        }
+        "phase1_regional_reference_rerun" {
+            @("output/phase1_production_rerun")
+            break
+        }
+        "mindoro_phase4_only" {
+            @("output/phase4/CASE_MINDORO_RETRO_2023")
+            break
+        }
+        "mindoro_appendix_sensitivity_bundle" {
+            @(
+                "output/CASE_MINDORO_RETRO_2023",
+                "output/phase3b_public_obs_appendix",
+                "output/horizon_survival_audit",
+                "output/transport_retention_fix"
+            )
+            break
+        }
+        "mindoro_march13_14_phase1_focus_trial" {
+            @("output/CASE_MINDORO_RETRO_2023/mindoro_march13_14_phase1_focus_trial")
+            break
+        }
+        "mindoro_march6_recovery_sensitivity" {
+            @("output/CASE_MINDORO_RETRO_2023/march6_recovery_sensitivity")
+            break
+        }
+        "mindoro_march23_extended_public_stress_test" {
+            @(
+                "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public",
+                "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march23"
+            )
+            break
+        }
+        "phase3b_mindoro_march13_14_reinit_5000_experiment" {
+            @(
+                "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit_5000_experiment",
+                "output/CASE_MINDORO_RETRO_2023/phase3b_march13_14_element_count_sensitivity"
+            )
+            break
+        }
+        "phase1_audit" {
+            @("output/phase1_finalization_audit")
+            break
+        }
+        "phase2_audit" {
+            @("output/phase2_finalization_audit")
+            break
+        }
+        "b1_drifter_context_panel" {
+            @("output/panel_drifter_context")
+            break
+        }
+        "final_validation_package" {
+            @("output/final_validation_package")
+            break
+        }
+        "phase5_sync" {
+            @("output/final_reproducibility_package")
+            break
+        }
+        "trajectory_gallery" {
+            @("output/trajectory_gallery")
+            break
+        }
+        "trajectory_gallery_panel" {
+            @("output/trajectory_gallery_panel")
+            break
+        }
+        "figure_package_publication" {
+            @("output/figure_package_publication")
+            break
+        }
+        "prototype_legacy_final_figures" {
+            @("output/2016 Legacy Runs FINAL Figures")
+            break
+        }
+        "prototype_2021_bundle" {
+            @("output/CASE_20210305T180000Z", "output/prototype_2021_pygnome_similarity")
+            break
+        }
+        "prototype_legacy_bundle" {
+            @(
+                "output/2016 Legacy Runs FINAL Figures",
+                "output/prototype_2016_pygnome_similarity"
+            )
+            break
+        }
+        default {
+            @()
+        }
+    }
+
+    $dirs = @($knownDirs)
+    if ($LauncherEntry.expected_output_dirs) {
+        $dirs += @($LauncherEntry.expected_output_dirs | ForEach-Object { [string]$_ })
+    }
+
+    return @(
+        $dirs |
+            Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
+            ForEach-Object { ([string]$_).Replace("\", "/") } |
+            Select-Object -Unique
+    )
+}
+
+function Get-LauncherEntryMayWriteOutputsText {
+    param([Parameter(Mandatory = $true)]$LauncherEntry)
+
+    switch ([string]$LauncherEntry.run_kind) {
+        "read_only" { return "May write read-only audit/panel artifacts only; it must not rewrite science." }
+        "packaging_only" { return "May write packaging/docs/figure artifacts from stored outputs only; it must not recompute science." }
+        "comparator_rerun" { return "May write comparator-support outputs; PyGNOME/Track A remain comparator-only and are not observational truth." }
+        "archive_rerun" { return "May write archive/provenance/support outputs; these stay outside the main claim." }
+        default { return "May write scientific rerun outputs under output/; run only for intentional researcher/audit work." }
+    }
+}
+
+function Get-LauncherStartupPromptText {
+    param([Parameter(Mandatory = $true)]$LauncherEntry)
+
+    if (Test-LauncherDryRunRequested) {
+        return "No. -DryRun skips Docker/probe prompts and uses the resolved default/passthrough environment."
+    }
+
+    if ($NoPause) {
+        return "No. -NoPause/non-interactive launcher use resolves the default/passthrough environment without prompts."
+    }
+
+    if (Test-LauncherEntryReadOnlyLike -LauncherEntry $LauncherEntry) {
+        return "No startup science prompts expected for this read-only/package entry."
+    }
+
+    return "Possible in interactive launcher runs after Docker starts; prompt-free docker compose commands use the environment shown here."
+}
+
+function Get-LauncherEnvPreview {
+    param([Parameter(Mandatory = $true)]$LauncherEntry)
+
+    return Resolve-LauncherStartupEnv -LauncherEntry $LauncherEntry -SkipInteractiveProbe
+}
+
+function Write-LauncherEnvironmentPreview {
+    param(
+        [Parameter(Mandatory = $true)]$LauncherEntry,
+        [hashtable]$StartupEnv = $null
+    )
+
+    if ($null -eq $StartupEnv) {
+        $StartupEnv = Get-LauncherEnvPreview -LauncherEntry $LauncherEntry
+    }
+
+    Write-Host "Environment variables that will be passed:" -ForegroundColor White
+    foreach ($key in ($StartupEnv.Keys | Sort-Object)) {
+        Write-Host ("  {0}={1}" -f $key, $StartupEnv[$key]) -ForegroundColor DarkGray
+    }
+
+    $stepsWithExtraEnv = @(
+        @($LauncherEntry.steps) |
+            Where-Object { $_.extra_env } |
+            ForEach-Object {
+                $step = $_
+                $extra = ConvertTo-Hashtable -InputObject $step.extra_env
+                if ($extra.Keys.Count -gt 0) {
+                    [pscustomobject]@{
+                        Phase = [string]$step.phase
+                        ExtraEnv = $extra
+                    }
+                }
+            }
+    )
+
+    if ($stepsWithExtraEnv) {
+        Write-Host "  Step-specific overrides:" -ForegroundColor DarkGray
+        foreach ($stepEnv in $stepsWithExtraEnv) {
+            foreach ($key in ($stepEnv.ExtraEnv.Keys | Sort-Object)) {
+                Write-Host ("    {0}: {1}={2}" -f $stepEnv.Phase, $key, $stepEnv.ExtraEnv[$key]) -ForegroundColor DarkGray
+            }
+        }
+    }
+}
+
+function Write-LauncherPromptFreeCommands {
+    param(
+        [Parameter(Mandatory = $true)]$LauncherEntry,
+        [hashtable]$StartupEnv = $null
+    )
+
+    if ($null -eq $StartupEnv) {
+        $StartupEnv = Get-LauncherEnvPreview -LauncherEntry $LauncherEntry
+    }
+
+    Write-Host ("  [prep] {0} up -d" -f (Get-ComposeCommandText)) -ForegroundColor DarkGray
+    $stepIndex = 0
+    foreach ($step in @($LauncherEntry.steps)) {
+        $stepIndex += 1
+        $stepExtraEnv = Merge-Hashtables `
+            -Base $StartupEnv `
+            -Override (ConvertTo-Hashtable -InputObject $step.extra_env)
+        Write-Host ("  [{0}/{1}] {2}" -f $stepIndex, @($LauncherEntry.steps).Count, (Get-LauncherStepCommandPreview -LauncherEntry $LauncherEntry -Step $step -ExtraEnv $stepExtraEnv)) -ForegroundColor DarkGray
+    }
+}
+
 function Write-LauncherEntryPreviewContent {
     param(
         [Parameter(Mandatory = $true)]$LauncherEntry,
         [string]$RequestedEntryId = "",
+        [hashtable]$StartupEnv = $null,
         [switch]$IncludeNotes
     )
 
+    $startupEnv = $StartupEnv
+    if ($null -eq $startupEnv) {
+        $startupEnv = Get-LauncherEnvPreview -LauncherEntry $LauncherEntry
+    }
     Write-Host ("Entry ID: {0}" -f [string]$LauncherEntry.entry_id) -ForegroundColor Yellow
     if (-not [string]::IsNullOrWhiteSpace($RequestedEntryId) -and ([string]$RequestedEntryId -ne [string]$LauncherEntry.entry_id)) {
         Write-Host ("Requested alias: {0}" -f [string]$RequestedEntryId) -ForegroundColor DarkGray
     }
+    Write-Host ("Canonical entry ID: {0}" -f [string]$LauncherEntry.entry_id) -ForegroundColor White
     Write-Host ("Label: {0}" -f [string]$LauncherEntry.label) -ForegroundColor White
     Write-Host ("Category: {0}" -f (Get-LauncherCategoryLabel -CategoryId ([string]$LauncherEntry.category_id))) -ForegroundColor White
     Write-Host ("Thesis role: {0}" -f (Format-ThesisRoleLabel -Role ([string]$LauncherEntry.thesis_role))) -ForegroundColor White
@@ -710,13 +962,30 @@ function Write-LauncherEntryPreviewContent {
     Write-Host ("Claim boundary: {0}" -f [string]$LauncherEntry.claim_boundary) -ForegroundColor White
     Write-Host ("Run kind: {0}" -f (Format-RunKindLabel -RunKind ([string]$LauncherEntry.run_kind))) -ForegroundColor White
     Write-Host ("Rerun cost: {0}" -f [string]$LauncherEntry.rerun_cost) -ForegroundColor White
+    Write-Host ("Services and phases: {0}" -f (Get-LauncherEntryShortStepSummary -LauncherEntry $LauncherEntry)) -ForegroundColor White
     $safetyText = Get-LauncherEntrySafetyText -LauncherEntry $LauncherEntry
     Write-Host ("Safety / recommended for: {0} / {1}" -f $safetyText, [string]$LauncherEntry.recommended_for) -ForegroundColor White
+    Write-Host ("Startup prompts: {0}" -f (Get-LauncherStartupPromptText -LauncherEntry $LauncherEntry)) -ForegroundColor White
+    Write-Host ("May write outputs: {0}" -f (Get-LauncherEntryMayWriteOutputsText -LauncherEntry $LauncherEntry)) -ForegroundColor White
     Write-Host "Steps that would run:" -ForegroundColor White
     $stepIndex = 0
     foreach ($step in @($LauncherEntry.steps)) {
         $stepIndex += 1
         Write-Host ("  {0}. {1}:{2} - {3}" -f $stepIndex, [string]$step.service, [string]$step.phase, [string]$step.description) -ForegroundColor DarkGray
+    }
+    Write-LauncherEnvironmentPreview -LauncherEntry $LauncherEntry -StartupEnv $startupEnv
+    Write-Host "Exact interactive command:" -ForegroundColor White
+    Write-Host ("  {0}" -f (Get-LauncherEntryInteractiveCommand -LauncherEntry $LauncherEntry)) -ForegroundColor Green
+    Write-Host "Exact prompt-free docker compose command sequence:" -ForegroundColor White
+    Write-LauncherPromptFreeCommands -LauncherEntry $LauncherEntry -StartupEnv $startupEnv
+    Write-Host "Expected output directories:" -ForegroundColor White
+    $expectedOutputDirs = Get-LauncherEntryExpectedOutputDirs -LauncherEntry $LauncherEntry
+    if ($expectedOutputDirs) {
+        foreach ($dir in $expectedOutputDirs) {
+            Write-Host ("  {0}" -f $dir) -ForegroundColor DarkGray
+        }
+    } else {
+        Write-Host "  Entry-specific directories are determined by the phase handlers and manifests under output/." -ForegroundColor DarkGray
     }
     Write-Host ("Output warning: {0}" -f (Get-LauncherEntryOutputWarning -LauncherEntry $LauncherEntry)) -ForegroundColor Yellow
     if ($IncludeNotes -and $LauncherEntry.notes) {
@@ -739,19 +1008,22 @@ function Write-LauncherEntryCompactPreview {
     Write-Host ("  Label: {0}" -f [string]$LauncherEntry.label) -ForegroundColor White
     Write-Host ("  Category: {0}" -f (Get-LauncherCategoryLabel -CategoryId ([string]$LauncherEntry.category_id))) -ForegroundColor White
     Write-Host ("  Thesis role: {0}" -f (Format-ThesisRoleLabel -Role ([string]$LauncherEntry.thesis_role))) -ForegroundColor White
-    Write-Host ("  Draft 22 section: {0}" -f [string]$LauncherEntry.draft_section) -ForegroundColor White
+    Write-Host ("  Manuscript section: {0}" -f [string]$LauncherEntry.draft_section) -ForegroundColor White
     Write-Host ("  Claim boundary: {0}" -f [string]$LauncherEntry.claim_boundary) -ForegroundColor White
     Write-Host ("  Run kind: {0}" -f (Format-RunKindLabel -RunKind ([string]$LauncherEntry.run_kind))) -ForegroundColor White
     Write-Host ("  Rerun cost: {0}" -f [string]$LauncherEntry.rerun_cost) -ForegroundColor White
     Write-Host ("  Safety / confirmation: {0}" -f (Get-LauncherEntrySafetyText -LauncherEntry $LauncherEntry)) -ForegroundColor White
     Write-Host ("  Recommended for: {0}" -f [string]$LauncherEntry.recommended_for) -ForegroundColor White
     Write-Host ("  Step summary: {0}" -f (Get-LauncherEntryShortStepSummary -LauncherEntry $LauncherEntry)) -ForegroundColor DarkGray
+    Write-Host ("  May write outputs: {0}" -f (Get-LauncherEntryMayWriteOutputsText -LauncherEntry $LauncherEntry)) -ForegroundColor White
+    Write-Host ("  Interactive command: {0}" -f (Get-LauncherEntryInteractiveCommand -LauncherEntry $LauncherEntry)) -ForegroundColor DarkGray
 }
 
 function Show-LauncherEntryPreview {
     param(
         [Parameter(Mandatory = $true)]$LauncherEntry,
-        [string]$RequestedEntryId = ""
+        [string]$RequestedEntryId = "",
+        [hashtable]$StartupEnv = $null
     )
 
     Clear-Host
@@ -760,6 +1032,7 @@ function Show-LauncherEntryPreview {
     Write-LauncherEntryPreviewContent `
         -LauncherEntry $LauncherEntry `
         -RequestedEntryId $RequestedEntryId `
+        -StartupEnv $StartupEnv `
         -IncludeNotes
 }
 
@@ -1021,9 +1294,9 @@ function Invoke-LauncherRoleGroupInspectMode {
         $allowedOptions = @("number", "entry_id", "B", "BACK", "0", "C", "CANCEL", "Q", "QUIT", "EXIT")
         $prompt = "Inspect [number | entry_id | Enter/B=back | C=cancel | Q=quit]"
         if ($null -ne $lastPreview) {
-            $allowedActions += "more"
-            $allowedOptions += @("M", "MORE")
-            $prompt = "Inspect [number | entry_id | M=more | Enter/B=back | C=cancel | Q=quit]"
+            $allowedActions += @("more", "export")
+            $allowedOptions += @("M", "MORE", "E", "EXPORT", "EXPORT_PLAN")
+            $prompt = "Inspect [number | entry_id | M=more | E=export plan | Enter/B=back | C=cancel | Q=quit]"
         }
 
         $choice = Resolve-LauncherChoice `
@@ -1056,12 +1329,24 @@ function Invoke-LauncherRoleGroupInspectMode {
                 Write-Host "Inspect mode remains active. Enter another number or entry ID, or press Enter/B to return to this section." -ForegroundColor DarkGray
                 continue
             }
+            "export" {
+                $exportedPlan = Export-LauncherRunPlan `
+                    -LauncherEntry $lastPreview.CanonicalEntry `
+                    -RequestedEntryId $lastPreview.RequestedEntryId
+                Write-Host ""
+                Write-Host "Run plan exported without executing science:" -ForegroundColor Green
+                Write-Host ("  Markdown: {0}" -f $exportedPlan.MarkdownPath) -ForegroundColor DarkGray
+                Write-Host ("  JSON:     {0}" -f $exportedPlan.JsonPath) -ForegroundColor DarkGray
+                Write-Host "Inspect mode remains active. Enter another number or entry ID, or press Enter/B to return to this section." -ForegroundColor DarkGray
+                continue
+            }
             "entry" {
                 $lastPreview = $choice.ResolvedEntry
                 Write-LauncherEntryCompactPreview `
                     -LauncherEntry $lastPreview.CanonicalEntry `
                     -RequestedEntryId $lastPreview.RequestedEntryId
                 Write-Host "  Type M or MORE for the full thesis-facing preview of this entry." -ForegroundColor DarkGray
+                Write-Host "  Type E or EXPORT to write output\launcher_plans\<entry_id>.md/.json without running science." -ForegroundColor DarkGray
                 Write-Host "  Inspect mode remains active. Enter another number or entry ID, or press Enter/B to return to this section." -ForegroundColor DarkGray
                 continue
             }
@@ -1069,6 +1354,181 @@ function Invoke-LauncherRoleGroupInspectMode {
                 Write-Host ("Invalid inspect option '{0}'. Allowed options: {1}." -f $choice.RawInput, (Get-LauncherAllowedOptionsText -AllowedOptions $allowedOptions)) -ForegroundColor DarkYellow
                 continue
             }
+        }
+    }
+}
+
+function Search-LauncherEntries {
+    param(
+        [Parameter(Mandatory = $true)][string]$Query,
+        [string]$GroupId = ""
+    )
+
+    $normalizedQuery = ([string]$Query).Trim().ToLowerInvariant()
+    if ([string]::IsNullOrWhiteSpace($normalizedQuery)) {
+        return @()
+    }
+
+    $candidateEntries = if ($GroupId) {
+        Get-LauncherEntriesForRoleGroup -GroupId $GroupId
+    } else {
+        Get-VisibleLauncherEntries
+    }
+
+    $hiddenAliasMatches = @()
+    if (-not $GroupId) {
+        $hiddenAliasMatches = @(
+            Get-HiddenLauncherEntries |
+                Where-Object {
+                    ([string]$_.entry_id).ToLowerInvariant().Contains($normalizedQuery) -or
+                    ([string]$_.label).ToLowerInvariant().Contains($normalizedQuery) -or
+                    ([string]$_.notes).ToLowerInvariant().Contains($normalizedQuery)
+                }
+        )
+    }
+
+    $allCandidates = @($candidateEntries) + @($hiddenAliasMatches)
+    return @(
+        $allCandidates |
+            Where-Object {
+                $entry = $_
+                $searchText = @(
+                    [string]$entry.entry_id,
+                    [string]$entry.label,
+                    [string]$entry.thesis_role,
+                    [string]$entry.run_kind,
+                    [string]$entry.category_id,
+                    (Get-LauncherCategoryLabel -CategoryId ([string]$entry.category_id)),
+                    [string]$entry.notes,
+                    [string]$entry.claim_boundary,
+                    [string]$entry.description
+                ) -join " "
+                $searchText.ToLowerInvariant().Contains($normalizedQuery)
+            } |
+            Sort-Object menu_order, entry_id
+    )
+}
+
+function Write-LauncherSearchResults {
+    param(
+        [Parameter(Mandatory = $true)][array]$Results,
+        [Parameter(Mandatory = $true)][hashtable]$SelectionMap
+    )
+
+    if (-not $Results) {
+        Write-Host "No matching launcher entries." -ForegroundColor DarkYellow
+        return
+    }
+
+    $index = 0
+    foreach ($entry in $Results) {
+        $index += 1
+        $SelectionMap[[string]$index] = [string]$entry.entry_id
+        $hiddenTag = if ([bool]$entry.menu_hidden) { " [hidden alias]" } else { "" }
+        Write-Host ("  {0}. {1}{2}" -f $index, [string]$entry.entry_id, $hiddenTag) -ForegroundColor Yellow
+        Write-Host ("     role={0} | run={1} | cost={2}" -f [string]$entry.thesis_role, [string]$entry.run_kind, [string]$entry.rerun_cost) -ForegroundColor White
+        Write-Host ("     boundary={0}" -f [string]$entry.claim_boundary) -ForegroundColor Gray
+    }
+}
+
+function Invoke-LauncherSearchMode {
+    param(
+        [string]$GroupId = "",
+        [string]$Label = "all visible launcher entries"
+    )
+
+    $lastPreview = $null
+    $selectionMap = @{}
+
+    Write-Host ""
+    Write-Host ("Search mode for {0}" -f $Label) -ForegroundColor Yellow
+    Write-Host "No workflow will run from search mode." -ForegroundColor White
+    Write-Host "Searches entry_id, label, thesis_role, run_kind, category, notes, description, and claim boundary." -ForegroundColor White
+    Write-Host "Use B/BACK to return, C/CANCEL to cancel, or Q/QUIT to exit." -ForegroundColor White
+
+    while ($true) {
+        $allowedActions = @("back", "cancel", "quit")
+        $allowedOptions = @("search text", "number", "entry_id", "B", "BACK", "0", "C", "CANCEL", "Q", "QUIT", "EXIT")
+        $prompt = "Search [text | number/entry_id=inspect | B=back | C=cancel | Q=quit]"
+        if ($null -ne $lastPreview) {
+            $allowedActions += @("more", "export")
+            $allowedOptions += @("M", "MORE", "E", "EXPORT", "EXPORT_PLAN")
+            $prompt = "Search [text | number/entry_id=inspect | M=more | E=export | B=back | C=cancel | Q=quit]"
+        }
+
+        $inputText = Read-Host $prompt
+        $choice = Resolve-LauncherChoice `
+            -InputText $inputText `
+            -AllowedActions $allowedActions `
+            -BlankAction "back" `
+            -AllowedOptions $allowedOptions
+
+        switch ($choice.Action) {
+            "back" { return }
+            "cancel" {
+                Set-LauncherNotice -Message "Cancelled. No workflow was executed." -Level "warning"
+                return
+            }
+            "quit" {
+                Write-Host ""
+                Write-Host "Goodbye." -ForegroundColor DarkGray
+                exit 0
+            }
+            "more" {
+                Write-Host ""
+                Write-Host "Full preview:" -ForegroundColor Cyan
+                Write-LauncherEntryPreviewContent `
+                    -LauncherEntry $lastPreview.CanonicalEntry `
+                    -RequestedEntryId $lastPreview.RequestedEntryId `
+                    -IncludeNotes
+                continue
+            }
+            "export" {
+                $exportedPlan = Export-LauncherRunPlan `
+                    -LauncherEntry $lastPreview.CanonicalEntry `
+                    -RequestedEntryId $lastPreview.RequestedEntryId
+                Write-Host ""
+                Write-Host "Run plan exported without executing science:" -ForegroundColor Green
+                Write-Host ("  Markdown: {0}" -f $exportedPlan.MarkdownPath) -ForegroundColor DarkGray
+                Write-Host ("  JSON:     {0}" -f $exportedPlan.JsonPath) -ForegroundColor DarkGray
+                continue
+            }
+        }
+
+        $trimmedInput = ([string]$inputText).Trim()
+        if ($selectionMap.ContainsKey($trimmedInput)) {
+            $resolvedEntry = Resolve-LauncherEntryReference `
+                -Reference $trimmedInput `
+                -SelectionMap $selectionMap `
+                -GroupId $GroupId `
+                -ThrowIfUnknown
+            $lastPreview = $resolvedEntry
+            Write-LauncherEntryCompactPreview `
+                -LauncherEntry $lastPreview.CanonicalEntry `
+                -RequestedEntryId $lastPreview.RequestedEntryId
+            Write-Host "  Type M or MORE for full preview; E or EXPORT writes a read-only run plan." -ForegroundColor DarkGray
+            continue
+        }
+
+        $directResolvedEntry = Resolve-LauncherEntryReference `
+            -Reference $trimmedInput `
+            -GroupId $GroupId
+        if ($directResolvedEntry) {
+            $lastPreview = $directResolvedEntry
+            Write-LauncherEntryCompactPreview `
+                -LauncherEntry $lastPreview.CanonicalEntry `
+                -RequestedEntryId $lastPreview.RequestedEntryId
+            Write-Host "  Type M or MORE for full preview; E or EXPORT writes a read-only run plan." -ForegroundColor DarkGray
+            continue
+        }
+
+        $selectionMap = @{}
+        $results = Search-LauncherEntries -Query $trimmedInput -GroupId $GroupId
+        Write-Host ""
+        Write-Host ("Search results for '{0}':" -f $trimmedInput) -ForegroundColor Cyan
+        Write-LauncherSearchResults -Results $results -SelectionMap $selectionMap
+        if ($results) {
+            Write-Host "Enter a result number or entry ID to inspect it, or enter a new search." -ForegroundColor DarkGray
         }
     }
 }
@@ -1577,6 +2037,152 @@ function Get-LauncherStepCommandPreview {
     return ($parts -join " ")
 }
 
+function New-LauncherRunPlan {
+    param(
+        [Parameter(Mandatory = $true)]$LauncherEntry,
+        [string]$RequestedEntryId = "",
+        [hashtable]$StartupEnv = $null
+    )
+
+    if ($null -eq $StartupEnv) {
+        $StartupEnv = Get-LauncherEnvPreview -LauncherEntry $LauncherEntry
+    }
+
+    $stepPlans = @()
+    $stepIndex = 0
+    foreach ($step in @($LauncherEntry.steps)) {
+        $stepIndex += 1
+        $stepExtraEnv = Merge-Hashtables `
+            -Base $StartupEnv `
+            -Override (ConvertTo-Hashtable -InputObject $step.extra_env)
+        $stepPlans += [pscustomobject]@{
+            index = $stepIndex
+            service = [string]$step.service
+            phase = [string]$step.phase
+            description = [string]$step.description
+            environment = $stepExtraEnv
+            prompt_free_command = Get-LauncherStepCommandPreview -LauncherEntry $LauncherEntry -Step $step -ExtraEnv $stepExtraEnv
+        }
+    }
+
+    return [pscustomobject]@{
+        generated_at = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+        entry_id = [string]$LauncherEntry.entry_id
+        requested_alias = if ((-not [string]::IsNullOrWhiteSpace($RequestedEntryId)) -and ([string]$RequestedEntryId -ne [string]$LauncherEntry.entry_id)) { [string]$RequestedEntryId } else { "" }
+        canonical_entry_id = [string]$LauncherEntry.entry_id
+        label = [string]$LauncherEntry.label
+        category = Get-LauncherCategoryLabel -CategoryId ([string]$LauncherEntry.category_id)
+        thesis_role = [string]$LauncherEntry.thesis_role
+        thesis_role_label = Format-ThesisRoleLabel -Role ([string]$LauncherEntry.thesis_role)
+        claim_boundary = [string]$LauncherEntry.claim_boundary
+        run_kind = [string]$LauncherEntry.run_kind
+        rerun_cost = [string]$LauncherEntry.rerun_cost
+        safe_default = [bool]$LauncherEntry.safe_default
+        requires_explicit_confirmation = [bool](Test-LauncherEntryNeedsPreview -LauncherEntry $LauncherEntry)
+        services_and_phases = Get-LauncherEntryShortStepSummary -LauncherEntry $LauncherEntry
+        startup_environment = $StartupEnv
+        startup_prompts = Get-LauncherStartupPromptText -LauncherEntry $LauncherEntry
+        may_write_outputs = Get-LauncherEntryMayWriteOutputsText -LauncherEntry $LauncherEntry
+        expected_output_directories = @(Get-LauncherEntryExpectedOutputDirs -LauncherEntry $LauncherEntry)
+        output_warning = Get-LauncherEntryOutputWarning -LauncherEntry $LauncherEntry
+        interactive_command = Get-LauncherEntryInteractiveCommand -LauncherEntry $LauncherEntry
+        prompt_free_prepare_command = ("{0} up -d" -f (Get-ComposeCommandText))
+        prompt_free_steps = $stepPlans
+        no_workflow_executed = $true
+    }
+}
+
+function ConvertTo-LauncherMarkdownList {
+    param([object[]]$Items)
+
+    if (-not $Items) {
+        return @("- None documented")
+    }
+
+    return @($Items | ForEach-Object { "- {0}" -f [string]$_ })
+}
+
+function Export-LauncherRunPlan {
+    param(
+        [Parameter(Mandatory = $true)]$LauncherEntry,
+        [string]$RequestedEntryId = ""
+    )
+
+    $startupEnv = Get-LauncherEnvPreview -LauncherEntry $LauncherEntry
+    $plan = New-LauncherRunPlan `
+        -LauncherEntry $LauncherEntry `
+        -RequestedEntryId $RequestedEntryId `
+        -StartupEnv $startupEnv
+    $outputDir = Join-Path $Script:RepoRoot "output\launcher_plans"
+    if (-not (Test-Path -LiteralPath $outputDir)) {
+        New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+    }
+
+    $entryId = [string]$LauncherEntry.entry_id
+    $jsonPath = Join-Path $outputDir ("{0}.json" -f $entryId)
+    $markdownPath = Join-Path $outputDir ("{0}.md" -f $entryId)
+
+    $plan | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $jsonPath -Encoding UTF8
+
+    $requestedAliasForPlan = if ($plan.requested_alias) { $plan.requested_alias } else { "none" }
+    $markdownLines = @(
+        ("# Launcher Run Plan: {0}" -f $entryId),
+        "",
+        ('- Entry ID: `{0}`' -f $plan.entry_id),
+        ('- Requested alias: `{0}`' -f $requestedAliasForPlan),
+        ('- Canonical entry ID: `{0}`' -f $plan.canonical_entry_id),
+        ("- Label: {0}" -f $plan.label),
+        ('- Thesis role: `{0}` ({1})' -f $plan.thesis_role, $plan.thesis_role_label),
+        ("- Claim boundary: {0}" -f $plan.claim_boundary),
+        ('- Run kind: `{0}`' -f $plan.run_kind),
+        ('- Rerun cost: `{0}`' -f $plan.rerun_cost),
+        ('- Services and phases: `{0}`' -f $plan.services_and_phases),
+        ('- Safe default: `{0}`' -f ([string]$plan.safe_default).ToLowerInvariant()),
+        ('- Requires explicit confirmation: `{0}`' -f ([string]$plan.requires_explicit_confirmation).ToLowerInvariant()),
+        ("- Startup prompts: {0}" -f $plan.startup_prompts),
+        ("- May write outputs: {0}" -f $plan.may_write_outputs),
+        ("- Output warning: {0}" -f $plan.output_warning),
+        "",
+        "## Startup Environment",
+        ""
+    )
+    foreach ($key in ($startupEnv.Keys | Sort-Object)) {
+        $markdownLines += ('- `{0}={1}`' -f $key, $startupEnv[$key])
+    }
+    $markdownLines += @(
+        "",
+        "## Expected Output Directories",
+        ""
+    )
+    $markdownLines += ConvertTo-LauncherMarkdownList -Items $plan.expected_output_directories
+    $markdownLines += @(
+        "",
+        "## Exact Commands",
+        "",
+        ('Interactive launcher command: `{0}`' -f $plan.interactive_command),
+        "",
+        "Prompt-free docker compose command sequence:",
+        "",
+        '```powershell',
+        $plan.prompt_free_prepare_command
+    )
+    foreach ($stepPlan in @($plan.prompt_free_steps)) {
+        $markdownLines += [string]$stepPlan.prompt_free_command
+    }
+    $markdownLines += @(
+        '```',
+        "",
+        "No workflow was executed while exporting this plan."
+    )
+
+    $markdownLines | Set-Content -LiteralPath $markdownPath -Encoding UTF8
+
+    return [pscustomobject]@{
+        JsonPath = $jsonPath
+        MarkdownPath = $markdownPath
+    }
+}
+
 function Show-LauncherDryRunPlan {
     param(
         [Parameter(Mandatory = $true)]$LauncherEntry,
@@ -1584,7 +2190,7 @@ function Show-LauncherDryRunPlan {
     )
 
     $entryStartupEnv = Resolve-LauncherStartupEnv -LauncherEntry $LauncherEntry -SkipInteractiveProbe
-    Show-LauncherEntryPreview -LauncherEntry $LauncherEntry -RequestedEntryId $RequestedEntryId
+    Show-LauncherEntryPreview -LauncherEntry $LauncherEntry -RequestedEntryId $RequestedEntryId -StartupEnv $entryStartupEnv
     Write-Host ""
     Write-Host "Dry-run startup policy:" -ForegroundColor Yellow
     Write-Host "  INPUT_CACHE_POLICY=$($entryStartupEnv['INPUT_CACHE_POLICY'])" -ForegroundColor DarkGray
@@ -1595,17 +2201,11 @@ function Show-LauncherDryRunPlan {
 
     Write-Host ""
     Write-Host "Exact commands that would run:" -ForegroundColor Yellow
-    $stepIndex = 0
-    foreach ($step in @($LauncherEntry.steps)) {
-        $stepIndex += 1
-        $stepExtraEnv = Merge-Hashtables `
-            -Base $entryStartupEnv `
-            -Override (ConvertTo-Hashtable -InputObject $step.extra_env)
-        Write-Host ("  [{0}/{1}] {2}" -f $stepIndex, @($LauncherEntry.steps).Count, (Get-LauncherStepCommandPreview -LauncherEntry $LauncherEntry -Step $step -ExtraEnv $stepExtraEnv)) -ForegroundColor DarkGray
-    }
+    Write-LauncherPromptFreeCommands -LauncherEntry $LauncherEntry -StartupEnv $entryStartupEnv
 
     Write-Host ""
     Write-Host "Dry run only. No Docker commands were executed and no outputs were modified." -ForegroundColor Green
+    Write-Host "No workflow was executed." -ForegroundColor Green
 }
 
 function Invoke-LauncherEntry {
@@ -1616,6 +2216,13 @@ function Invoke-LauncherEntry {
 
     if (Test-LauncherDryRunRequested) {
         Show-LauncherDryRunPlan -LauncherEntry $LauncherEntry -RequestedEntryId $RequestedEntryId
+        if ($ExportPlan) {
+            $exportedPlan = Export-LauncherRunPlan -LauncherEntry $LauncherEntry -RequestedEntryId $RequestedEntryId
+            Write-Host ""
+            Write-Host "Run plan exported without executing science:" -ForegroundColor Green
+            Write-Host ("  Markdown: {0}" -f $exportedPlan.MarkdownPath) -ForegroundColor DarkGray
+            Write-Host ("  JSON:     {0}" -f $exportedPlan.JsonPath) -ForegroundColor DarkGray
+        }
         return (New-LauncherResult -Status "dry_run" -Message "Dry run only. No Docker commands were executed." -LauncherEntry $LauncherEntry -RequestedEntryId $RequestedEntryId -NoWorkflowExecuted $true)
     }
 
@@ -2157,7 +2764,7 @@ function Show-LauncherList {
     Write-Host ("Read-only UI: {0} exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501" -f $compose) -ForegroundColor Yellow
     Write-Host ""
     Write-Host "Use user-facing entry IDs and thesis-role groupings here. Raw phase names are not the primary startup commands." -ForegroundColor White
-    Write-Host "Shared controls: B/BACK/0=back, C/CANCEL=cancel, Q/QUIT/EXIT=exit, H/HELP=help, L/LIST=list, P/PANEL=panel, U/UI=dashboard, R/RESTART=dashboard restart when available." -ForegroundColor White
+    Write-Host "Shared controls: B/BACK/0=back, C/CANCEL=cancel, Q/QUIT/EXIT=exit, H/HELP=help, L/LIST=list, S/SEARCH=search, P/PANEL=panel, U/UI=dashboard, R/RESTART=dashboard restart when available." -ForegroundColor White
     Write-Host ""
 
     if ($normalizedRole) {
@@ -2225,6 +2832,7 @@ function Show-Help {
     Write-Host "  .\start.ps1 -ListRole primary_evidence -NoPause" -ForegroundColor Green
     Write-Host "  .\start.ps1 -ValidateMatrix -NoPause" -ForegroundColor Green
     Write-Host "  .\start.ps1 -Explain mindoro_phase3b_primary_public_validation -NoPause" -ForegroundColor Green
+    Write-Host "  .\start.ps1 -Explain mindoro_phase3b_primary_public_validation -ExportPlan -NoPause" -ForegroundColor Green
     Write-Host "  .\start.ps1 -Entry <entry_id>" -ForegroundColor Green
     Write-Host "  .\start.ps1 -Entry <entry_id> -DryRun -NoPause" -ForegroundColor Green
     Write-Host ""
@@ -2233,12 +2841,23 @@ function Show-Help {
     Write-Host "  mindoro_phase3b_primary_public_validation" -ForegroundColor White
     Write-Host "  mindoro_reportable_core" -ForegroundColor White
     Write-Host "  dwh_reportable_bundle" -ForegroundColor White
-    Write-Host "  phase1_regional_reference_rerun" -ForegroundColor White
     Write-Host "  mindoro_phase4_only" -ForegroundColor White
     Write-Host "  mindoro_appendix_sensitivity_bundle" -ForegroundColor White
+    Write-Host "  phase1_regional_reference_rerun" -ForegroundColor White
+    Write-Host "  mindoro_march13_14_phase1_focus_trial" -ForegroundColor White
+    Write-Host "  mindoro_march6_recovery_sensitivity" -ForegroundColor White
+    Write-Host "  mindoro_march23_extended_public_stress_test" -ForegroundColor White
     Write-Host "  b1_drifter_context_panel" -ForegroundColor White
+    Write-Host "  phase1_audit" -ForegroundColor White
+    Write-Host "  phase2_audit" -ForegroundColor White
+    Write-Host "  final_validation_package" -ForegroundColor White
     Write-Host "  phase5_sync" -ForegroundColor White
+    Write-Host "  trajectory_gallery" -ForegroundColor White
+    Write-Host "  trajectory_gallery_panel" -ForegroundColor White
+    Write-Host "  figure_package_publication" -ForegroundColor White
     Write-Host "  prototype_legacy_final_figures" -ForegroundColor White
+    Write-Host "  prototype_2021_bundle" -ForegroundColor White
+    Write-Host "  prototype_legacy_bundle" -ForegroundColor White
     Write-Host "  Read-only dashboard launch: panel option 1 or U/UI shortcut (no separate entry_id)" -ForegroundColor White
     Write-Host ""
     Write-Host "Hidden compatibility IDs still work, but they are no longer the preferred wording:" -ForegroundColor Yellow
@@ -2258,8 +2877,10 @@ function Show-Help {
     Write-Host "  C/CANCEL = cancel the current selection cleanly" -ForegroundColor White
     Write-Host "  Q/QUIT/EXIT = exit cleanly" -ForegroundColor White
     Write-Host "  H/HELP = show help; L/LIST = show the launcher catalog" -ForegroundColor White
+    Write-Host "  S/SEARCH = search entry IDs, thesis roles, run kinds, categories, and notes" -ForegroundColor White
     Write-Host "  P/PANEL = panel path; U/UI and R/RESTART are read-only dashboard shortcuts when available" -ForegroundColor White
     Write-Host "  X/INSPECT inside a section = compact inline preview without running the entry" -ForegroundColor White
+    Write-Host "  E/EXPORT after an inspect/search preview = export output\launcher_plans\<entry_id>.md/.json without running science" -ForegroundColor White
     Write-Host ""
     Write-Host "Intentional scientific rerun examples:" -ForegroundColor Yellow
     Write-Host "  .\start.ps1 -Entry phase1_mindoro_focus_provenance" -ForegroundColor Gray
@@ -2275,12 +2896,14 @@ function Show-Help {
     Write-Host ""
     Write-Host "Guardrails:" -ForegroundColor Yellow
     Write-Host "  - Panel mode is the defense-safe default. The full launcher is for researcher/audit use." -ForegroundColor White
+    Write-Host "  - Panel mode and read-only entries do not rerun science." -ForegroundColor White
     Write-Host "  - Use launcher entry IDs and role groups as the user-facing startup vocabulary. Raw phase names are secondary implementation details." -ForegroundColor White
     Write-Host "  - B1 is the only main Philippine public-observation validation claim, and the March 13 -> March 14 pair keeps the shared-imagery caveat explicit." -ForegroundColor White
     Write-Host "  - Track A and every PyGNOME branch remain comparator-only support, never observational truth." -ForegroundColor White
     Write-Host "  - DWH is a separate external transfer-validation story, not Mindoro recalibration." -ForegroundColor White
     Write-Host "  - Mindoro Phase 4 oil-type and shoreline outputs remain support/context only." -ForegroundColor White
-    Write-Host "  - prototype_2016 remains legacy support only." -ForegroundColor White
+    Write-Host "  - prototype_2016 remains legacy/archive support only." -ForegroundColor White
+    Write-Host "  - B1 supports coastal-neighborhood usefulness, not exact 1 km overlap or universal operational accuracy." -ForegroundColor White
     Write-Host "  - Non-interactive launcher runs default silently to INPUT_CACHE_POLICY=reuse_if_valid and FORCING_SOURCE_BUDGET_SECONDS=300." -ForegroundColor White
     Write-Host "  - Interactive launcher runs still ask once for the forcing wait budget and cache policy when the target workflow is eligible." -ForegroundColor White
     Write-Host ("  - Direct interactive {0} exec runs do the same once per run; the -T form stays prompt-free and prints the resolved startup policy instead." -f $compose) -ForegroundColor White
@@ -2329,6 +2952,7 @@ function Show-LauncherRoleGroupMenu {
         }
 
         Write-Host "  X. Inspect / explain entries in this section" -ForegroundColor Yellow
+        Write-Host "  S. Search entries in this section" -ForegroundColor Yellow
         Write-Host "  L. List launcher catalog" -ForegroundColor Yellow
         Write-Host "  H. Help" -ForegroundColor Yellow
         Write-Host "  B. Back" -ForegroundColor Yellow
@@ -2336,8 +2960,8 @@ function Show-LauncherRoleGroupMenu {
         Write-Host "  Q. Exit" -ForegroundColor Yellow
         Write-Host ""
 
-        $allowedActions = @("entry", "explain", "list", "help", "back", "cancel", "quit")
-        $allowedOptions = @("visible menu number", "entry_id", "X", "INSPECT", "L", "LIST", "H", "HELP", "B", "BACK", "0", "C", "CANCEL", "Q", "QUIT", "EXIT")
+        $allowedActions = @("entry", "explain", "search", "list", "help", "back", "cancel", "quit")
+        $allowedOptions = @("visible menu number", "entry_id", "X", "INSPECT", "S", "SEARCH", "L", "LIST", "H", "HELP", "B", "BACK", "0", "C", "CANCEL", "Q", "QUIT", "EXIT")
         if ($GroupId -eq "read_only_governance") {
             $allowedActions += @("ui", "restart", "panel")
             $allowedOptions += @("U", "UI", "R", "RESTART", "P", "PANEL")
@@ -2384,6 +3008,10 @@ function Show-LauncherRoleGroupMenu {
                     -GroupId $GroupId `
                     -SelectionMap $selectionMap `
                     -Label $Label
+                continue roleGroupMenuLoop
+            }
+            "search" {
+                Invoke-LauncherSearchMode -GroupId $GroupId -Label $Label
                 continue roleGroupMenuLoop
             }
             "list" {
@@ -2443,7 +3071,8 @@ function Show-PanelGuide {
     }
     Write-Host ""
     Write-Host "This panel mode verifies stored thesis-facing outputs against the manuscript." -ForegroundColor White
-    Write-Host "It does not rerun expensive scientific simulations by default." -ForegroundColor White
+    Write-Host "Panel mode and read-only entries do not rerun science." -ForegroundColor White
+    Write-Host "Panel option 8 opens docs\DATA_SOURCES.md as a read-only provenance registry." -ForegroundColor White
     Write-Host "Panel reviewers can also open the B1 Drifter Provenance page to inspect the focused Phase 1 drifter records behind the selected B1 recipe without creating a new validation claim." -ForegroundColor White
     Write-Host "If no direct March 13-14 2023 accepted drifter segment is stored, that page says so explicitly." -ForegroundColor White
     Write-Host "Full scientific reruns remain available through the advanced launcher for audit purposes." -ForegroundColor White
@@ -2461,6 +3090,27 @@ function Show-PaperOutputRegistry {
         Get-Content "docs\PAPER_OUTPUT_REGISTRY.md" | ForEach-Object { Write-Host $_ }
     } else {
         Write-Host "docs\PAPER_OUTPUT_REGISTRY.md is missing." -ForegroundColor Red
+    }
+    Pause-IfNeeded
+}
+
+function Show-DataSourcesRegistry {
+    Clear-Host
+    Write-Section "DATA SOURCES AND PROVENANCE REGISTRY"
+    Write-Host ""
+    Write-Host "Registry file: docs\DATA_SOURCES.md" -ForegroundColor Yellow
+    Write-Host "This action is read-only. It does not download data, rerun workflows, or rewrite science." -ForegroundColor White
+    Write-Host ""
+    if (Test-Path "docs\DATA_SOURCES.md") {
+        Get-Content "docs\DATA_SOURCES.md" | ForEach-Object { Write-Host $_ }
+        if (-not $NoPause) {
+            Write-Host ""
+            Write-Host "Opening the data-source registry in the default viewer..." -ForegroundColor Yellow
+            Open-FileInDefaultApp -Path "docs\DATA_SOURCES.md" -Label "Data sources and provenance registry"
+        }
+    } else {
+        Write-Host "docs\DATA_SOURCES.md is missing." -ForegroundColor Red
+        Write-Host "No inventory builder was run from panel mode." -ForegroundColor DarkYellow
     }
     Pause-IfNeeded
 }
@@ -2550,6 +3200,9 @@ function Show-PanelMenu {
         Write-Host "  5. Refresh final reproducibility package / command documentation" -ForegroundColor White
         Write-Host "  6. Show paper-to-output registry" -ForegroundColor White
         Write-Host "  7. View B1 drifter provenance/context" -ForegroundColor White
+        Write-Host "  8. View data sources and provenance registry" -ForegroundColor White
+        Write-Host ""
+        Write-Host "Panel mode and read-only entries do not rerun science." -ForegroundColor Green
         Write-Host ""
         Write-Host "Smoke-test-safe examples:" -ForegroundColor Yellow
         Write-Host "  .\start.ps1 -Explain b1_drifter_context_panel -NoPause" -ForegroundColor Green
@@ -2566,6 +3219,8 @@ function Show-PanelMenu {
         Show-LauncherNotice
         Write-Host ""
         Write-Host "Recommended panel checks:" -ForegroundColor Yellow
+        Write-Host "Panel mode and read-only entries do not rerun science." -ForegroundColor Green
+        Write-Host ""
         Write-Host "  1. Open read-only dashboard [READ-ONLY]" -ForegroundColor White
         Write-Host "     Opens the Streamlit dashboard over stored outputs only." -ForegroundColor DarkGray
         Write-Host "  2. Verify paper numbers against stored scorecards [READ-ONLY]" -ForegroundColor White
@@ -2580,6 +3235,8 @@ function Show-PanelMenu {
         Write-Host "     Opens the plain-language manuscript/output map." -ForegroundColor DarkGray
         Write-Host "  7. View B1 drifter provenance/context [READ-ONLY]" -ForegroundColor White
         Write-Host "     Builds the stored-output-only drifter provenance context and opens the dashboard to the B1 Drifter Provenance page." -ForegroundColor DarkGray
+        Write-Host "  8. View data sources and provenance registry [READ-ONLY]" -ForegroundColor White
+        Write-Host "     Opens docs\DATA_SOURCES.md only; no downloads, reruns, or science rewrites." -ForegroundColor DarkGray
         Write-Host ""
         Write-Host "Advanced:" -ForegroundColor Yellow
         Write-Host "  A. Open full research launcher [ADVANCED ONLY]" -ForegroundColor White
@@ -2601,7 +3258,7 @@ function Show-PanelMenu {
             -InputText (Read-Host "Select an option") `
             -AllowedActions @("ui", "restart", "list", "help", "back", "cancel", "quit", "panel") `
             -BlankAction "ignore" `
-            -AllowedOptions @("1", "2", "3", "4", "5", "6", "7", "A", "U", "UI", "R", "RESTART", "L", "LIST", "H", "HELP", "B", "BACK", "0", "C", "CANCEL", "Q", "QUIT", "EXIT")
+            -AllowedOptions @("1", "2", "3", "4", "5", "6", "7", "8", "A", "U", "UI", "R", "RESTART", "L", "LIST", "H", "HELP", "B", "BACK", "0", "C", "CANCEL", "Q", "QUIT", "EXIT")
 
         switch ($choice.RawInput.ToUpperInvariant()) {
             "1" {
@@ -2670,6 +3327,10 @@ function Show-PanelMenu {
                     Write-Host "[ERROR] $($_.Exception.Message)" -ForegroundColor Red
                 }
                 Pause-IfNeeded
+                continue panelMenuLoop
+            }
+            "8" {
+                Show-DataSourcesRegistry
                 continue panelMenuLoop
             }
         }
@@ -2756,16 +3417,19 @@ function Show-Menu {
         Write-Host ""
         Write-Host "Panel mode is the defense-safe default." -ForegroundColor Yellow
         Write-Host "This full launcher is for intentional researcher/audit work and is organized by thesis role instead of raw phase names." -ForegroundColor DarkYellow
+        Write-Host "Panel mode and read-only entries do not rerun science." -ForegroundColor Green
         Write-Host ""
         Write-Host "Choose a role-based path:" -ForegroundColor Yellow
         Write-Host ""
 
         Write-Host "  P. Panel review mode / defense-safe path" -ForegroundColor White
+        Write-Host "     Safest route for panel review, dashboards, and stored-output checks." -ForegroundColor DarkGray
         foreach ($group in $groups) {
             Write-Host ("  {0}. {1}" -f [string]$group.MenuKey, [string]$group.Label) -ForegroundColor White
             Write-Host ("     {0}" -f [string]$group.Description) -ForegroundColor DarkGray
         }
         Write-Host ""
+        Write-Host "  S. Search launcher entries" -ForegroundColor Yellow
         Write-Host "  L. List catalog only" -ForegroundColor Yellow
         Write-Host "  H. Help" -ForegroundColor Yellow
         if ($ReturnToCaller) {
@@ -2779,9 +3443,9 @@ function Show-Menu {
 
         $choice = Resolve-LauncherChoice `
             -InputText (Read-Host "Select an option") `
-            -AllowedActions @("panel", "list", "help", "back", "cancel", "quit") `
+            -AllowedActions @("panel", "search", "list", "help", "back", "cancel", "quit") `
             -BlankAction "ignore" `
-            -AllowedOptions @("P", "PANEL", "1", "2", "3", "4", "5", "L", "LIST", "H", "HELP", "B", "BACK", "0", "C", "CANCEL", "Q", "QUIT", "EXIT")
+            -AllowedOptions @("P", "PANEL", "1", "2", "3", "4", "5", "S", "SEARCH", "L", "LIST", "H", "HELP", "B", "BACK", "0", "C", "CANCEL", "Q", "QUIT", "EXIT")
 
         switch ($choice.Action) {
             "ignore" { continue launcherHomeLoop }
@@ -2791,6 +3455,10 @@ function Show-Menu {
                 } else {
                     Show-PanelMenu
                 }
+                continue launcherHomeLoop
+            }
+            "search" {
+                Invoke-LauncherSearchMode -Label "all visible launcher entries"
                 continue launcherHomeLoop
             }
             "list" {
@@ -2834,7 +3502,7 @@ function Show-Menu {
         if ($choice.Action -eq "invalid") {
             Write-Host $choice.Message -ForegroundColor Red
         } else {
-            Write-Host "Invalid option. Use P, 1-5, L, H, C, or Q." -ForegroundColor Red
+            Write-Host "Invalid option. Use P, 1-5, S, L, H, C, or Q." -ForegroundColor Red
         }
         Start-Sleep -Seconds 2
         continue launcherHomeLoop
@@ -2868,6 +3536,15 @@ try {
         Show-LauncherEntryPreview `
             -LauncherEntry $resolvedEntry.CanonicalEntry `
             -RequestedEntryId $resolvedEntry.RequestedEntryId
+        if ($ExportPlan) {
+            $exportedPlan = Export-LauncherRunPlan `
+                -LauncherEntry $resolvedEntry.CanonicalEntry `
+                -RequestedEntryId $resolvedEntry.RequestedEntryId
+            Write-Host ""
+            Write-Host "Run plan exported without executing science:" -ForegroundColor Green
+            Write-Host ("  Markdown: {0}" -f $exportedPlan.MarkdownPath) -ForegroundColor DarkGray
+            Write-Host ("  JSON:     {0}" -f $exportedPlan.JsonPath) -ForegroundColor DarkGray
+        }
         Pause-IfNeeded
         exit 0
     }

@@ -5,6 +5,7 @@
 - Confirm the repo is at the intended commit and `output/defense_readiness/defense_readiness_report.md` exists.
 - If Docker is part of the live demo, start it before opening the panel menu.
 - Keep the launcher on the defense-safe path unless a panel member explicitly asks for a rerun preview.
+- Panel mode and read-only entries do not rerun science.
 - Remember the claim boundary order: Phase 1 provenance -> B1 primary validation -> Track A comparator support -> DWH transfer validation -> Phase 4 support/context -> legacy/archive support.
 
 ## What To Open First
@@ -36,6 +37,7 @@ Useful supporting commands:
 .\start.ps1 -Help -NoPause
 .\start.ps1 -List -NoPause
 .\start.ps1 -Explain mindoro_phase3b_primary_public_validation -NoPause
+.\start.ps1 -Explain mindoro_phase3b_primary_public_validation -ExportPlan -NoPause
 .\start.ps1 -Explain phase1_mindoro_focus_provenance -NoPause
 .\start.ps1 -Explain dwh_reportable_bundle -NoPause
 .\start.ps1 -Explain b1_drifter_context_panel -NoPause
@@ -57,7 +59,7 @@ If the panel asks about drifters:
 
 If the panel asks about B1:
 
-> B1 is the only main Mindoro validation row and supports coastal-neighborhood usefulness, not exact-grid reproduction.
+> B1 is the only main Philippine public-observation validation claim and supports coastal-neighborhood usefulness, not exact 1 km overlap or universal operational accuracy.
 
 If the panel asks about PyGNOME:
 
@@ -78,6 +80,7 @@ If Docker is not running:
 
 - Open `output/figure_package_publication/`
 - Open `docs/PAPER_OUTPUT_REGISTRY.md`
+- Open `docs/DATA_SOURCES.md`
 - Open `output/defense_readiness/defense_readiness_report.md`
 
 If Streamlit does not open:
@@ -96,5 +99,6 @@ If internet is unavailable:
 1. `.\panel.ps1`
 2. Panel option `2` for manuscript-number verification if needed.
 3. Panel option `7` or `.\start.ps1 -Entry b1_drifter_context_panel`
-4. Panel option `3` or `.\start.ps1 -Entry figure_package_publication`
-5. Open `output/defense_readiness/defense_readiness_report.md` if a tooling question comes up.
+4. Panel option `8` for the data sources and provenance registry if needed.
+5. Panel option `3` or `.\start.ps1 -Entry figure_package_publication`
+6. Open `output/defense_readiness/defense_readiness_report.md` if a tooling question comes up.

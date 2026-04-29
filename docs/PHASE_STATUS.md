@@ -103,5 +103,5 @@ Guardrail: these are support/context values only, not a second primary validatio
 ## Status Stamp
 
 - Last updated: `2026-04-28`
-- Current sync state: aligned to Draft 22 / final manuscript evidence structure and stored-output review package
+- Current sync state: aligned to current manuscript evidence structure and stored-output review package
 - Biggest remaining scientific follow-up: broader `2016-2022` regional/reference Phase 1 lane remains separate from finalized Mindoro-specific B1 provenance and is not the main Mindoro validation claim

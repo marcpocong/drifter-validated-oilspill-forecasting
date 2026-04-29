@@ -30,15 +30,17 @@ from ui.evidence_contract import (
     filter_for_page,
 )
 from ui.pages.common import (
-    render_badge_strip,
+    render_caveat_ribbon,
+    render_evidence_path,
     render_export_note,
+    render_feature_grid,
     render_figure_gallery,
+    render_key_takeaway,
     render_markdown_block,
-    render_metric_row,
+    render_metric_story_grid,
+    render_modern_hero,
     render_package_cards,
-    render_page_intro,
-    render_status_callout,
-    render_study_structure_cards,
+    render_section_header,
 )
 
 
@@ -117,10 +119,13 @@ def render(state: dict, ui_state: dict) -> None:
     accepted_count = int(phase1_manifest.get("accepted_segment_count") or 65)
     subset_count = int((phase1_manifest.get("ranking_subset") or {}).get("segment_count") or 19)
 
-    render_page_intro(
+    render_modern_hero(
         "Defense / Panel Review",
-        "This dashboard is read-only and displays stored Draft 22 outputs only; it does not rerun science.",
-        badge="Draft 22 | read-only thesis review",
+        "This dashboard displays stored thesis-facing outputs only and does not rerun science.",
+        badge="Read-only thesis review",
+        eyebrow="Thesis defense landing page",
+        meta=["Stored outputs only", "No science reruns", "Panel-friendly by default"],
+        tone="thesis",
     )
 
     if export_mode:
@@ -131,31 +136,92 @@ def render(state: dict, ui_state: dict) -> None:
             ]
         )
 
-    st.info("This dashboard is read-only and displays stored Draft 22 outputs only; it does not rerun science.")
-    render_badge_strip([ROLE_THESIS, ROLE_COMPARATOR, ROLE_CONTEXT, ROLE_ARCHIVE, ROLE_LEGACY])
-    st.caption("These badges separate the main thesis claim from comparator, support/context, archive, and legacy lanes.")
-
-    render_status_callout(
-        "Only Mindoro B1 is the main Philippine validation claim.",
-        "Only Mindoro B1 is the main Philippine public-observation validation claim; Track A, DWH, oil-type/shoreline outputs, and legacy/archive outputs have separate support roles.",
-        tone="success",
-    )
-    render_status_callout(
-        "Probability-footprint semantics",
-        "prob_presence is the cellwise ensemble fraction; mask_p50 is the majority-member likely footprint and preferred probabilistic extension; mask_p90 is the high-confidence core / conservative support product. Probability classes are 0-10%, 10-25%, 25-50%, 50-75%, 75-90%, and >=90%.",
-        tone="info",
-    )
-
-    st.subheader("Quick panel summary")
-    render_metric_row(
+    render_evidence_path(
         [
             {
-                "label": "Phase 1 selected recipe",
+                "title": "Transport provenance",
+                "badge": ROLE_THESIS,
+                "body": "Focused Phase 1 selects the transport recipe; drifters are not oil-footprint truth.",
+            },
+            {
+                "title": "Mindoro B1 validation",
+                "badge": ROLE_THESIS,
+                "body": "The only main Philippine public-observation validation claim.",
+            },
+            {
+                "title": "Track A comparator",
+                "badge": ROLE_COMPARATOR,
+                "body": "Same-case OpenDrift vs PyGNOME support; not a second validation row.",
+            },
+            {
+                "title": "DWH transfer validation",
+                "badge": ROLE_THESIS,
+                "body": "Separate external transfer validation; not Mindoro recalibration.",
+            },
+            {
+                "title": "Oil-type / shoreline context",
+                "badge": ROLE_CONTEXT,
+                "body": "Downstream consequence support only.",
+            },
+            {
+                "title": "Archive / legacy support",
+                "badge": ROLE_LEGACY,
+                "body": "Preserved for audit and historical context only.",
+            },
+        ],
+        title="Defense Path",
+        caption="A panel-first pathway from recipe provenance to the main claim, then comparator, transfer, context, and archive lanes.",
+        export_mode=export_mode,
+    )
+
+    render_section_header(
+        "Panel Answers In 90 Seconds",
+        "The first questions a defense panel is likely to ask, answered before the detailed galleries and registries.",
+    )
+    render_feature_grid(
+        [
+            {
+                "title": "What is the main Philippine validation claim?",
+                "badge": ROLE_THESIS,
+                "body": "Mindoro B1 is the only main Philippine public-observation validation claim.",
+                "note": "Everything else has a bounded support role.",
+            },
+            {
+                "title": "What does B1 prove and not prove?",
+                "badge": ROLE_THESIS,
+                "body": "B1 supports coastal-neighborhood usefulness and does not prove exact 1 km grid-cell reproduction.",
+                "note": "The March 13-14 pair shares March 12 WorldView-3 imagery provenance, so it remains a bounded reinitialization-based check.",
+            },
+            {
+                "title": "What is Track A?",
+                "badge": ROLE_COMPARATOR,
+                "body": "Track A is same-case OpenDrift versus PyGNOME comparator support on the March 14 target.",
+                "note": "PyGNOME is never observational truth here.",
+            },
+            {
+                "title": "What does DWH add?",
+                "badge": ROLE_THESIS,
+                "body": "DWH adds a separate external transfer-validation lane using public daily observation masks.",
+                "note": "It does not recalibrate Mindoro.",
+            },
+        ],
+        columns_per_row=4,
+        export_mode=export_mode,
+    )
+
+    render_section_header(
+        "Quick Panel Metrics",
+        "Headline values are pulled from the existing stored dashboard state and are not recomputed by the UI.",
+    )
+    render_metric_story_grid(
+        [
+            {
+                "label": "Selected recipe",
                 "value": selected_recipe,
                 "note": f"{accepted_count} accepted strict segments; {subset_count} February-April ranked segments",
             },
             {
-                "label": "Mindoro B1 mean FSS",
+                "label": "B1 mean FSS",
                 "value": _float_text((b1_row or {}).get("mean_fss"), 4),
                 "note": "No exact 1 km overlap",
             },
@@ -186,92 +252,48 @@ def render(state: dict, ui_state: dict) -> None:
         export_mode=export_mode,
     )
 
-    st.subheader("What each thesis lane means")
-    render_study_structure_cards(
-        [
-            {
-                "title": "Phase 1 transport provenance",
-                "classification": ROLE_THESIS,
-                "body": (
-                    f"Focused Mindoro Phase 1 selected `{selected_recipe}` from {accepted_count} strict accepted segments "
-                    f"and {subset_count} February-April ranked segments. Drifters support recipe selection, not direct oil-footprint truth."
-                ),
-                "note": "The official B1 recipe is adopted from the focused historical winner.",
-                "page_label": "Phase 1 Transport Provenance",
-            },
-            {
-                "title": "Mindoro B1 summary",
-                "classification": ROLE_THESIS,
-                "body": (
-                    "Main Mindoro validation row: mean FSS {mean_fss}, FSS rises from {fss_1} at 1 km to {fss_10} at 10 km, "
-                    "with {forecast_cells} forecast cells against {obs_cells} observed cells."
-                ).format(
-                    mean_fss=_float_text((b1_row or {}).get("mean_fss"), 4),
-                    fss_1=_float_text((b1_row or {}).get("fss_1km"), 4),
-                    fss_10=_float_text((b1_row or {}).get("fss_10km"), 4),
-                    forecast_cells=_int_text((b1_row or {}).get("forecast_nonzero_cells")),
-                    obs_cells=_int_text((b1_row or {}).get("obs_nonzero_cells")),
-                ),
-                "note": "B1 is the only main Mindoro validation row.",
-                "page_label": "Mindoro B1 Primary Validation",
-            },
-            {
-                "title": "Track A comparator-only note",
-                "classification": ROLE_COMPARATOR,
-                "body": (
-                    "OpenDrift Track A reuses the same March 14 target with mean FSS {od_fss}; "
-                    "PyGNOME stays comparator-only with mean FSS {py_fss} and nearest distance {py_dist} m."
-                ).format(
-                    od_fss=_float_text((track_a_open or {}).get("mean_fss"), 4),
-                    py_fss=_float_text((track_a_pygnome or {}).get("mean_fss"), 4),
-                    py_dist=_float_text((track_a_pygnome or {}).get("nearest_distance_to_obs_m"), 2),
-                ),
-                "note": "PyGNOME is not observational truth here.",
-                "page_label": "Mindoro Track A Comparator Support",
-            },
-            {
-                "title": "DWH external-transfer note",
-                "classification": ROLE_THESIS,
-                "body": (
-                    "DWH is a separate transfer-validation lane: C1 corridor mean FSS {c1}, "
-                    "C2 p50 {c2p50}, C2 p90 {c2p90}, and C3 PyGNOME comparator {c3}."
-                ).format(
-                    c1=_float_text((dwh_c1 or {}).get("mean_fss"), 4),
-                    c2p50=_float_text((dwh_c2_p50 or {}).get("mean_fss"), 4),
-                    c2p90=_float_text((dwh_c2_p90 or {}).get("mean_fss"), 4),
-                    c3=_float_text((dwh_c3 or {}).get("mean_fss"), 4),
-                ),
-                "note": "DWH is external transfer validation, not Mindoro recalibration.",
-                "page_label": "DWH External Transfer Validation",
-            },
-            {
-                "title": "Oil-type support-only note",
-                "classification": ROLE_CONTEXT,
-                "body": (
-                    "Stored support scenarios show final beached percentages of {light}, {medium}, and {heavy}, "
-                    "with first shoreline arrival at {arrival} h for all three."
-                ).format(
-                    light=_float_text((oil_light or {}).get("final_beached_pct"), 2),
-                    medium=_float_text((oil_medium or {}).get("final_beached_pct"), 2),
-                    heavy=_float_text((oil_heavy or {}).get("final_beached_pct"), 2),
-                    arrival=_float_text((oil_light or {}).get("first_shoreline_arrival_h"), 0),
-                ),
-                "note": "Oil-type and shoreline outputs are support/context only.",
-                "page_label": "Mindoro Oil-Type and Shoreline Context",
-            },
-        ],
-        columns_per_row=1 if export_mode else 2,
-        export_mode=export_mode,
+    render_key_takeaway(
+        "Main claim boundary",
+        "\n".join(
+            [
+                "- Only Mindoro B1 is the main Philippine validation claim.",
+                "- B1 supports coastal-neighborhood usefulness, not exact 1 km overlap.",
+                "- Track A, DWH, oil-type/shoreline, and legacy/archive outputs have separate support roles.",
+            ]
+        ),
+        tone="thesis",
+        badge=ROLE_THESIS,
     )
 
-    st.warning(
-        "**Do not overclaim**\n\n"
-        "- B1 supports neighborhood-scale usefulness, not exact 1 km reproduction.\n"
-        "- PyGNOME is comparator-only.\n"
-        "- DWH is external transfer validation, not Mindoro recalibration.\n"
-        "- Oil-type and shoreline outputs are support/context only.\n"
-        "- Experimental 5,000-element sensitivity runs are not thesis-facing."
+    render_section_header(
+        "Probability Semantics",
+        "Three footprint terms appear throughout the dashboard. These labels must stay fixed across panel and export views.",
     )
+    render_feature_grid(
+        [
+            {
+                "title": "prob_presence",
+                "badge": ROLE_CONTEXT,
+                "body": "Cellwise ensemble fraction.",
+                "note": "Displayed as probability classes: 0-10%, 10-25%, 25-50%, 50-75%, 75-90%, and >=90%.",
+            },
+            {
+                "title": "mask_p50",
+                "badge": ROLE_THESIS,
+                "body": "Preferred likely footprint / majority-member surface.",
+                "note": "This is the preferred probabilistic extension.",
+            },
+            {
+                "title": "mask_p90",
+                "badge": ROLE_COMPARATOR,
+                "body": "Conservative high-confidence core / support product.",
+                "note": "Never relabel mask_p90 as a broader envelope.",
+            },
+        ],
+        columns_per_row=3,
+        export_mode=export_mode,
+    )
+    render_caveat_ribbon("mask_p90 boundary", "Never relabel mask_p90 as a broader envelope.")
 
     package_lookup = {
         package.get("package_id"): package
@@ -346,14 +368,6 @@ def render(state: dict, ui_state: dict) -> None:
             }
         )
 
-    st.subheader("Recommended panel resources")
-    st.caption("These are the safest package roots and registry references for defense review.")
-    render_package_cards(
-        review_resource_cards,
-        columns_per_row=1 if export_mode else 2,
-        export_mode=export_mode,
-    )
-
     primary_quick_links = [
         phase1_quick_link,
         _story_package("mindoro_b1_final", ROLE_THESIS),
@@ -368,18 +382,18 @@ def render(state: dict, ui_state: dict) -> None:
     ]
     secondary_quick_links = [package for package in secondary_quick_links if package]
 
-    st.subheader("Story shortcuts")
-    st.caption("These shortcuts keep the defense story in thesis order instead of exposing the full internal workflow first.")
-    render_package_cards(
-        primary_quick_links,
-        columns_per_row=1 if export_mode else 3,
-        export_mode=export_mode,
-    )
+    if primary_quick_links:
+        render_section_header(
+            "Open The Evidence Pages",
+            "Panel-friendly shortcuts keep the defense path in order and avoid raw technical artifact browsing.",
+        )
+        render_package_cards(
+            primary_quick_links,
+            columns_per_row=1 if export_mode else 3,
+            export_mode=export_mode,
+        )
 
-    st.subheader("Archive / Support only")
-    st.caption("Archive and legacy outputs stay available for audit, but they are not the first panel-facing evidence chain.")
-    render_study_structure_cards(
-        [
+    archive_panel_cards = [
             {
                 "title": "Archive — Mindoro Validation Provenance",
                 "classification": ROLE_ARCHIVE,
@@ -394,30 +408,47 @@ def render(state: dict, ui_state: dict) -> None:
                 "note": "Support-only; not main validation evidence.",
                 "page_label": "Archive — Legacy 2016 Support",
             },
-        ],
-        columns_per_row=1 if export_mode else 2,
-        export_mode=export_mode,
-    )
-    if secondary_quick_links:
+    ]
+    if ui_state["advanced"] and not export_mode and secondary_quick_links:
+        render_section_header(
+            "Archive And Legacy Support",
+            "Archive and legacy pages stay available for audit, but they remain explicitly outside the main validation claim.",
+            badge=ROLE_ARCHIVE,
+        )
+        render_feature_grid(archive_panel_cards, columns_per_row=2, export_mode=export_mode)
         render_package_cards(
             secondary_quick_links,
             columns_per_row=1 if export_mode else 2,
             export_mode=export_mode,
         )
 
-    render_figure_gallery(
-        recommended,
-        title="Featured thesis-facing figures",
-        caption="The featured strip stays panel-first: provenance context, B1 primary validation, comparator support, and DWH transfer-validation. Archive and legacy figures remain on their own pages.",
-        limit=2 if export_mode else None,
-        columns_per_row=1 if export_mode else 2,
-        export_mode=export_mode,
-        overlay_label="Click to enlarge",
-    )
+    if not recommended.empty:
+        render_figure_gallery(
+            recommended,
+            title="Featured thesis-facing figures",
+            caption="The featured strip stays panel-first: provenance context, B1 primary validation, comparator support, and DWH transfer-validation. Archive and legacy figures remain on their own pages.",
+            limit=2 if export_mode else None,
+            columns_per_row=1 if export_mode else 2,
+            export_mode=export_mode,
+            overlay_label="Click to enlarge",
+        )
 
     if ui_state["advanced"] and not export_mode:
-        st.subheader("Advanced notes")
-        st.caption("Panel mode stops here. Advanced mode keeps the lower-level reproducibility notes available in read-only form.")
+        render_section_header(
+            "Read-only Package References",
+            "Advanced mode exposes registry and package-reference shortcuts without changing stored outputs.",
+            badge="Advanced technical reference",
+        )
+        render_package_cards(
+            review_resource_cards,
+            columns_per_row=2,
+            export_mode=export_mode,
+        )
+        render_section_header(
+            "Advanced Notes",
+            "Panel mode stops before these lower-level reproducibility notes.",
+            badge="Advanced technical reference",
+        )
         render_markdown_block("Final reproducibility summary", state["final_reproducibility_summary"], collapsed=True, export_mode=export_mode)
         render_markdown_block("Panel review report", state["panel_review_check_markdown"], collapsed=True, export_mode=export_mode)
         render_markdown_block("Publication talking points", state["publication_talking_points"], collapsed=True, export_mode=export_mode)

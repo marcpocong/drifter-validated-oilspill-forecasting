@@ -52,6 +52,7 @@ def test_panel_no_pause_does_not_hang_or_prompt():
     assert "PANEL REVIEW MODE" in result.combined_output
     assert "Non-interactive preview mode (-NoPause)." in result.combined_output
     assert "View B1 drifter provenance/context" in result.combined_output
+    assert "View data sources and provenance registry" in result.combined_output
 
 
 def test_panel_wrapper_no_pause_delegates_cleanly():
@@ -258,6 +259,7 @@ def test_panel_option_list_keeps_b1_context_option_visible():
     result = run_command(start_ps_command("-Panel", "-NoPause"), timeout=120, env=SMOKE_ENV)
     assert result.returncode == 0, result.combined_output
     assert "7. View B1 drifter provenance/context" in result.combined_output
+    assert "8. View data sources and provenance registry" in result.combined_output
 
 
 def test_read_only_ui_launcher_reuses_existing_dashboard_process():

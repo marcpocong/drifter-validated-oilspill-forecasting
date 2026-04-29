@@ -48,7 +48,6 @@ PAGE_DEFINITIONS = [
     PageDefinition("trajectory_explorer", "Trajectory Explorer", trajectory_explorer.render, advanced_only=True, navigation_section="Advanced", url_path="trajectory-explorer"),
 ]
 
-
 PAGE_BY_ID = {page.page_id: page for page in PAGE_DEFINITIONS}
 
 

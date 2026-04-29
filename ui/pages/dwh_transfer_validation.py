@@ -17,21 +17,24 @@ except ModuleNotFoundError:
 
 ensure_repo_root_on_path(__file__)
 
-import streamlit as st
-
-from ui.evidence_contract import ROLE_THESIS, assert_no_archive_leak, filter_for_page
+from ui.evidence_contract import ROLE_COMPARATOR, ROLE_CONTEXT, ROLE_THESIS, assert_no_archive_leak, filter_for_page
 from ui.pages.common import (
+    render_caveat_ribbon,
     render_export_note,
+    render_feature_grid,
     render_figure_gallery,
+    render_key_takeaway,
     render_markdown_block,
-    render_page_intro,
+    render_metric_story_grid,
+    render_modern_hero,
+    render_section_header,
     render_section_stack,
     render_status_callout,
     render_table,
 )
 
 
-def _draft22_dwh_mean_fss_table():
+def _dwh_mean_fss_table():
     import pandas as pd
 
     return pd.DataFrame(
@@ -44,7 +47,7 @@ def _draft22_dwh_mean_fss_table():
     )
 
 
-def _draft22_dwh_corridor_table():
+def _dwh_corridor_table():
     import pandas as pd
 
     return pd.DataFrame(
@@ -77,10 +80,13 @@ def _dwh_name_subset(df, include_terms: tuple[str, ...], exclude_terms: tuple[st
 
 def render(state: dict, ui_state: dict) -> None:
     export_mode = bool(ui_state.get("export_mode"))
-    render_page_intro(
+    render_modern_hero(
         "DWH External Transfer Validation",
         "DWH is a separate external transfer validation story using public daily observation masks on its own fixed 1 km scoring grid.",
         badge=ROLE_THESIS,
+        eyebrow="External transfer validation",
+        meta=["DWH only", "Public daily observation masks", "Not Mindoro recalibration"],
+        tone="thesis",
     )
 
     if export_mode:
@@ -91,31 +97,57 @@ def render(state: dict, ui_state: dict) -> None:
             ]
         )
 
-    render_status_callout(
-        "Claim boundary",
-        "DWH is a separate external transfer validation story; it does not recalibrate Mindoro and is not a second Philippine Phase 1 study.",
-        "warning",
+    render_key_takeaway(
+        "DWH tests external transferability; it does not recalibrate Mindoro.",
+        "The frozen DWH event-corridor results keep deterministic OpenDrift, ensemble p50, p90 support, and PyGNOME comparator roles separated.",
+        tone="thesis",
+        badge=ROLE_THESIS,
     )
-    render_status_callout(
-        "Truth rule",
-        "Truth semantics: daily date-composite public observation masks; exact sub-daily acquisition times are not claimed.",
-        "info",
+    render_caveat_ribbon(
+        "External-transfer boundary",
+        "DWH is a separate external transfer validation story; it does not recalibrate Mindoro. DWH tests external transferability; it does not recalibrate Mindoro. Daily date-composite public observation masks are the truth context, and exact sub-daily acquisition times are not claimed.",
     )
-    render_status_callout(
-        "Forcing stack",
-        "The frozen DWH stack is HYCOM GOFS 3.1 currents + ERA5 winds + CMEMS wave/Stokes.",
-        "info",
+    render_section_header("Event-Corridor Results", "Stored DWH corridor mean FSS values by track.")
+    render_feature_grid(
+        [
+            {
+                "title": "C1 deterministic",
+                "badge": ROLE_THESIS,
+                "body": "OpenDrift deterministic control.",
+                "note": "Event-corridor mean FSS 0.5568.",
+            },
+            {
+                "title": "C2 p50 ensemble",
+                "badge": ROLE_THESIS,
+                "body": "Preferred probabilistic likely footprint.",
+                "note": "Event-corridor mean FSS 0.5389.",
+            },
+            {
+                "title": "C2 p90 support",
+                "badge": ROLE_CONTEXT,
+                "body": "Conservative high-confidence core / support product.",
+                "note": "Event-corridor mean FSS 0.4966.",
+            },
+            {
+                "title": "C3 PyGNOME comparator",
+                "badge": ROLE_COMPARATOR,
+                "body": "PyGNOME is comparator-only and never truth.",
+                "note": "Event-corridor mean FSS 0.3612.",
+            },
+        ],
+        columns_per_row=4,
+        export_mode=export_mode,
     )
-    render_status_callout(
-        "Comparator rule",
-        "PyGNOME is comparator-only for DWH. It is never truth and does not replace the deterministic OpenDrift transfer-validation story.",
-        "warning",
+    render_metric_story_grid(
+        [
+            ("C1 deterministic", "0.5568", "OpenDrift deterministic control"),
+            ("C2 p50", "0.5389", "Preferred ensemble footprint"),
+            ("C2 p90", "0.4966", "Support product, not broader envelope"),
+            ("C3 PyGNOME", "0.3612", "Comparator-only"),
+        ],
+        export_mode=export_mode,
     )
-    render_status_callout(
-        "Event-corridor score summary",
-        "DWH event-corridor mean FSS: C1 deterministic 0.5568, C2 p50 0.5389, C2 p90 0.4966, C3 PyGNOME comparator 0.3612.",
-        "info",
-    )
+    render_section_header("Details", "Observation context, track figures, scorecards, and notes remain separated below.")
 
     registry = filter_for_page(
         state["dwh_final_registry"],
@@ -156,17 +188,17 @@ def render(state: dict, ui_state: dict) -> None:
     def _truth_context() -> None:
         render_status_callout("Observation context", "These figures show the public observation-derived daily masks and the event-corridor union used as truth before any model comparison is discussed.", "info")
         render_table(
-            "Draft 22 DWH daily and corridor mean FSS",
-            _draft22_dwh_mean_fss_table(),
-            download_name="draft22_dwh_mean_fss.csv",
+            "DWH daily and event-corridor mean FSS",
+            _dwh_mean_fss_table(),
+            download_name="dwh_mean_fss.csv",
             caption="p50 is the preferred probabilistic footprint; p90 is support/comparison only; PyGNOME is comparator-only.",
             height=190,
             export_mode=export_mode,
         )
         render_table(
-            "Draft 22 DWH event-corridor geometry",
-            _draft22_dwh_corridor_table(),
-            download_name="draft22_dwh_corridor_geometry.csv",
+            "DWH event-corridor geometry diagnostics",
+            _dwh_corridor_table(),
+            download_name="dwh_corridor_geometry.csv",
             caption="Corridor summary values for C1, C2 p50, C2 p90, and C3.",
             height=210,
             export_mode=export_mode,

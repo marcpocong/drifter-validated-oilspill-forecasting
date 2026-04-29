@@ -100,8 +100,8 @@ class LauncherMatrixMetadataTests(unittest.TestCase):
         alias_targets = {
             "phase1_mindoro_focus_pre_spill_experiment": "phase1_mindoro_focus_provenance",
             "phase1_production_rerun": "phase1_regional_reference_rerun",
+            "mindoro_march13_14_noaa_reinit_stress_test": "mindoro_phase3b_primary_public_validation",
         }
-        hidden_legacy_ids = ("mindoro_march13_14_noaa_reinit_stress_test",)
 
         for entry_id in canonical_entry_ids:
             self.assertIn(entry_id, self.entry_map)
@@ -111,10 +111,6 @@ class LauncherMatrixMetadataTests(unittest.TestCase):
             self.assertIn(alias_id, self.entry_map)
             self.assertEqual(self.entry_map[alias_id].get("alias_of"), target_id)
             self.assertTrue(self.entry_map[alias_id].get("menu_hidden"), alias_id)
-
-        for entry_id in hidden_legacy_ids:
-            self.assertIn(entry_id, self.entry_map)
-            self.assertTrue(self.entry_map[entry_id].get("menu_hidden"), entry_id)
 
     def test_aliases_point_to_existing_entries_and_duplicate_steps_safely(self):
         for entry in self.entries:
@@ -235,6 +231,7 @@ class LauncherMatrixMetadataTests(unittest.TestCase):
             "Refresh final reproducibility package / command documentation",
             "Show paper-to-output registry",
             "View B1 drifter provenance/context",
+            "View data sources and provenance registry",
         )
 
         for label in exact_panel_labels:

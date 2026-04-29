@@ -7,7 +7,7 @@ import hashlib
 import io
 import json
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 try:
     from ui.bootstrap import ensure_repo_root_on_path
@@ -58,30 +58,404 @@ def _humanize(value: Any) -> str:
     return text
 
 
-def render_page_intro(title: str, body: str, *, badge: str = "") -> None:
-    st.title(title)
-    badge_html = f"<div class='page-hero__badge'>{html.escape(badge)}</div>" if badge else ""
+def _tone_class(tone: str | None, *, default: str = "info") -> str:
+    key = str(tone or default).strip().lower().replace("_", "-")
+    aliases = {
+        "danger": "error",
+        "critical": "error",
+        "caution": "warning",
+        "caveat": "warning",
+        "primary": "thesis",
+        "thesis-facing": "thesis",
+        "comparator-support": "comparator",
+        "support-context": "context",
+        "support": "context",
+        "archive-only": "archive",
+        "legacy-support": "legacy",
+    }
+    allowed = {
+        "info",
+        "success",
+        "warning",
+        "error",
+        "neutral",
+        "thesis",
+        "comparator",
+        "context",
+        "archive",
+        "legacy",
+        "advanced",
+    }
+    key = aliases.get(key, key)
+    return key if key in allowed else default
+
+
+def _role_modifier(label: Any) -> str:
+    text = _clean_text_value(label).upper()
+    if not text:
+        return "neutral"
+    if "THESIS-FACING" in text:
+        return "thesis"
+    if "COMPARATOR" in text:
+        return "comparator"
+    if "LEGACY" in text:
+        return "legacy"
+    if "ARCHIVE" in text:
+        return "archive"
+    if "SUPPORT / CONTEXT" in text or "CONTEXT ONLY" in text:
+        return "context"
+    if "ADVANCED" in text:
+        return "advanced"
+    if "REFERENCE" in text or "TECHNICAL" in text or "AUDIT" in text:
+        return "advanced"
+    if "READ-ONLY" in text or "READ ONLY" in text:
+        return "readonly"
+    return "neutral"
+
+
+def _badge_html(label: Any, *, class_name: str = "ui-role-badge") -> str:
+    text = _clean_text_value(label)
+    if not text:
+        return ""
+    modifier = _role_modifier(text)
+    return f"<span class='{class_name} {class_name}--{modifier}'>{html.escape(text)}</span>"
+
+
+def _body_html(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        blocks = [_clean_text_value(item) for item in value]
+        blocks = [block for block in blocks if block]
+        return "".join(f"<p>{html.escape(block)}</p>" for block in blocks)
+    text = _clean_text_value(value).replace("\r\n", "\n")
+    if not text:
+        return ""
+    paragraphs = [block.strip() for block in text.split("\n\n") if block.strip()]
+    rendered: list[str] = []
+    for paragraph in paragraphs:
+        lines = [line.strip() for line in paragraph.splitlines() if line.strip()]
+        if not lines:
+            continue
+        if all(line.startswith("- ") for line in lines):
+            items = "".join(f"<li>{html.escape(line[2:].strip())}</li>" for line in lines)
+            rendered.append(f"<ul>{items}</ul>")
+            continue
+        rendered.append("<p>" + "<br>".join(html.escape(line) for line in lines) + "</p>")
+    return "".join(rendered)
+
+
+def _card_from_sequence(card: Mapping[str, Any] | Sequence[Any]) -> dict[str, Any]:
+    if isinstance(card, Mapping):
+        return dict(card)
+    if len(card) < 2:
+        raise ValueError("Feature cards require at least a title and body.")
+    return {
+        "title": card[0],
+        "body": card[1],
+        "badge": card[2] if len(card) > 2 else "",
+        "note": card[3] if len(card) > 3 else "",
+    }
+
+
+def build_callout_html(label: str, value: str, tone: str = "info", *, compact: bool = False) -> str:
+    """Build escaped callout-card markup for Streamlit markdown."""
+    tone_class = _tone_class(tone)
+    compact_class = " ui-callout--compact" if compact else ""
+    return (
+        f"<aside class='ui-callout ui-callout--{tone_class}{compact_class}'>"
+        "<div class='ui-callout__bar' aria-hidden='true'></div>"
+        "<div class='ui-callout__content'>"
+        f"<div class='ui-callout__label'>{html.escape(_clean_text_value(label) or 'Note')}</div>"
+        f"<div class='ui-callout__body'>{_body_html(value)}</div>"
+        "</div>"
+        "</aside>"
+    )
+
+
+def render_modern_hero(
+    title: str,
+    body: str,
+    *,
+    badge: str = "",
+    eyebrow: str = "",
+    meta: Sequence[str] | None = None,
+    tone: str = "thesis",
+) -> None:
+    """Render the page hero as a safe, print-friendly research card."""
+    badge_html = _badge_html(badge)
+    eyebrow_html = (
+        f"<div class='ui-hero__eyebrow'>{html.escape(_clean_text_value(eyebrow))}</div>"
+        if _clean_text_value(eyebrow)
+        else ""
+    )
+    meta_items = [item for item in (meta or []) if _clean_text_value(item)]
+    meta_html = ""
+    if meta_items:
+        meta_html = (
+            "<div class='ui-hero__meta'>"
+            + "".join(_badge_html(item, class_name="ui-meta-pill") for item in meta_items)
+            + "</div>"
+        )
     st.markdown(
         (
-            "<div class='page-hero'>"
+            f"<section class='ui-hero ui-hero--{_tone_class(tone, default='thesis')}'>"
+            "<div class='ui-hero__content'>"
+            f"{eyebrow_html}"
             f"{badge_html}"
-            f"<div class='page-hero__body'>{html.escape(body)}</div>"
+            f"<h1 class='ui-hero__title'>{html.escape(_clean_text_value(title) or 'Dashboard')}</h1>"
+            f"<div class='ui-hero__body'>{_body_html(body)}</div>"
+            f"{meta_html}"
             "</div>"
+            "</section>"
         ),
         unsafe_allow_html=True,
     )
 
 
+def render_page_intro(title: str, body: str, *, badge: str = "") -> None:
+    render_modern_hero(
+        title,
+        body,
+        badge=badge,
+        eyebrow="Read-only thesis dashboard",
+        tone=_role_modifier(badge) if badge else "thesis",
+    )
+
+
 def render_status_callout(label: str, value: str, tone: str = "info") -> None:
-    message = f"**{label}**\n\n{value}"
-    if tone == "success":
-        st.success(message)
-    elif tone == "warning":
-        st.warning(message)
-    elif tone == "error":
-        st.error(message)
+    st.markdown(build_callout_html(label, value, tone), unsafe_allow_html=True)
+
+
+def render_key_takeaway(label: str, value: str, *, tone: str = "thesis", badge: str = "") -> None:
+    """Render a prominent thesis takeaway without Streamlit alert chrome."""
+    badge_html = _badge_html(badge) if badge else ""
+    st.markdown(
+        (
+            f"<section class='ui-key-takeaway ui-key-takeaway--{_tone_class(tone, default='thesis')}'>"
+            "<div class='ui-key-takeaway__content'>"
+            f"{badge_html}"
+            f"<div class='ui-key-takeaway__label'>{html.escape(_clean_text_value(label) or 'Key takeaway')}</div>"
+            f"<div class='ui-key-takeaway__body'>{_body_html(value)}</div>"
+            "</div>"
+            "</section>"
+        ),
+        unsafe_allow_html=True,
+    )
+
+
+def render_caveat_ribbon(label: str, value: str, *, tone: str = "warning") -> None:
+    """Render a bounded caveat ribbon that stays visible in print/export."""
+    st.markdown(
+        (
+            f"<aside class='ui-caveat-ribbon ui-caveat-ribbon--{_tone_class(tone, default='warning')}'>"
+            f"<div class='ui-caveat-ribbon__label'>{html.escape(_clean_text_value(label) or 'Caveat')}</div>"
+            f"<div class='ui-caveat-ribbon__body'>{_body_html(value)}</div>"
+            "</aside>"
+        ),
+        unsafe_allow_html=True,
+    )
+
+
+def render_support_notice(label: str, value: str) -> None:
+    render_caveat_ribbon(label, value, tone="context")
+
+
+def render_archive_notice(label: str, value: str) -> None:
+    render_caveat_ribbon(label, value, tone="archive")
+
+
+def render_section_header(title: str, body: str = "", *, eyebrow: str = "", badge: str = "") -> None:
+    """Render a section heading with optional eyebrow, role badge, and summary copy."""
+    eyebrow_html = (
+        f"<div class='ui-section-heading__eyebrow'>{html.escape(_clean_text_value(eyebrow))}</div>"
+        if _clean_text_value(eyebrow)
+        else ""
+    )
+    badge_html = _badge_html(badge) if badge else ""
+    body_html = f"<div class='ui-section-heading__body'>{_body_html(body)}</div>" if _clean_text_value(body) else ""
+    st.markdown(
+        (
+            "<section class='ui-section-heading'>"
+            f"{eyebrow_html}"
+            "<div class='ui-section-heading__row'>"
+            f"<h2>{html.escape(_clean_text_value(title) or 'Section')}</h2>"
+            f"{badge_html}"
+            "</div>"
+            f"{body_html}"
+            "</section>"
+        ),
+        unsafe_allow_html=True,
+    )
+
+
+def build_feature_card_html(
+    title: str,
+    body: str,
+    *,
+    badge: str = "",
+    note: str = "",
+    footer: str = "",
+    tone: str = "neutral",
+) -> str:
+    badge_html = _badge_html(badge) if badge else ""
+    note_html = f"<div class='ui-feature-card__note'>{html.escape(_clean_text_value(note))}</div>" if _clean_text_value(note) else ""
+    footer_html = f"<div class='ui-feature-card__footer'>{html.escape(_clean_text_value(footer))}</div>" if _clean_text_value(footer) else ""
+    return (
+        f"<article class='ui-feature-card ui-feature-card--{_tone_class(tone, default=_role_modifier(badge) if badge else 'neutral')}'>"
+        f"{badge_html}"
+        f"<h3>{html.escape(_clean_text_value(title) or 'Feature')}</h3>"
+        f"<div class='ui-feature-card__body'>{_body_html(body)}</div>"
+        f"{note_html}"
+        f"{footer_html}"
+        "</article>"
+    )
+
+
+def render_feature_card(
+    title: str,
+    body: str,
+    *,
+    badge: str = "",
+    note: str = "",
+    footer: str = "",
+    tone: str = "neutral",
+) -> None:
+    st.markdown(
+        build_feature_card_html(title, body, badge=badge, note=note, footer=footer, tone=tone),
+        unsafe_allow_html=True,
+    )
+
+
+def render_feature_grid(
+    cards: Sequence[Mapping[str, Any] | Sequence[Any]],
+    *,
+    columns_per_row: int = 3,
+    export_mode: bool = False,
+) -> None:
+    normalized = [_card_from_sequence(card) for card in cards if card]
+    if not normalized:
+        render_status_callout("Unavailable", "Not packaged in current repo state.", "neutral")
+        return
+    columns = max(1, min(4, 1 if export_mode else columns_per_row))
+    card_html = []
+    for card in normalized:
+        badge = _clean_text_value(card.get("badge", "") or card.get("classification", ""))
+        card_html.append(
+            build_feature_card_html(
+                str(card.get("title", "Feature")),
+                str(card.get("body", "")),
+                badge=badge,
+                note=str(card.get("note", "")),
+                footer=str(card.get("footer", "")),
+                tone=str(card.get("tone", "") or _role_modifier(badge)),
+            )
+        )
+    st.markdown(
+        f"<div class='ui-feature-grid ui-feature-grid--cols-{columns}'>{''.join(card_html)}</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def render_evidence_path(
+    steps: Sequence[Mapping[str, Any] | Sequence[Any]],
+    *,
+    title: str = "",
+    caption: str = "",
+    export_mode: bool = False,
+) -> None:
+    normalized = [_card_from_sequence(step) for step in steps if step]
+    if not normalized:
+        return
+    if title or caption:
+        render_section_header(title or "Evidence path", caption, eyebrow="Evidence hierarchy")
+    step_html: list[str] = []
+    for index, step in enumerate(normalized, start=1):
+        badge = _clean_text_value(step.get("badge", "") or step.get("classification", ""))
+        badge_html = _badge_html(badge) if badge else ""
+        note = _clean_text_value(step.get("note", ""))
+        note_html = f"<div class='ui-evidence-step__note'>{html.escape(note)}</div>" if note else ""
+        step_html.append(
+            (
+                f"<article class='ui-evidence-step ui-evidence-step--{_role_modifier(badge)}'>"
+                f"<div class='ui-evidence-step__index'>{index}</div>"
+                "<div class='ui-evidence-step__content'>"
+                f"{badge_html}"
+                f"<h3>{html.escape(_clean_text_value(step.get('title')) or f'Step {index}')}</h3>"
+                f"<div class='ui-evidence-step__body'>{_body_html(step.get('body', ''))}</div>"
+                f"{note_html}"
+                "</div>"
+                "</article>"
+            )
+        )
+    export_class = " ui-evidence-path--export" if export_mode else ""
+    st.markdown(
+        f"<div class='ui-evidence-path{export_class}'>{''.join(step_html)}</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def render_metric_story_grid(
+    metrics: Sequence[dict[str, Any] | Sequence[Any]],
+    *,
+    export_mode: bool = False,
+    compact: bool = False,
+    full_width: bool = False,
+) -> None:
+    if not metrics:
+        return
+    st.markdown(
+        "<section class='ui-metric-story-grid'>"
+        + build_metric_row_html(
+            metrics,
+            export_mode=export_mode,
+            compact=compact,
+            full_width=full_width,
+        )
+        + "</section>",
+        unsafe_allow_html=True,
+    )
+
+
+def render_figure_feature(
+    title: str,
+    figure_path: str | Path | None,
+    *,
+    caption: str = "",
+    badge: str = "",
+    body: str = "",
+) -> None:
+    """Render one figure as a featured panel while keeping image loading read-only."""
+    badge_html = _badge_html(badge) if badge else ""
+    st.markdown(
+        (
+            "<section class='ui-figure-feature'>"
+            "<div class='ui-figure-feature__header'>"
+            f"{badge_html}"
+            f"<h2>{html.escape(_clean_text_value(title) or 'Figure')}</h2>"
+            f"<div class='ui-figure-feature__body'>{_body_html(body)}</div>"
+            "</div>"
+            "</section>"
+        ),
+        unsafe_allow_html=True,
+    )
+    path = resolve_repo_path(figure_path)
+    if path and path.exists():
+        try:
+            st.image(str(path), width="stretch")
+        except OSError:
+            _render_missing_figure_tile(title)
     else:
-        st.info(message)
+        _render_missing_figure_tile(title)
+    if caption:
+        st.caption(caption)
+
+
+def render_page_footer_note(lines: Sequence[str] | str) -> None:
+    body = _body_html(lines)
+    if not body:
+        return
+    st.markdown(f"<footer class='ui-page-footer-note'>{body}</footer>", unsafe_allow_html=True)
 
 
 def _normalize_metric_card(
@@ -185,7 +559,7 @@ def render_section_stack(
                 renderer()
         return
     for index, (title, renderer) in enumerate(sections):
-        st.markdown(f"## {title}")
+        render_section_header(title)
         renderer()
         if divider and index < len(sections) - 1:
             st.divider()
@@ -205,7 +579,7 @@ def render_table(
     if caption:
         st.caption(caption)
     if df.empty:
-        st.info("Not packaged in current repo state.")
+        render_status_callout("Unavailable", "Not packaged in current repo state.", "neutral")
         return
     display_df = df.head(max_rows).copy() if max_rows else df.copy()
     internal_columns = [
@@ -235,7 +609,7 @@ def render_table(
 def render_markdown_block(title: str, content: str, *, collapsed: bool = True, export_mode: bool = False) -> None:
     st.subheader(title)
     if not content.strip():
-        st.info("Not packaged in current repo state.")
+        render_status_callout("Unavailable", "Not packaged in current repo state.", "neutral")
         return
     if collapsed and not export_mode:
         with st.expander(f"Open {title}", expanded=False):
@@ -248,14 +622,14 @@ def render_badge_strip(labels: list[str]) -> None:
     clean = [label.strip() for label in labels if str(label).strip()]
     if not clean:
         return
-    spans = "".join(f"<span class='ui-badge'>{html.escape(label)}</span>" for label in clean)
+    spans = "".join(_badge_html(label, class_name="ui-badge") for label in clean)
     st.markdown(f"<div class='ui-badge-strip'>{spans}</div>", unsafe_allow_html=True)
 
 
 def render_package_cards(packages: list[dict[str, Any]], *, columns_per_row: int = 2, export_mode: bool = False) -> None:
     records = [package for package in packages if package]
     if not records:
-        st.info("Not packaged in current repo state.")
+        render_status_callout("Unavailable", "Not packaged in current repo state.", "neutral")
         return
     if export_mode:
         columns_per_row = min(columns_per_row, 2)
@@ -265,7 +639,10 @@ def render_package_cards(packages: list[dict[str, Any]], *, columns_per_row: int
         for column, package in zip(columns, records[start : start + columns_per_row]):
             with column:
                 with st.container(border=not export_mode):
-                    st.markdown(f"### {package.get('label', 'Package')}")
+                    st.markdown(
+                        f"<div class='ui-card-title'>{html.escape(_clean_text_value(package.get('label')) or 'Package')}</div>",
+                        unsafe_allow_html=True,
+                    )
                     badges = []
                     if package.get("secondary_note"):
                         badges.append(str(package["secondary_note"]))
@@ -273,7 +650,10 @@ def render_package_cards(packages: list[dict[str, Any]], *, columns_per_row: int
                         badges.append(f"{package['artifact_count']} indexed artifacts")
                     render_badge_strip(badges)
                     if package.get("description"):
-                        st.write(str(package["description"]))
+                        st.markdown(
+                            f"<div class='ui-card-body'>{_body_html(package['description'])}</div>",
+                            unsafe_allow_html=True,
+                        )
                     if package.get("relative_path"):
                         st.caption(f"Package root: {package['relative_path']}")
                     if package.get("page_label") and not export_mode:
@@ -284,7 +664,11 @@ def render_package_cards(packages: list[dict[str, Any]], *, columns_per_row: int
                             if target_page is not None:
                                 st.switch_page(target_page)
                             else:
-                                st.info("This page is not available in the current viewing mode.")
+                                render_status_callout(
+                                    "Page unavailable",
+                                    "This page is not available in the current viewing mode.",
+                                    "neutral",
+                                )
 
 
 def render_export_note(lines: list[str]) -> None:
@@ -302,7 +686,7 @@ def render_export_note(lines: list[str]) -> None:
 def render_study_structure_cards(cards: list[dict[str, Any]], *, columns_per_row: int = 3, export_mode: bool = False) -> None:
     records = [card for card in cards if card]
     if not records:
-        st.info("Not packaged in current repo state.")
+        render_status_callout("Unavailable", "Not packaged in current repo state.", "neutral")
         return
     if export_mode:
         columns_per_row = min(columns_per_row, 2)
@@ -312,10 +696,16 @@ def render_study_structure_cards(cards: list[dict[str, Any]], *, columns_per_row
         for column, card in zip(columns, records[start : start + columns_per_row]):
             with column:
                 with st.container(border=not export_mode):
-                    st.markdown(f"### {card.get('title', 'Study section')}")
+                    st.markdown(
+                        f"<div class='ui-card-title'>{html.escape(_clean_text_value(card.get('title')) or 'Study section')}</div>",
+                        unsafe_allow_html=True,
+                    )
                     render_badge_strip([str(card.get("classification", "")).strip()])
                     if card.get("body"):
-                        st.write(str(card["body"]))
+                        st.markdown(
+                            f"<div class='ui-card-body'>{_body_html(card['body'])}</div>",
+                            unsafe_allow_html=True,
+                        )
                     if card.get("note"):
                         st.caption(str(card["note"]))
                     if card.get("page_label") and not export_mode:
@@ -326,7 +716,11 @@ def render_study_structure_cards(cards: list[dict[str, Any]], *, columns_per_row
                             if target_page is not None:
                                 st.switch_page(target_page)
                             else:
-                                st.info("This page is not available in the current viewing mode.")
+                                render_status_callout(
+                                    "Page unavailable",
+                                    "This page is not available in the current viewing mode.",
+                                    "neutral",
+                                )
 
 
 def render_figure_strip(
@@ -341,7 +735,7 @@ def render_figure_strip(
     if caption:
         st.caption(caption)
     if df.empty:
-        st.info("Not packaged in current repo state.")
+        render_status_callout("Unavailable", "Not packaged in current repo state.", "neutral")
         return
     records = df.head(limit).to_dict(orient="records")
     columns_per_row = max(1, min(columns_per_row, len(records)))
@@ -361,9 +755,9 @@ def render_figure_strip(
                         try:
                             st.image(str(figure_path), width="stretch")
                         except OSError:
-                            st.info("Not packaged in current repo state.")
+                            _render_missing_figure_tile(title_text)
                     else:
-                        st.info("Not packaged in current repo state.")
+                        _render_missing_figure_tile(title_text)
 
 
 def filter_family(df: pd.DataFrame, code: str) -> pd.DataFrame:
@@ -600,7 +994,7 @@ def render_figure_gallery(
     if caption:
         st.caption(caption)
     if df.empty:
-        st.info("Not packaged in current repo state.")
+        render_status_callout("Unavailable", "Not packaged in current repo state.", "neutral")
         return
 
     records = df.head(limit).to_dict(orient="records") if limit else df.to_dict(orient="records")
@@ -718,7 +1112,7 @@ def render_figure_cards(
     if caption:
         st.caption(caption)
     if df.empty:
-        st.info("Not packaged in current repo state.")
+        render_status_callout("Unavailable", "Not packaged in current repo state.", "neutral")
         return
     records = df.head(limit).to_dict(orient="records") if limit else df.to_dict(orient="records")
     if export_mode:
@@ -767,7 +1161,7 @@ def render_source_artifact_summary(row: pd.Series) -> None:
 def preview_artifact(path_value: str | Path | None, *, repo_root: str | Path | None = None) -> None:
     path = resolve_repo_path(path_value, repo_root)
     if path is None or not path.exists():
-        st.info("Not packaged in current repo state.")
+        render_status_callout("Unavailable", "Not packaged in current repo state.", "neutral")
         return
     suffix = path.suffix.lower()
     if suffix == ".json":

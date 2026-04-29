@@ -24,6 +24,7 @@ from PIL import Image
 
 from ui.data_access import build_dashboard_state, dashboard_state_signature
 from ui.pages import PageDefinition, visible_page_definitions
+from ui.pages.common import render_status_callout
 
 
 APP_TITLE = "Drifter-Validated Oil Spill Forecasting"
@@ -149,6 +150,19 @@ def _render_sidebar_branding(branding: dict) -> None:
     )
 
 
+def _sidebar_section_modifier(section: str) -> str:
+    key = section.strip().lower()
+    if "main" in key:
+        return "main"
+    if "archive" in key or "support" in key:
+        return "archive"
+    if "advanced" in key:
+        return "advanced"
+    if "reference" in key:
+        return "reference"
+    return "neutral"
+
+
 def _truthy_query_param(value: object) -> bool:
     if isinstance(value, list):
         return any(_truthy_query_param(item) for item in value)
@@ -222,8 +236,11 @@ def _load_export_css() -> None:
 def _render_sidebar_controls(state: dict, branding: dict) -> dict:
     with st.sidebar:
         _render_sidebar_branding(branding)
-        st.markdown("<div class='sidebar-note'>Curated outputs only. This UI never reruns science, edits artifacts, or writes back to the repo.</div>", unsafe_allow_html=True)
-        st.markdown("---")
+        st.markdown(
+            "<div class='sidebar-note'>Curated outputs only. This UI never reruns science, edits artifacts, or writes back to the repo.</div>",
+            unsafe_allow_html=True,
+        )
+        st.markdown("<div class='sidebar-section-label sidebar-section-label--control'>Viewing Mode</div>", unsafe_allow_html=True)
 
         mode_label = st.radio(
             "Viewing mode",
@@ -240,22 +257,22 @@ def _render_sidebar_controls(state: dict, branding: dict) -> dict:
                 index=0,
                 key="visual_layer_selector",
             )
-            st.markdown("---")
-            st.caption("Advanced scope")
             st.markdown(
-                "\n".join(
-                    [
-                        "- Publication figures stay the default layer",
-                        "- Panel and raw galleries remain secondary read-only inspection layers",
-                        "- Comparator and support lanes stay clearly labeled",
-                    ]
-                )
+                (
+                    "<div class='sidebar-inspection-note'>"
+                    "<strong>Secondary inspection layer.</strong> Publication figures stay default; panel/raw galleries, archive pages, and registries remain read-only audit views."
+                    "</div>"
+                ),
+                unsafe_allow_html=True,
             )
 
             curated_packages = state.get("curated_package_roots", [])
-            st.metric("Curated package roots", len(curated_packages))
-            st.metric("Publication figures indexed", len(state["publication_registry"]))
-            st.metric("Focused Phase 1 recipes tested", len(state["phase1_focused_recipe_summary"]))
+            st.markdown("<div class='sidebar-section-label sidebar-section-label--reference'>Package Index</div>", unsafe_allow_html=True)
+            metric_columns = st.columns(1)
+            with metric_columns[0]:
+                st.metric("Curated package roots", len(curated_packages))
+                st.metric("Publication figures indexed", len(state["publication_registry"]))
+                st.metric("Focused Phase 1 recipes tested", len(state["phase1_focused_recipe_summary"]))
 
             with st.expander("Repo read paths", expanded=False):
                 read_paths = [
@@ -276,7 +293,14 @@ def _render_sidebar_controls(state: dict, branding: dict) -> dict:
                 st.code("\n".join(read_paths), language="text")
         else:
             visual_layer = "publication"
-            st.caption("Publication layer active in panel mode; archive and legacy stay secondary.")
+            st.markdown(
+                (
+                    "<div class='sidebar-inspection-note sidebar-inspection-note--panel'>"
+                    "Publication layer is active. Main defense pages appear first; archive and legacy pages are secondary read-only support."
+                    "</div>"
+                ),
+                unsafe_allow_html=True,
+            )
 
     return {
         "advanced": advanced,
@@ -293,10 +317,27 @@ def _render_sidebar_navigation(ui_state: dict) -> None:
     if not page_sections:
         return
     with st.sidebar:
-        st.markdown("---")
-        st.caption("Presentation map" if not ui_state["advanced"] else "Page map")
+        st.markdown("<div class='sidebar-nav-divider'></div>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div class='sidebar-section-label sidebar-section-label--map'>{'Presentation Map' if not ui_state['advanced'] else 'Page Map'}</div>",
+            unsafe_allow_html=True,
+        )
         for section, page_entries in page_sections.items():
-            st.markdown(f"**{section}**")
+            modifier = _sidebar_section_modifier(section)
+            st.markdown(
+                f"<div class='sidebar-nav-heading sidebar-nav-heading--{modifier}'>{section}</div>",
+                unsafe_allow_html=True,
+            )
+            if section == "Archive / Support Only":
+                st.markdown(
+                    "<div class='sidebar-nav-note'>Preserved support and audit material, not primary thesis claims.</div>",
+                    unsafe_allow_html=True,
+                )
+            if ui_state["advanced"] and section == "Advanced":
+                st.markdown(
+                    "<div class='sidebar-nav-note'>Technical pages for inspection only; stored artifacts remain read-only.</div>",
+                    unsafe_allow_html=True,
+                )
             for entry in page_entries:
                 st.page_link(
                     entry["page"],
@@ -313,8 +354,10 @@ def _render_page_wrapper(page_definition: PageDefinition, state: dict, ui_state:
         except Exception:
             if ui_state["advanced"]:
                 raise
-            st.warning(
-                f"{page_definition.label} could not load one of its optional packaged artifacts. The dashboard stays read-only and the other pages remain available."
+            render_status_callout(
+                "Optional artifact could not load",
+                f"{page_definition.label} could not load one of its optional packaged artifacts. The dashboard stays read-only and the other pages remain available.",
+                "warning",
             )
             st.caption(
                 "Open the Artifacts / Logs / Registries page for the synced file indexes, or switch to Advanced mode if you need lower-level inspection."
@@ -375,8 +418,10 @@ def main() -> None:
     _render_sidebar_navigation(ui_state)
 
     if export_mode:
-        st.info(
-            "Print / export mode is active. Navigation chrome, sidebar controls, and interactive-only elements are hidden so this page can be saved cleanly as a PDF."
+        render_status_callout(
+            "Print / export mode",
+            "Print / export mode is active. Navigation chrome, sidebar controls, and interactive-only elements are hidden so this page can be saved cleanly as a PDF.",
+            "info",
         )
 
     navigation.run()

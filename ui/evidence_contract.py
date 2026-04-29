@@ -1,4 +1,4 @@
-"""Draft 22 evidence-role contract for the read-only dashboard."""
+"""Thesis-review evidence-role contract for the read-only dashboard."""
 
 from __future__ import annotations
 
@@ -251,7 +251,7 @@ def _apply_allowed_values(df: pd.DataFrame, column: str, allowed: frozenset[str]
 
 
 def filter_for_page(df: pd.DataFrame, page_id: str, advanced: bool = False) -> pd.DataFrame:
-    """Return rows allowed on a Draft 22 dashboard page."""
+    """Return rows allowed on a panel-facing dashboard page."""
 
     if df is None:
         return pd.DataFrame()
@@ -290,7 +290,7 @@ def assert_no_archive_leak(df: pd.DataFrame, page_id: str, advanced: bool = Fals
                 or record
             )
         )
-    raise AssertionError(f"{page_id} includes rows outside its Draft 22 evidence role: {labels}")
+    raise AssertionError(f"{page_id} includes rows outside its thesis evidence role: {labels}")
 
 
 def _text(record: Mapping[str, Any], key: str) -> str:
@@ -318,7 +318,7 @@ def role_badge_for_record(record: Mapping[str, Any]) -> str:
 
 
 def panel_safe_label(record_or_status: Mapping[str, Any] | str) -> str:
-    """Return a display-safe Draft 22 label without exposing internal status vocabulary."""
+    """Return a display-safe thesis-review label without exposing internal status vocabulary."""
 
     if isinstance(record_or_status, Mapping):
         return role_badge_for_record(record_or_status)

@@ -21,18 +21,23 @@ import streamlit as st
 
 from ui.evidence_contract import ROLE_THESIS, assert_no_archive_leak, filter_for_page
 from ui.pages.common import (
+    render_caveat_ribbon,
     render_export_note,
+    render_feature_grid,
     render_figure_gallery,
+    render_key_takeaway,
     render_markdown_block,
+    render_metric_story_grid,
+    render_modern_hero,
     render_package_cards,
-    render_page_intro,
+    render_section_header,
     render_section_stack,
     render_status_callout,
     render_table,
 )
 
 
-def _draft22_b1_score_table():
+def _b1_score_table():
     import pandas as pd
 
     return pd.DataFrame(
@@ -48,7 +53,7 @@ def _draft22_b1_score_table():
     )
 
 
-def _draft22_b1_fss_table():
+def _b1_fss_table():
     import pandas as pd
 
     return pd.DataFrame(
@@ -109,10 +114,13 @@ def render(state: dict, ui_state: dict) -> None:
     recipe_family = [str(value).strip() for value in phase1_manifest.get("official_recipe_family") or [] if str(value).strip()]
     recipe_scope = f"{len(recipe_family)}-recipe" if recipe_family else "focused"
 
-    render_page_intro(
+    render_modern_hero(
         "Mindoro B1 Primary Validation",
-        "Mindoro B1 is the only main Philippine public-observation validation claim. It is a March 13-14 reinitialization-based check against the March 14 public observation mask.",
+        "Mindoro B1 is the only main Philippine public-observation validation claim: a March 13-14 reinitialization-based check against the March 14 public observation mask.",
         badge=ROLE_THESIS,
+        eyebrow="Primary thesis-facing Mindoro validation",
+        meta=["March 13 -> March 14", "Fixed 1 km grid", "Public observation mask"],
+        tone="thesis",
     )
 
     if export_mode:
@@ -123,30 +131,9 @@ def render(state: dict, ui_state: dict) -> None:
             ]
         )
 
-    render_status_callout(
-        "Main thesis result",
-        "B1 uses the March 13 public extent to initialize the run and the March 14 public extent as the target mask on the same fixed 1 km grid.",
-        "info",
-    )
-    render_status_callout(
-        "No exact 1 km overlap",
-        "No exact 1 km overlap; this supports coastal-neighborhood usefulness, not exact-grid reproduction.",
-        "warning",
-    )
-    render_status_callout(
+    render_caveat_ribbon(
         "Shared-imagery / reinitialization caveat",
         "The March 13–14 pair shares March 12 WorldView-3 imagery provenance, so it is treated as a bounded reinitialization-based validation check rather than a fully independent day-to-day validation claim.",
-        "warning",
-    )
-    render_status_callout(
-        "B1 score summary",
-        "FSS by window: 1 km 0.0000, 3 km 0.0441, 5 km 0.1371, 10 km 0.2490, mean 0.1075. Forecast cells 5, observed cells 22, nearest distance 1414.21 m, centroid distance 7358.16 m, IoU 0.0, Dice 0.0.",
-        "info",
-    )
-    render_status_callout(
-        "Recipe provenance",
-        f"B1 inherits the official {selected_recipe or 'Phase 1 selected'} recipe from the separate focused 2016-2023 Mindoro Phase 1 lane, which completed the {recipe_scope} comparison and promoted the focused historical winner directly into official B1. Phase 3B itself does not directly ingest drifters, and the stored promoted B1 run remains tied to the existing R1_previous reinit lineage.",
-        "info",
     )
 
     mindoro_final_registry = state["mindoro_final_registry"]
@@ -181,19 +168,71 @@ def render(state: dict, ui_state: dict) -> None:
         None,
     )
 
+    render_key_takeaway(
+        "B1 is the only main Philippine public-observation validation claim.",
+        "The stored B1 row supports coastal-neighborhood usefulness at broader FSS windows, while exact 1 km overlap remains absent.",
+        tone="thesis",
+        badge=ROLE_THESIS,
+    )
+    render_section_header(
+        "Main Result",
+        "The primary board and metrics below are the panel-facing B1 result. Values are stored and not recomputed by the dashboard.",
+        badge=ROLE_THESIS,
+    )
+    result_left, result_right = st.columns([1.35, 1])
+    with result_left:
+        render_figure_gallery(
+            primary_figures,
+            title="Primary B1 result board",
+            caption="Stored March 13-14 R1_previous primary-validation board and observation context. Archive rows stay off this surface.",
+            limit=1,
+            columns_per_row=1,
+            export_mode=export_mode,
+            overlay_label="Click to enlarge",
+        )
+    with result_right:
+        render_metric_story_grid(
+            [
+                ("Mean FSS", "0.1075", "Mean across 1, 3, 5, and 10 km windows"),
+                ("FSS 1 km", "0.0000", "No exact-grid overlap"),
+                ("FSS 3 km", "0.0441", "Neighborhood agreement begins"),
+                ("FSS 5 km", "0.1371", "Intermediate-scale agreement"),
+                ("FSS 10 km", "0.2490", "Strongest agreement at broadest window"),
+                ("Nearest distance", "1414.21 m", "Nearest forecast-to-observation distance"),
+                ("Centroid distance", "7358.16 m", "Centroid separation"),
+            ],
+            export_mode=export_mode,
+        )
+        render_feature_grid(
+            [
+                {
+                    "title": "Recipe provenance",
+                    "badge": ROLE_THESIS,
+                    "body": f"B1 inherits the official {selected_recipe or 'Phase 1 selected'} recipe from the separate focused 2016-2023 Mindoro Phase 1 lane.",
+                    "note": f"The {recipe_scope} comparison promoted the focused historical winner into official B1.",
+                }
+            ],
+            columns_per_row=1,
+            export_mode=export_mode,
+        )
+    render_caveat_ribbon(
+        "B1 caveat",
+        "No exact 1 km overlap; this supports coastal-neighborhood usefulness, not exact-grid reproduction. No exact 1 km overlap is present; B1 supports coastal-neighborhood usefulness only. The March 13–14 pair shares March 12 WorldView-3 imagery provenance, so this is treated as a bounded reinitialization-based validation check rather than a fully independent day-to-day validation claim.",
+    )
+
     def _primary_package() -> None:
         render_table(
-            "B1 Draft 22 score card",
-            _draft22_b1_score_table(),
-            download_name="draft22_mindoro_b1_score_card.csv",
+            "Mindoro B1 score card",
+            _b1_score_table(),
+            download_name="mindoro_b1_score_card.csv",
             caption="March 13-14 R1_previous primary validation row only.",
             height=230,
             export_mode=export_mode,
         )
         render_table(
-            "B1 FSS by neighborhood window",
-            _draft22_b1_fss_table(),
-            download_name="draft22_mindoro_b1_fss.csv",
+            "Mindoro B1 FSS by neighborhood window",
+            _b1_fss_table(),
+            download_name="mindoro_b1_fss.csv",
             caption="FSS grows with neighborhood scale; no exact 1 km overlap is present.",
             height=230,
             export_mode=export_mode,

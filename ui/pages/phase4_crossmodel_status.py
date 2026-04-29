@@ -21,17 +21,30 @@ import streamlit as st
 
 from src.core.artifact_status import get_artifact_status
 from ui.data_access import figure_subset
-from ui.pages.common import render_figure_cards, render_markdown_block, render_page_intro, render_status_callout, render_table
+from ui.evidence_contract import ROLE_ADVANCED
+from ui.pages.common import (
+    render_caveat_ribbon,
+    render_figure_cards,
+    render_key_takeaway,
+    render_markdown_block,
+    render_modern_hero,
+    render_section_header,
+    render_table,
+)
 from ui.plots import comparability_status_figure
 
 
 def render(state: dict, ui_state: dict) -> None:
+    export_mode = bool(ui_state.get("export_mode"))
     deferred_status = get_artifact_status("mindoro_phase4_deferred")
 
-    render_page_intro(
+    render_modern_hero(
         "Phase 4 Cross-Model Status",
-        "This page makes the current Mindoro Phase 4 comparator decision explicit. It shows why the repo does not yet package a matched PyGNOME Phase 4 comparison and keeps the current Phase 4 results clearly framed as OpenDrift/OpenOil scenario outputs only.",
-        badge="Read-only status page | no forced Phase 4 comparator",
+        "Advanced status page explaining why no matched Mindoro Phase 4 PyGNOME fate-and-shoreline comparison is packaged yet.",
+        badge=ROLE_ADVANCED,
+        eyebrow="Advanced technical status",
+        meta=["Deferred comparator", "Read-only audit", "No forced claim"],
+        tone="advanced",
     )
 
     verdict_text = state["phase4_crossmodel_verdict"]
@@ -39,17 +52,23 @@ def render(state: dict, ui_state: dict) -> None:
     next_steps_text = state["phase4_crossmodel_next_steps"]
     matrix = state["phase4_crossmodel_matrix"]
 
-    render_status_callout(
+    render_key_takeaway(
         "Current verdict",
         "No matched Phase 4 PyGNOME comparison is packaged yet.",
-        "error",
+        tone="advanced",
+        badge=ROLE_ADVANCED,
     )
-    render_status_callout(
+    render_caveat_ribbon(
         "Single biggest blocker",
         deferred_status.provenance_label,
-        "warning",
+        tone="warning",
     )
 
+    render_section_header(
+        "Comparability Status",
+        "The figure and matrix are technical audit support for the Phase 4 boundary, not a new validation claim.",
+        badge=ROLE_ADVANCED,
+    )
     st.pyplot(comparability_status_figure(matrix), width="stretch")
 
     deferred_note = figure_subset(
@@ -71,8 +90,9 @@ def render(state: dict, ui_state: dict) -> None:
         download_name="phase4_crossmodel_comparability_matrix.csv",
         caption="Each requested quantity currently resolves to no matched Phase 4 PyGNOME package yet.",
         height=320,
+        export_mode=export_mode,
     )
 
-    render_markdown_block("Final verdict", verdict_text, collapsed=False)
-    render_markdown_block("Blocker memo", blockers_text, collapsed=True)
-    render_markdown_block("Minimal next steps", next_steps_text, collapsed=True)
+    render_markdown_block("Final verdict", verdict_text, collapsed=False, export_mode=export_mode)
+    render_markdown_block("Blocker memo", blockers_text, collapsed=True, export_mode=export_mode)
+    render_markdown_block("Minimal next steps", next_steps_text, collapsed=True, export_mode=export_mode)

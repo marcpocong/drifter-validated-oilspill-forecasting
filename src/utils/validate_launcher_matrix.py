@@ -17,6 +17,7 @@ FAIL = "FAIL"
 
 DEFAULT_REPORT_DIR = Path("output") / "launcher_matrix_validation"
 LAUNCHER_MATRIX_PATH = Path("config") / "launcher_matrix.json"
+LAUNCHER_MATRIX_SCHEMA_PATH = Path("config") / "launcher_matrix.schema.json"
 SETTINGS_PATH = Path("config") / "settings.yaml"
 COMMAND_MATRIX_PATH = Path("docs") / "COMMAND_MATRIX.md"
 PYTHON_DISPATCHER_PATH = Path("src") / "__main__.py"
@@ -52,6 +53,22 @@ ALLOWED_THESIS_ROLES = {
     "legacy_support",
     "read_only_governance",
 }
+REQUIRED_ENTRY_FIELDS = (
+    "entry_id",
+    "label",
+    "category_id",
+    "workflow_mode",
+    "description",
+    "rerun_cost",
+    "safe_default",
+    "thesis_role",
+    "draft_section",
+    "claim_boundary",
+    "run_kind",
+    "recommended_for",
+    "confirms_before_run",
+    "steps",
+)
 
 
 @dataclass
@@ -263,7 +280,7 @@ def _draft_alignment_issues(entry: dict[str, Any]) -> list[str]:
     issues: list[str] = []
 
     if not draft_section:
-        issues.append("draft_section is empty; Draft 22 evidence alignment cannot be checked")
+        issues.append("draft_section is empty; manuscript evidence alignment cannot be checked")
     if not boundary:
         issues.append("claim_boundary is empty")
 
@@ -288,11 +305,14 @@ def _draft_alignment_issues(entry: dict[str, Any]) -> list[str]:
     if workflow_mode == "dwh_retro_2010" or entry_id.startswith("dwh_"):
         for phrase in ("external transfer", "not mindoro recalibration"):
             if phrase not in text:
-                issues.append(f"DWH entry is missing Draft 22 boundary phrase '{phrase}'")
+                issues.append(f"DWH entry is missing current manuscript boundary phrase '{phrase}'")
 
-    if "pygnome" in text or run_kind == "comparator_rerun" or str(entry.get("thesis_role") or "") == "comparator_support":
+    is_comparator_entry = run_kind == "comparator_rerun" or str(entry.get("thesis_role") or "") == "comparator_support"
+    if "pygnome" in text or is_comparator_entry:
         if not _contains_any(text, ("comparator-only", "comparator only")):
             issues.append("PyGNOME/comparator entry must keep comparator-only wording")
+        if is_comparator_entry and not _contains_any(boundary, ("comparator-only", "comparator only")):
+            issues.append("comparator entry claim_boundary must explicitly say comparator-only")
 
     if "phase4_oiltype_and_shoreline" in step_phases or entry_id == "mindoro_phase4_only":
         if not _contains_any(text, ("support/context", "support-only", "support only")):
@@ -326,24 +346,7 @@ def _entry_issues(
 ) -> list[str]:
     issues: list[str] = []
     entry_id = str(entry.get("entry_id") or "<missing>")
-    required_fields = (
-        "entry_id",
-        "label",
-        "category_id",
-        "workflow_mode",
-        "description",
-        "rerun_cost",
-        "safe_default",
-        "thesis_role",
-        "draft_section",
-        "claim_boundary",
-        "run_kind",
-        "recommended_for",
-        "confirms_before_run",
-        "steps",
-    )
-
-    for field_name in required_fields:
+    for field_name in REQUIRED_ENTRY_FIELDS:
         if field_name not in entry:
             issues.append(f"missing required field '{field_name}'")
 
@@ -432,6 +435,97 @@ def _entry_issues(
     return issues
 
 
+def _schema_file_issues(repo_root: str | Path) -> list[str]:
+    path = _repo_path(repo_root, LAUNCHER_MATRIX_SCHEMA_PATH)
+    if not path.exists():
+        return ["config/launcher_matrix.schema.json is missing"]
+    try:
+        schema = _read_json(path)
+    except Exception as exc:  # pragma: no cover - defensive path
+        return [f"config/launcher_matrix.schema.json is not valid JSON: {exc}"]
+
+    issues: list[str] = []
+    required = set(schema.get("required") or [])
+    for field_name in ("catalog_version", "entrypoint", "categories", "role_groups", "entries"):
+        if field_name not in required:
+            issues.append(f"schema top-level required list is missing '{field_name}'")
+
+    entry_schema = (
+        schema.get("properties", {})
+        .get("entries", {})
+        .get("items", {})
+    )
+    entry_required = set(entry_schema.get("required") or [])
+    missing_required = sorted(set(REQUIRED_ENTRY_FIELDS) - entry_required)
+    if missing_required:
+        issues.append(
+            "schema entry required list is missing: " + ", ".join(missing_required)
+        )
+
+    run_kind_enum = set(
+        entry_schema.get("properties", {})
+        .get("run_kind", {})
+        .get("enum", [])
+    )
+    if run_kind_enum and run_kind_enum != ALLOWED_RUN_KINDS:
+        issues.append("schema run_kind enum does not match validator allowed values")
+
+    thesis_role_enum = set(
+        entry_schema.get("properties", {})
+        .get("thesis_role", {})
+        .get("enum", [])
+    )
+    if thesis_role_enum and thesis_role_enum != ALLOWED_THESIS_ROLES:
+        issues.append("schema thesis_role enum does not match validator allowed values")
+
+    return issues
+
+
+def _visible_menu_order_issues(
+    *,
+    entries: list[dict[str, Any]],
+    role_groups: list[dict[str, Any]],
+) -> list[str]:
+    issues: list[str] = []
+    for group in role_groups:
+        group_id = str(group.get("GroupId") or "<missing>")
+        roles = {
+            str(role)
+            for role in group.get("thesis_roles") or []
+            if str(role)
+        }
+        if not roles:
+            issues.append(f"role group '{group_id}' has no thesis_roles")
+            continue
+
+        visible_group_entries = [
+            entry
+            for entry in entries
+            if not bool(entry.get("menu_hidden")) and str(entry.get("thesis_role") or "") in roles
+        ]
+        orders: dict[str, list[str]] = {}
+        for entry in visible_group_entries:
+            order = entry.get("menu_order")
+            if order is None:
+                issues.append(f"visible entry '{entry.get('entry_id', '<missing>')}' is missing menu_order")
+                continue
+            key = str(order)
+            orders.setdefault(key, []).append(str(entry.get("entry_id") or "<missing>"))
+
+        duplicates = {
+            order: ids
+            for order, ids in orders.items()
+            if len(ids) > 1
+        }
+        for order, ids in sorted(duplicates.items()):
+            issues.append(
+                f"duplicate visible menu_order '{order}' in role group '{group_id}': "
+                + ", ".join(sorted(ids))
+            )
+
+    return issues
+
+
 def audit_launcher_matrix(repo_root: str | Path = ".") -> dict[str, Any]:
     root = Path(repo_root).resolve()
     matrix = _load_launcher_matrix(root)
@@ -440,6 +534,7 @@ def audit_launcher_matrix(repo_root: str | Path = ".") -> dict[str, Any]:
         for category in matrix.get("categories") or []
         if str(category.get("category_id") or "")
     }
+    role_groups = [dict(group or {}) for group in matrix.get("role_groups") or []]
     entries = [dict(entry or {}) for entry in matrix.get("entries") or []]
     entry_ids = [str(entry.get("entry_id") or "") for entry in entries]
     entry_map = {str(entry.get("entry_id") or ""): entry for entry in entries if str(entry.get("entry_id") or "")}
@@ -450,13 +545,17 @@ def audit_launcher_matrix(repo_root: str | Path = ".") -> dict[str, Any]:
     aliases_by_canonical = _aliases_by_canonical(entries, entry_map)
     global_issues: list[str] = []
 
+    global_issues.extend(_schema_file_issues(root))
     if not categories:
         global_issues.append("launcher matrix has no categories")
     if not entries:
         global_issues.append("launcher matrix has no entries")
+    if not role_groups:
+        global_issues.append("launcher matrix has no role_groups")
     duplicate_ids = sorted({entry_id for entry_id in entry_ids if entry_id and entry_ids.count(entry_id) > 1})
     if duplicate_ids:
         global_issues.append("duplicate entry IDs found: " + ", ".join(duplicate_ids))
+    global_issues.extend(_visible_menu_order_issues(entries=entries, role_groups=role_groups))
     if command_matrix_ids is None:
         global_issues.append("docs/COMMAND_MATRIX.md is missing")
     elif command_matrix_ids:

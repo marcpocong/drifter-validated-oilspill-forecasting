@@ -21,17 +21,22 @@ import streamlit as st
 
 from ui.evidence_contract import ROLE_COMPARATOR, assert_no_archive_leak, filter_for_page
 from ui.pages.common import (
+    render_caveat_ribbon,
     render_export_note,
+    render_feature_grid,
     render_figure_gallery,
+    render_key_takeaway,
     render_markdown_block,
+    render_metric_story_grid,
+    render_modern_hero,
     render_package_cards,
-    render_page_intro,
+    render_section_header,
     render_status_callout,
     render_table,
 )
 
 
-def _draft22_track_a_table():
+def _track_a_table():
     import pandas as pd
 
     return pd.DataFrame(
@@ -98,10 +103,13 @@ def render(state: dict, ui_state: dict) -> None:
         None,
     )
 
-    render_page_intro(
+    render_modern_hero(
         "Mindoro Track A Comparator Support",
         "Track A is same-case OpenDrift-PyGNOME comparator support for the March 13-14 Mindoro case. It is not a second validation row.",
         badge=ROLE_COMPARATOR,
+        eyebrow="Same-case comparator lane",
+        meta=["Comparator support only", "March 14 target", "PyGNOME is not truth"],
+        tone="comparator",
     )
 
     if export_mode:
@@ -112,31 +120,65 @@ def render(state: dict, ui_state: dict) -> None:
             ]
         )
 
-    render_status_callout(
-        "PyGNOME comparator boundary",
-        "PyGNOME is comparator-only and is not observational truth.",
-        "warning",
+    render_key_takeaway(
+        "Track A contextualizes B1; it is not another validation row.",
+        "OpenDrift R1_previous remains the B1-facing result, while deterministic PyGNOME is shown only as same-case comparator support.",
+        tone="comparator",
+        badge=ROLE_COMPARATOR,
     )
-    render_status_callout(
-        "Relationship to B1",
-        "Track A is attached to the B1 package as supporting cross-model context on the same March 14 target. It contextualizes model behavior and never replaces the main B1 public-observation validation claim.",
-        "info",
-    )
-    render_status_callout(
-        "Track A score summary",
-        "OpenDrift R1_previous mean FSS 0.1075; deterministic PyGNOME comparator mean FSS 0.0061. PyGNOME nearest distance is 6082.76 m.",
-        "info",
-    )
-    render_status_callout(
-        "Phase 4 boundary note",
-        "This page stays in Phase 3 spatial-comparator territory only. No matched Mindoro Phase 4 PyGNOME package is shown here; the current Mindoro Phase 4 layer remains OpenDrift/OpenOil scenario context only.",
-        "warning",
+    render_caveat_ribbon(
+        "Same-case comparator only",
+        "Same-case comparator only; the March 14 public mask remains the external reference. PyGNOME is comparator-only and is not observational truth. Track A does not replace the main B1 public-observation validation claim.",
     )
 
+    render_section_header("Main Comparison", "Two stored model rows are shown side by side with their evidence boundary intact.")
+    left, right = st.columns(2)
+    with left:
+        render_feature_grid(
+            [
+                {
+                    "title": "OpenDrift R1_previous",
+                    "badge": ROLE_COMPARATOR,
+                    "body": "B1-attached OpenDrift row on the same March 14 target.",
+                    "note": "Mean FSS 0.1075; nearest distance 1414.21 m.",
+                }
+            ],
+            columns_per_row=1,
+            export_mode=export_mode,
+        )
+        render_metric_story_grid(
+            [
+                ("Mean FSS", "0.1075", "Comparator table value"),
+                ("Nearest distance", "1414.21 m", "OpenDrift row"),
+            ],
+            export_mode=export_mode,
+        )
+    with right:
+        render_feature_grid(
+            [
+                {
+                    "title": "PyGNOME deterministic",
+                    "badge": ROLE_COMPARATOR,
+                    "body": "Deterministic PyGNOME comparator support on the same external reference.",
+                    "note": "Mean FSS 0.0061; nearest distance 6082.76 m.",
+                }
+            ],
+            columns_per_row=1,
+            export_mode=export_mode,
+        )
+        render_metric_story_grid(
+            [
+                ("Mean FSS", "0.0061", "Comparator-only support"),
+                ("Nearest distance", "6082.76 m", "PyGNOME is not truth"),
+            ],
+            export_mode=export_mode,
+        )
+
+    render_section_header("Details", "Stored comparator values, curated figures, and filtered summary tables remain read-only.")
     render_table(
-        "Draft 22 Track A comparator values",
-        _draft22_track_a_table(),
-        download_name="draft22_mindoro_track_a_comparator_values.csv",
+        "Track A comparator values",
+        _track_a_table(),
+        download_name="mindoro_track_a_comparator_values.csv",
         caption="OpenDrift R1_previous is compared with deterministic PyGNOME as support only.",
         height=180,
         export_mode=export_mode,

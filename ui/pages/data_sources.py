@@ -22,7 +22,16 @@ ensure_repo_root_on_path(__file__)
 import pandas as pd
 import streamlit as st
 
-from ui.pages.common import render_badge_strip, render_metric_row, render_page_intro, render_status_callout, render_table
+from ui.pages.common import (
+    render_badge_strip,
+    render_feature_grid,
+    render_key_takeaway,
+    render_metric_row,
+    render_modern_hero,
+    render_section_header,
+    render_status_callout,
+    render_table,
+)
 
 
 CATEGORY_ORDER = [
@@ -135,19 +144,27 @@ def _category_sequence(df: pd.DataFrame) -> list[str]:
     return present + extras
 
 
+def _category_count(category_counts: dict[str, int], *categories: str) -> int:
+    return sum(int(category_counts.get(category, 0)) for category in categories)
+
+
 def render(state: dict, ui_state: dict) -> None:
     export_mode = bool(ui_state.get("export_mode"))
-    render_page_intro(
+    render_modern_hero(
         "Data Sources & Provenance",
-        "Panel-facing registry of the external observation, drifter, forcing, shoreline, oil-property, and model/tool sources referenced by the stored workflow. This page is read-only and does not rerun science.",
-        badge="Reference page | read-only provenance",
+        "Reference registry of external observation, drifter, forcing, shoreline, oil-property, and model/tool sources used by the stored workflow.",
+        badge="Reference page / read-only provenance",
+        eyebrow="Provenance reference",
+        meta=["Drifters", "Forcing", "Public masks", "Manifests"],
+        tone="advanced",
     )
     render_badge_strip(["panel-ready", "stored outputs", "provenance", "read-only"])
 
-    render_status_callout(
+    render_key_takeaway(
         "Panel answer",
         "The workflow uses public drifter, satellite/ArcGIS observation, ocean-current, wind, wave/Stokes, shoreline, and oil-property sources. Exact source names, links, repo paths, and caveats are listed below.",
-        tone="success",
+        tone="advanced",
+        badge="Reference page / read-only provenance",
     )
     render_status_callout(
         "How to read this page",
@@ -158,13 +175,20 @@ def render(state: dict, ui_state: dict) -> None:
     registry = state.get("data_source_registry", {})
     df = _registry_frame(registry if isinstance(registry, dict) else {})
     if df.empty:
-        st.warning(
-            "No data-source registry was loaded. Expected config/data_sources.yaml. "
-            "The rest of the dashboard can still be reviewed from stored outputs."
+        render_status_callout(
+            "Data-source registry not loaded",
+            "No data-source registry was loaded. Expected config/data_sources.yaml. The rest of the dashboard can still be reviewed from stored outputs.",
+            "warning",
         )
         return
 
     category_counts = df["Category"].value_counts().to_dict() if "Category" in df.columns else {}
+    manifest_count = int(
+        df.astype(str)
+        .agg(" ".join, axis=1)
+        .str.contains("manifest|package|registry", case=False, regex=True, na=False)
+        .sum()
+    )
     render_metric_row(
         [
             ("Registered sources", str(len(df))),
@@ -172,6 +196,52 @@ def render(state: dict, ui_state: dict) -> None:
             ("Forcing entries", str(sum(category_counts.get(category, 0) for category in ["ocean_current_forcing", "wind_forcing", "wave_forcing"]))),
             ("Tool/support entries", str(sum(category_counts.get(category, 0) for category in ["shoreline_geography", "oil_property", "model_tool", "support_reference"]))),
         ],
+        export_mode=export_mode,
+    )
+    render_section_header(
+        "Source Families",
+        "Cards group the same registry into the families panel reviewers usually ask about first.",
+        badge="Reference page / read-only provenance",
+    )
+    render_feature_grid(
+        [
+            {
+                "title": "Drifters",
+                "body": "Transport-provenance inputs and drifter validation sources.",
+                "badge": "Reference page",
+                "note": f"{_category_count(category_counts, 'transport_validation')} registered source(s)",
+                "tone": "advanced",
+            },
+            {
+                "title": "Forcing",
+                "body": "Ocean-current, wind, and wave/Stokes products used by stored model runs.",
+                "badge": "Reference page",
+                "note": f"{_category_count(category_counts, 'ocean_current_forcing', 'wind_forcing', 'wave_forcing')} registered source(s)",
+                "tone": "advanced",
+            },
+            {
+                "title": "Public masks",
+                "body": "Observation-derived masks used as external validation context, not model comparators.",
+                "badge": "Reference page",
+                "note": f"{_category_count(category_counts, 'observation_truth')} registered source(s)",
+                "tone": "advanced",
+            },
+            {
+                "title": "Shoreline / grids",
+                "body": "Shoreline, geography, grid, and support layers used by stored outputs.",
+                "badge": "Reference page",
+                "note": f"{_category_count(category_counts, 'shoreline_geography', 'support_reference')} registered source(s)",
+                "tone": "advanced",
+            },
+            {
+                "title": "Manifests / package roots",
+                "body": "Repo manifests, registries, inventories, and package-root references used for audit.",
+                "badge": "Reference page",
+                "note": f"{manifest_count} source row(s) mention manifests, packages, or registries",
+                "tone": "advanced",
+            },
+        ],
+        columns_per_row=3,
         export_mode=export_mode,
     )
 
@@ -196,6 +266,10 @@ def render(state: dict, ui_state: dict) -> None:
             )
 
     filtered = _filter_frame(df, search_text=search_text, categories=selected_categories)
+    render_section_header(
+        "Registry Details",
+        "Use filters for review; grouped tables below preserve exact source names, links, caveats, and workflow roles.",
+    )
     render_table(
         "All registered sources",
         filtered,

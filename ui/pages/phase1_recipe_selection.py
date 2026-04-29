@@ -23,11 +23,16 @@ import streamlit as st
 from src.core.study_box_catalog import ARCHIVE_ONLY_STUDY_BOX_NUMBERS, THESIS_FACING_STUDY_BOX_NUMBERS
 from ui.evidence_contract import ROLE_ADVANCED, ROLE_ARCHIVE, ROLE_THESIS, filter_for_page
 from ui.pages.common import (
+    render_caveat_ribbon,
+    render_evidence_path,
     render_export_note,
+    render_feature_grid,
     render_figure_gallery,
+    render_key_takeaway,
     render_markdown_block,
-    render_metric_row,
-    render_page_intro,
+    render_metric_story_grid,
+    render_modern_hero,
+    render_section_header,
     render_section_stack,
     render_status_callout,
     render_table,
@@ -103,7 +108,7 @@ def _sort_summary_by_rank(summary: pd.DataFrame, ranking: pd.DataFrame) -> pd.Da
     return payload.drop(columns=["_recipe_key", "_rank_sort"]).reset_index(drop=True)
 
 
-def _draft22_ranking_table() -> pd.DataFrame:
+def _focused_recipe_ranking_summary_table() -> pd.DataFrame:
     return pd.DataFrame(
         [
             {"Rank": 1, "Recipe": "cmems_gfs", "Mean NCS": "4.5886", "Median NCS": "4.6305", "Status": "Winner / selected for B1"},
@@ -117,13 +122,13 @@ def _draft22_ranking_table() -> pd.DataFrame:
 def _transport_settings_table() -> pd.DataFrame:
     return pd.DataFrame(
         [
-            {"Field": "Workflow mode", "Draft 22 value": "phase1_mindoro_focus_pre_spill_2016_2023"},
-            {"Field": "Historical window", "Draft 22 value": "2016-01-01T00:00:00Z to 2023-03-02T23:59:59Z"},
-            {"Field": "Focused validation box", "Draft 22 value": "[118.751, 124.305, 10.62, 16.026]"},
-            {"Field": "Drifter dataset", "Draft 22 value": "NOAA OSMC ERDDAP drifter_6hour_qc"},
-            {"Field": "Segment structure", "Draft 22 value": "72 h segments on a 6 h grid"},
-            {"Field": "Acceptance rules", "Draft 22 value": "drogued only; full duration; continuous coverage; non-overlapping windows; all points inside validation box"},
-            {"Field": "Ranking settings", "Draft 22 value": "direct wind drift factor 0.02; Stokes drift on; horizontal diffusivity 0.0 m2/s; weathering off"},
+            {"Field": "Workflow mode", "Stored thesis-facing value": "phase1_mindoro_focus_pre_spill_2016_2023"},
+            {"Field": "Historical window", "Stored thesis-facing value": "2016-01-01T00:00:00Z to 2023-03-02T23:59:59Z"},
+            {"Field": "Focused validation box", "Stored thesis-facing value": "[118.751, 124.305, 10.62, 16.026]"},
+            {"Field": "Drifter dataset", "Stored thesis-facing value": "NOAA OSMC ERDDAP drifter_6hour_qc"},
+            {"Field": "Segment structure", "Stored thesis-facing value": "72 h segments on a 6 h grid"},
+            {"Field": "Acceptance rules", "Stored thesis-facing value": "drogued only; full duration; continuous coverage; non-overlapping windows; all points inside validation box"},
+            {"Field": "Ranking settings", "Stored thesis-facing value": "direct wind drift factor 0.02; Stokes drift on; horizontal diffusivity 0.0 m2/s; weathering off"},
         ]
     )
 
@@ -220,10 +225,13 @@ def render(state: dict, ui_state: dict) -> None:
         or (str(reference_ranking.iloc[0]["recipe"]).strip() if not reference_ranking.empty and "recipe" in reference_ranking.columns else "")
     )
 
-    render_page_intro(
+    render_modern_hero(
         "Phase 1 Transport Provenance",
-        "Focused historical drifter segments support transport provenance and recipe selection for official B1. They do not directly validate the mapped oil footprint.",
+        "Focused historical drifter segments support transport provenance and recipe selection for official B1; they do not directly validate the mapped oil footprint.",
         badge=ROLE_THESIS,
+        eyebrow="Transport provenance lane",
+        meta=["Read-only stored outputs", "Recipe selection", "Not oil-footprint truth"],
+        tone="thesis",
     )
 
     if export_mode:
@@ -234,38 +242,60 @@ def render(state: dict, ui_state: dict) -> None:
             ]
         )
 
-    render_status_callout(
-        "Evidence boundary",
-        "Drifter segments support transport-provenance and recipe selection; they are not direct oil-footprint truth.",
-        "info",
+    render_key_takeaway(
+        "Selected transport recipe",
+        "Focused Mindoro Phase 1 selects cmems_gfs as the transport recipe inherited by B1.",
+        tone="thesis",
+        badge=ROLE_THESIS,
     )
-    render_status_callout(
-        "Focused Mindoro result",
-        "The focused Mindoro provenance lane evaluates `cmems_era5`, `cmems_gfs`, `hycom_era5`, and `hycom_gfs`. The historical ranking winner is `cmems_gfs`, and official B1 adopts `cmems_gfs` directly from that focused historical winner.",
-        "info",
+    render_caveat_ribbon(
+        "Transport provenance, not oil-footprint truth",
+        "Drifter segments support transport-provenance and recipe selection; they are not direct oil-footprint truth. They do not make Phase 1 a B1 public-observation validation row.",
     )
+    render_evidence_path(
+        [
+            ("Drifter screening", "Strict historical drifter windows are screened inside the focused Mindoro provenance lane.", ROLE_THESIS),
+            ("72 h segments", "Accepted windows are treated as 72 h segments on a 6 h grid.", ROLE_THESIS),
+            ("Four recipes", "cmems_era5, cmems_gfs, hycom_era5, and hycom_gfs are compared.", ROLE_THESIS),
+            ("NCS ranking", "The focused ranking table remains the winner authority.", ROLE_THESIS),
+            ("Selected recipe", "cmems_gfs is promoted into the official B1 setup.", ROLE_THESIS),
+        ],
+        title="Recipe-Selection Workflow",
+        caption="The workflow stops at transport provenance and recipe selection; public-observation scoring happens later on the B1 page.",
+        export_mode=export_mode,
+    )
+    render_metric_story_grid(
+        [
+            ("Selected recipe", "cmems_gfs", "Focused historical winner adopted by B1"),
+            ("Accepted segments", "65", "Full strict accepted segment set"),
+            ("Ranking subset", "19", "February-April ranking subset"),
+            ("Historical window", "2016-01-01 to 2023-03-02", "Pre-spill focused provenance period"),
+            ("Focused box", "[118.751, 124.305, 10.62, 16.026]", "Focused Mindoro Phase 1 validation box"),
+        ],
+        export_mode=export_mode,
+    )
+    render_feature_grid(
+        [
+            {
+                "title": "Recipe family",
+                "badge": ROLE_THESIS,
+                "body": "The focused Mindoro provenance lane evaluates cmems_era5, cmems_gfs, hycom_era5, and hycom_gfs.",
+                "note": "Ranking is by stored NCS values.",
+            },
+            {
+                "title": "B1 inheritance",
+                "badge": ROLE_THESIS,
+                "body": "B1 inherits the selected transport recipe from this separate provenance lane.",
+                "note": "Phase 3B itself does not directly ingest drifters.",
+            },
+        ],
+        columns_per_row=2,
+        export_mode=export_mode,
+    )
+
     selected_recipe_value = f"Selected Mindoro B1 recipe: `{selected_recipe}`."
     if ranking_runner_up:
         selected_recipe_value += f" The focused ranking table shows `{ranking_runner_up}` as the runner-up."
-    render_status_callout(
-        "Selected Mindoro B1 recipe",
-        selected_recipe_value,
-        "info",
-    )
-    render_status_callout(
-        "How B1 uses it",
-        "Mindoro B1 inherits the recipe selected by this separate Phase 1 provenance lane. Phase 3B itself does not directly ingest drifters.",
-        "info",
-    )
-    render_status_callout(
-        "Recipe-scope note",
-        (
-            "The focused Mindoro provenance lane now evaluates the four-recipe family, and the official B1 baseline promotes the focused historical winner directly."
-            if not gfs_historical_winner_not_adopted
-            else "The focused Mindoro provenance lane now evaluates the four-recipe family. If a GFS-backed recipe wins historically, the official B1 baseline still keeps the highest-ranked non-GFS fallback until a separate event-scale GFS adoption workflow is completed."
-        ),
-        "info",
-    )
     if gfs_historical_winner_not_adopted:
         render_status_callout(
             "Historical-vs-official split",
@@ -279,28 +309,20 @@ def render(state: dict, ui_state: dict) -> None:
             "warning",
         )
 
-    render_metric_row(
-        [
-            ("Selected Mindoro B1 recipe", "cmems_gfs"),
-            ("Full strict accepted segments", "65"),
-            ("February-April ranking subset", "19"),
-            ("Study window", "2016-01-01 to 2023-03-02"),
-        ],
-        export_mode=export_mode,
-    )
-
+    render_section_header("Main Result", selected_recipe_value, badge=ROLE_THESIS)
     render_table(
-        "Draft 22 focused recipe ranking",
-        _draft22_ranking_table(),
-        download_name="draft22_phase1_recipe_ranking.csv",
-        caption="Draft 22 ranking values for the focused Mindoro Phase 1 provenance lane.",
+        "Focused recipe ranking summary",
+        _focused_recipe_ranking_summary_table(),
+        download_name="phase1_focused_recipe_ranking_summary.csv",
+        caption="Stored ranking values for the focused Mindoro Phase 1 provenance lane.",
         height=190,
         export_mode=export_mode,
     )
+    render_section_header("Details", "Transport settings, geography references, and stored provenance tables remain read-only.")
     render_table(
-        "Draft 22 transport-provenance settings",
+        "Transport-provenance settings",
         _transport_settings_table(),
-        download_name="draft22_phase1_transport_settings.csv",
+        download_name="phase1_transport_settings.csv",
         caption="The active provenance lane is separate from B1 public-observation scoring.",
         height=250,
         export_mode=export_mode,
@@ -308,7 +330,7 @@ def render(state: dict, ui_state: dict) -> None:
     render_table(
         "Default geography references",
         _study_box_summary_table().head(2 if not ui_state["advanced"] else 4),
-        download_name="draft22_study_box_roles.csv",
+        download_name="study_box_roles.csv",
         caption=(
             "Default panel mode shows Study Boxes 2 and 4 as thesis-facing geography references. Other provenance and scoring-grid references stay outside the default panel view."
             if not ui_state["advanced"]

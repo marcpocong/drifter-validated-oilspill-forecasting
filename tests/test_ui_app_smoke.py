@@ -496,7 +496,7 @@ class UiAppSmokeTests(unittest.TestCase):
         self.assertIn("mindoro scoring-grid bounds geography reference", lowered)
         self.assertGreaterEqual(self._gallery_tile_count(at), 5)
 
-    def test_mindoro_b1_page_shows_draft22_scores_and_excludes_archive_terms(self):
+    def test_mindoro_b1_page_shows_current_scores_and_excludes_archive_terms(self):
         at = AppTest.from_function(_mindoro_validation_wrapper_for_test, default_timeout=60)
         at.run()
         self.assertFalse(at.exception)

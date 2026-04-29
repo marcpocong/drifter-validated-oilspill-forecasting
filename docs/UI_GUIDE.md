@@ -2,133 +2,136 @@
 
 ## Purpose
 
-The local Streamlit app is a read-only thesis presentation layer over the artifacts that already exist in this repo. It does not rerun science, does not mutate outputs, and does not expose write-back controls.
+The Streamlit dashboard is a read-only thesis review surface over already packaged artifacts. It presents stored outputs, figures, registries, and governance notes; it must not rerun science, mutate outputs, rewrite manifests, edit configs, or reinterpret stored result values.
 
-## Launch Command
+## Layout System
+
+The redesigned UI uses a shared card-and-section system in `ui/pages/common.py` so pages read like a modern thesis-defense microsite rather than a stack of default Streamlit alerts. The main defense pages follow this pattern:
+
+1. Modern hero with the page title, evidence-role pill, and one-sentence purpose.
+2. Key takeaway card for panel-facing interpretation.
+3. Main result area with feature figures, metric cards, or comparison cards.
+4. Caveat or boundary ribbon that keeps evidence limits visible.
+5. Details section for tables, registries, notes, and extra figures.
+6. Archive/support material separated visually from the main claim.
+
+Archive, legacy, reference, and advanced pages use the same helpers, but with muted archive/advanced styling so they remain visibly secondary.
+
+## Reusable Helpers
+
+Primary shared helpers live in `ui/pages/common.py`:
+
+- `render_modern_hero(...)`
+- `render_key_takeaway(...)`
+- `render_caveat_ribbon(...)`
+- `render_support_notice(...)`
+- `render_archive_notice(...)`
+- `render_evidence_path(...)`
+- `render_feature_card(...)`
+- `render_feature_grid(...)`
+- `render_metric_story_grid(...)`
+- `render_section_header(...)`
+- `render_figure_feature(...)`
+- `render_page_footer_note(...)`
+- Existing read-only table, gallery, package, markdown, badge, and export helpers.
+
+These helpers use escaped HTML where appropriate and should remain dependency-free beyond the existing Streamlit/Pandas/Pillow stack.
+
+## Running The Dashboard
 
 Start the pipeline container if needed:
-
-macOS:
-
-```bash
-[ -f .env ] || cp .env.example .env
-open -a Docker
-docker compose up -d pipeline
-```
-
-Linux:
-
-```bash
-[ -f .env ] || cp .env.example .env
-docker compose up -d pipeline
-```
-
-Windows PowerShell:
 
 ```powershell
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 docker compose up -d pipeline
 ```
 
-Launch the UI:
+Launch Streamlit:
 
-```bash
+```powershell
 docker compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501
 ```
 
-Open `http://localhost:8501`.
+Open:
 
-## How It Fits With The Launcher
+```text
+http://localhost:8501
+```
 
-- The UI is intentionally not a launcher entry.
-- List current workflow entries with `.\start.ps1 -List -NoPause` or `.\start.ps1 -Help -NoPause`.
-- Refresh UI-facing read-only surfaces with `phase5_sync`, `trajectory_gallery`, `trajectory_gallery_panel`, `figure_package_publication`, or `prototype_legacy_final_figures` before launching the UI when you need updated packages.
+For print/export review, append `?export=1` to a page URL. Export mode hides sidebar/navigation chrome and keeps cards/figures print-friendly.
 
-## Read-Only Guarantee
+## Viewing Modes
 
-- The app reads current packaged outputs only.
-- No scientific rerun controls are exposed in the UI.
-- Missing optional artifacts fail softly so the rest of the dashboard remains available.
+Panel-friendly mode is the default. It should show the main defense story first:
 
-## Responsive Review Checks
+1. Defense / Panel Review
+2. Phase 1 Transport Provenance
+3. Mindoro B1 Primary Validation
+4. Mindoro Track A Comparator Support
+5. DWH External Transfer Validation
+6. Mindoro Oil-Type and Shoreline Context
+7. Archive / Support Only pages as secondary material
+8. Reference pages for provenance and registries
 
-- The defense dashboard uses responsive metric cards for panel-summary values so long labels, values, and status notes wrap instead of being truncated.
-- Before panel review, check the UI at browser widths near `1280`, `1440`, `1600`, and `1920` px and at zoom levels `90%`, `100%`, `125%`, and `150%`.
-- These checks are presentation-only; they must not rerun science, rewrite packaged outputs, or change thesis evidence semantics.
+Advanced mode exposes technical inspection layers:
 
-## Panel Mode Surface
+- B1 Recipe Provenance — Not Truth Mask
+- Phase 4 Cross-Model Status
+- Trajectory Explorer
+- Raw/panel galleries and registry previews where available
 
-Panel mode keeps the final evidence order visible:
+Advanced pages are audit surfaces only. They should not look like primary validation pages.
 
-1. Focused Mindoro Phase 1 provenance
-2. Phase 2 standardized forecast products
-3. Mindoro `B1` primary public-observation validation
-4. Mindoro `Track A` comparator-only support
-5. DWH external transfer validation
-6. Mindoro oil-type and shoreline support/context
-7. `prototype_2016` legacy/archive support
-8. Reproducibility / governance / read-only package layer
+## Evidence Guardrails
 
-Primary pages:
+Keep these claims stable across page text, labels, captions, and export views:
 
-- `Defense / Panel Review`
-- `Phase 1 Transport Provenance`
-- `Mindoro B1 Primary Validation`
-- `Mindoro Track A Comparator Support`
-- `DWH External Transfer Validation`
-- `Mindoro Oil-Type and Shoreline Context`
+- Focused Mindoro Phase 1 is transport provenance / recipe selection, not oil-footprint truth.
+- Mindoro B1 is the only main Philippine public-observation validation claim.
+- B1 supports coastal-neighborhood usefulness, not exact 1 km overlap.
+- The March 13–14 B1 case keeps the shared-imagery / reinitialization caveat visible.
+- Mindoro Track A and PyGNOME are comparator-only support.
+- DWH is external transfer validation; it does not recalibrate Mindoro.
+- Mindoro oil-type and shoreline outputs are support/context only.
+- Legacy/archive outputs are preserved for provenance, audit, and reproducibility only.
+- UI/publication packages are presentation and governance surfaces over stored outputs only.
 
-Secondary pages:
+## Read-Only Rules
 
-- `Archive - Mindoro Validation Provenance`
-- `Archive - Legacy 2016 Support`
+UI work may modify presentation files such as:
 
-Reference pages:
+- `ui/app.py`
+- `ui/assets/style.css`
+- `ui/pages/common.py`
+- `ui/pages/*.py`
+- `docs/UI_GUIDE.md`
 
-- `Data Sources & Provenance`
-- `Artifacts / Logs / Registries`
+UI work must not modify:
 
-Advanced-only page:
+- `output/`
+- `data_processed/`
+- science scripts or rerun pipelines
+- configs/manifests that define scientific runs
+- stored scorecards or scientific result values
 
-- `B1 Recipe Provenance - Not Truth Mask`
-- `Phase 4 Cross-Model Status`
-- `Trajectory Explorer`
+The dashboard should fail softly if optional artifacts are absent, but it must never fill gaps by generating new science.
 
-## Output Roots Behind The Main Pages
+## Visual QA Checklist
 
-- `Defense / Panel Review`: curated package roots plus `output/figure_package_publication/`
-- `Phase 1 Transport Provenance`: `output/phase1_mindoro_focus_pre_spill_2016_2023/` and shared study-context figures
-- `Mindoro B1 Primary Validation`: `output/Phase 3B March13-14 Final Output/`
-- `Mindoro Track A Comparator Support`: `output/Phase 3B March13-14 Final Output/publication/comparator_pygnome/`
-- `DWH External Transfer Validation`: `output/Phase 3C DWH Final Output/`
-- `Mindoro Oil-Type and Shoreline Context`: `output/phase4/CASE_MINDORO_RETRO_2023/`
-- `Archive - Mindoro Validation Provenance`: `output/final_validation_package/` and archive-routed March-family materials
-- `Archive - Legacy 2016 Support`: `output/2016 Legacy Runs FINAL Figures/`
-- `Data Sources & Provenance`: `config/data_sources.yaml` and `docs/DATA_SOURCES.md`
-- `Artifacts / Logs / Registries`: `output/final_reproducibility_package/` and `output/final_validation_package/`
+Before review, check the app at laptop and projector widths:
 
-## Surface Guardrails
-
-- `B1` is the only main-text primary Mindoro validation row.
-- March 13-14 keeps the shared-imagery caveat explicit.
-- `Track A` and PyGNOME views remain comparator-only support.
-- Mindoro oil-type and shoreline views remain support/context only.
-- `Data Sources & Provenance` is a read-only registry view; it does not expand claims or invent exact endpoints.
-- UI, figure packages, and publication packages organize stored outputs only; they do not create new scientific results.
-
-## Study Box Numbering
-
-- Study Box `1`: focused Mindoro Phase 1 validation box. Archive/advanced/support only.
-- Study Box `2`: `mindoro_case_domain` overview extent. Thesis-facing context.
-- Study Box `3`: scoring-grid display bounds. Archive/advanced/support only.
-- Study Box `4`: `prototype_2016` first-code search box. Historical-origin support only.
+- Main pages should use cards, ribbons, metrics, and figure boards, not piles of default `st.info` / `st.warning` blocks.
+- Long metric values should wrap cleanly without horizontal overflow.
+- Figure cards should keep captions readable and avoid large empty gaps.
+- Sidebar navigation should be readable, structured, and less visually dominant than the page content.
+- Archive and legacy pages should use muted hero/card styling and remain visually secondary.
+- Export mode should hide chrome and avoid breaking inside hero/cards where possible.
 
 ## Branding
 
-The app supports optional logo assets and falls back cleanly when they are absent.
+Optional branding assets are supported and should fail gracefully when missing:
 
-- Preferred main logo: `ui/assets/logo.svg` or `ui/assets/logo.png`
-- Optional icon: `ui/assets/logo_icon.svg` or `ui/assets/logo_icon.png`
-- Missing logo files do not break the app
+- `ui/assets/logo.svg` or `ui/assets/logo.png`
+- `ui/assets/logo_icon.svg` or `ui/assets/logo_icon.png`
 
-See `docs/UI_BRANDING.md` or `ui/assets/README.md` for the exact filenames and replacement guidance.
+See `docs/UI_BRANDING.md` and `ui/assets/README.md` for asset naming guidance.

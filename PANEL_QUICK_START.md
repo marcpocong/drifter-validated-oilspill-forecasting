@@ -23,7 +23,7 @@ pwsh ./start.ps1 -Panel
 
 Linux uses the same `pwsh ./panel.ps1` and `pwsh ./start.ps1 -Panel` commands after PowerShell 7 is installed through that distribution's package manager.
 
-This opens the panel-safe review menu instead of the full research launcher. Panel mode is review-only / stored-output-only unless you intentionally switch to researcher or audit reruns.
+This opens the panel-safe review menu instead of the full research launcher. Panel mode and read-only entries do not rerun science.
 Use launcher entry IDs and panel options as the user-facing startup vocabulary; raw phase names are not the primary startup commands.
 
 ## What Panel Mode Is For
@@ -35,6 +35,7 @@ Use launcher entry IDs and panel options as the user-facing startup vocabulary; 
 5. Refresh final reproducibility package / command documentation
 6. Show paper-to-output registry
 7. View B1 drifter provenance/context
+8. View data sources and provenance registry
 
 ## What Panel Mode Does Not Do By Default
 
@@ -52,12 +53,14 @@ Use launcher entry IDs and panel options as the user-facing startup vocabulary; 
 - `R`, `RESTART` restart the read-only dashboard shortcut.
 - `L`, `LIST` show the launcher catalog.
 - `H`, `HELP` opens the panel interpretation guide.
+- `S`, `SEARCH` is available in the full launcher and read-only group for entry search.
+- `E`, `EXPORT` after an inspect/search preview exports a run plan without running science.
 
-## Draft 22 / Final Manuscript Evidence Boundaries
+## Current Manuscript Evidence Boundaries
 
 1. Focused Mindoro Phase 1 provenance = historical drifter-based transport validation and recipe selection.
 2. Phase 2 = standardized deterministic and 50-member machine-readable forecast products.
-3. Mindoro `B1` = March 13-14 `R1_previous` primary public-observation validation row and the only main-text primary Philippine / Mindoro validation claim.
+3. Mindoro `B1` = March 13-14 `R1_previous` primary public-observation validation row and the only main-text primary Philippine / Mindoro validation claim; it supports coastal-neighborhood usefulness, not exact 1 km overlap or universal operational accuracy.
 4. Mindoro `Track A` = same-case OpenDrift versus PyGNOME comparator-only support; never the observational scoring reference.
 5. `DWH` = separate external transfer validation lane; not Mindoro recalibration.
 6. Mindoro oil-type / shoreline outputs = support/context only.
@@ -79,6 +82,8 @@ Use launcher entry IDs and panel options as the user-facing startup vocabulary; 
 - March 13-14 is a reinitialization-based public-observation validation check.
 - Both public products cite the same March 12 WorldView-3 imagery provenance, so do not call the pair independent day-to-day validation.
 - `Track A` and every PyGNOME branch remain comparator-only support.
+- DWH is external transfer validation, not Mindoro recalibration.
+- Mindoro oil-type and shoreline outputs are support/context only.
 
 ## Inspect Drifter Provenance Behind `B1`
 
@@ -91,6 +96,16 @@ Use either:
 or panel option `7`.
 
 That page stays stored-output-only. It explains the historical focused Phase 1 provenance behind the selected recipe without turning drifters into the March 13-14 public-observation truth mask.
+
+## Inspect Data Sources And Provenance
+
+Use panel option `8`, or open:
+
+```powershell
+docs\DATA_SOURCES.md
+```
+
+This is a read-only registry. It does not download inputs, rerun workflows, rewrite scientific outputs, or change thesis claims.
 
 ## If You Intentionally Need The Full Launcher
 

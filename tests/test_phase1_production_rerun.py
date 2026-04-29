@@ -1075,12 +1075,10 @@ class Phase1ProductionRerunTests(unittest.TestCase):
         appendix_step = next(
             step for step in appendix_entry["steps"] if step["phase"] == "phase3b_extended_public_scored_march13_14_reinit"
         )
-        alias_step = next(
-            step for step in alias_entry["steps"] if step["phase"] == "phase3b_extended_public_scored_march13_14_reinit"
-        )
 
         self.assertEqual(appendix_step["extra_env"]["FORCING_OUTAGE_POLICY"], "continue_degraded")
-        self.assertEqual(alias_step["extra_env"]["FORCING_OUTAGE_POLICY"], "continue_degraded")
+        self.assertEqual(alias_entry["alias_of"], "mindoro_phase3b_primary_public_validation")
+        self.assertNotIn("extra_env", alias_entry["steps"][1])
 
     def test_phase1_support_lane_skips_budget_exhausted_gfs_source(self):
         with tempfile.TemporaryDirectory() as tmpdir:

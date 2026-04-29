@@ -22,11 +22,22 @@ import streamlit as st
 from src.core.artifact_status import get_artifact_status
 from ui.data_access import figure_subset
 from ui.evidence_contract import ROLE_CONTEXT, assert_no_archive_leak, filter_for_page
-from ui.pages.common import render_export_note, render_figure_gallery, render_page_intro, render_section_stack, render_status_callout, render_table
+from ui.pages.common import (
+    render_caveat_ribbon,
+    render_export_note,
+    render_feature_grid,
+    render_figure_gallery,
+    render_key_takeaway,
+    render_metric_story_grid,
+    render_modern_hero,
+    render_section_header,
+    render_section_stack,
+    render_table,
+)
 from ui.plots import phase4_budget_summary_figure
 
 
-def _draft22_scenario_registry():
+def _scenario_registry():
     import pandas as pd
 
     return pd.DataFrame(
@@ -38,7 +49,7 @@ def _draft22_scenario_registry():
     )
 
 
-def _draft22_budget_summary():
+def _budget_summary():
     import pandas as pd
 
     return pd.DataFrame(
@@ -55,10 +66,13 @@ def render(state: dict, ui_state: dict) -> None:
     oil_status = get_artifact_status("mindoro_phase4_oil_budget")
     shoreline_status = get_artifact_status("mindoro_phase4_shoreline")
 
-    render_page_intro(
+    render_modern_hero(
         "Mindoro Oil-Type and Shoreline Context",
-        "Mindoro oil-type and shoreline outputs are downstream support/context for operational consequences. They are not a primary validation phase.",
+        "Downstream oil-type and shoreline outputs show consequence sensitivity under the retained transport setup. They are support/context only, not a primary validation phase.",
         badge=ROLE_CONTEXT,
+        eyebrow="Downstream support/context lane",
+        meta=["Support/context only", "OpenDrift/OpenOil scenario outputs", "No matched PyGNOME Phase 4 package"],
+        tone="context",
     )
 
     if export_mode:
@@ -69,33 +83,58 @@ def render(state: dict, ui_state: dict) -> None:
             ]
         )
 
-    render_status_callout(
+    render_key_takeaway(
         "Support/context only; not a primary validation phase.",
-        "These outputs show consequence sensitivity under the retained transport setup, but they do not add a second Mindoro validation claim and do not imply a matched Mindoro OpenDrift–PyGNOME fate-and-shoreline comparison.",
-        "warning",
+        "Phase 4 shows how retained transport produces downstream oil-type and shoreline consequence scenarios. It does not add a second Mindoro validation claim or a matched fate-and-shoreline cross-model comparison.",
+        tone="context",
+        badge=ROLE_CONTEXT,
     )
-    render_status_callout(
-        "Comparator availability",
-        "No matched Mindoro Phase 4 PyGNOME fate-and-shoreline comparison is packaged yet.",
-        "warning",
+    render_caveat_ribbon(
+        "Phase 4 boundary",
+        "No matched Mindoro Phase 4 PyGNOME fate-and-shoreline comparison is packaged yet. Any PyGNOME fate material in this repo belongs to archive or legacy support and does not create matched Mindoro fate-and-shoreline evidence.",
+        tone="context",
     )
-
-    render_status_callout(
-        "Follow-up note",
-        "The fixed base medium-heavy proxy remains flagged for follow-up because of the recorded mass-balance tolerance exceedance.",
-        "warning",
+    render_section_header(
+        "Scenario Outcomes",
+        "Panel-facing support/context values from the packaged Mindoro Phase 4 bundle.",
+        badge=ROLE_CONTEXT,
     )
-    render_status_callout(
-        "Scenario score summary",
-        "Beached fractions are 0.02%, 0.61%, and 0.63%; first shoreline arrival is 4 h for all scenarios; impacted segments are 11 / 10 / 11; QC is Pass / Flagged / Pass.",
-        "info",
+    render_feature_grid(
+        [
+            {
+                "title": "Light oil",
+                "body": "Beached fraction 0.02%; first shoreline arrival 4 h; impacted segments 11; QC Pass.",
+                "badge": ROLE_CONTEXT,
+                "note": "Light-end representative scenario.",
+                "tone": "context",
+            },
+            {
+                "title": "Fixed-base medium-heavy proxy",
+                "body": "Beached fraction 0.61%; first shoreline arrival 4 h; impacted segments 10; QC Flagged.",
+                "badge": ROLE_CONTEXT,
+                "note": "Flagged for follow-up because of the recorded mass-balance tolerance exceedance.",
+                "tone": "warning",
+            },
+            {
+                "title": "Heavier oil",
+                "body": "Beached fraction 0.63%; first shoreline arrival 4 h; impacted segments 11; QC Pass.",
+                "badge": ROLE_CONTEXT,
+                "note": "Heavier persistent residual-fuel scenario.",
+                "tone": "context",
+            },
+        ],
+        columns_per_row=3,
+        export_mode=export_mode,
     )
-    render_status_callout(
-        "Deferred-comparison note",
-        "Any PyGNOME fate material in this repo belongs to archive or legacy support. It does not create matched Mindoro fate-and-shoreline evidence.",
-        "info",
+    render_metric_story_grid(
+        [
+            ("First arrival", "4 h", "All three scenarios"),
+            ("Impacted segments", "11 / 10 / 11", "Light / medium-heavy proxy / heavier"),
+            ("QC status", "Pass / Flagged / Pass", "Fixed-base medium-heavy proxy remains follow-up"),
+        ],
+        export_mode=export_mode,
+        compact=True,
     )
-
     figures = filter_for_page(
         figure_subset(
             ui_state["visual_layer"],
@@ -107,6 +146,11 @@ def render(state: dict, ui_state: dict) -> None:
     )
     assert_no_archive_leak(figures, "phase4_oiltype_and_shoreline", advanced=bool(ui_state.get("advanced")))
 
+    render_section_header(
+        "Main Result",
+        "Stored budget chart and curated support/context figures are loaded read-only from the packaged Phase 4 outputs.",
+        badge=ROLE_CONTEXT,
+    )
     st.pyplot(phase4_budget_summary_figure(state["phase4_budget_summary"]), width="stretch")
     st.caption("Stored budget summary chart from the packaged Mindoro Phase 4 bundle.")
 
@@ -123,17 +167,17 @@ def render(state: dict, ui_state: dict) -> None:
 
     def _budget_tables() -> None:
         render_table(
-            "Draft 22 scenario registry",
-            _draft22_scenario_registry(),
-            download_name="draft22_mindoro_oiltype_scenarios.csv",
-            caption="Scenario roles and densities used for Draft 22 wording.",
+            "Mindoro oil-type scenario registry",
+            _scenario_registry(),
+            download_name="mindoro_oiltype_scenarios.csv",
+            caption="Scenario roles and densities used for the current thesis package.",
             height=190,
             export_mode=export_mode,
         )
         render_table(
-            "Draft 22 oil-budget summary",
-            _draft22_budget_summary(),
-            download_name="draft22_mindoro_oil_budget_summary.csv",
+            "Mindoro oil-budget summary",
+            _budget_summary(),
+            download_name="mindoro_oil_budget_summary.csv",
             caption="Support/context consequence summary; not primary validation.",
             height=190,
             export_mode=export_mode,
@@ -143,7 +187,7 @@ def render(state: dict, ui_state: dict) -> None:
                 "Stored Phase 4 oil-budget registry",
                 state["phase4_budget_summary"],
                 download_name="phase4_oil_budget_summary.csv",
-                caption="Advanced read-only package table. Draft 22 summary values above are the panel-facing wording authority.",
+                caption="Advanced read-only package table. Summary values above are the panel-facing wording authority.",
                 height=250,
                 export_mode=export_mode,
             )
@@ -175,6 +219,10 @@ def render(state: dict, ui_state: dict) -> None:
             export_mode=export_mode,
         )
 
+    render_section_header(
+        "Details",
+        "Scenario registries, budget tables, shoreline rows, and figure boards remain visually secondary to the support/context boundary.",
+    )
     render_section_stack(
         [
             ("Publication figures", _publication_figures),

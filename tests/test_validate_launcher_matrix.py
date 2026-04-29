@@ -159,3 +159,111 @@ def test_validation_detects_missing_handlers_services_docs_and_read_only_reruns(
     assert "service 'missing_service' is not defined in compose services" in combined_issues
     assert "read-only/package entry calls non-read-only phase(s)" in combined_issues
     assert "visible entry is missing from docs/COMMAND_MATRIX.md" in combined_issues
+
+
+def test_validation_detects_duplicate_visible_menu_orders_and_alias_cycles(tmp_path):
+    _write(
+        tmp_path / "src" / "__main__.py",
+        "\n".join(
+            [
+                "phase = ''",
+                "if phase == 'phase5_launcher_and_docs_sync':",
+                "    pass",
+            ]
+        )
+        + "\n",
+    )
+    _write(
+        tmp_path / "docker-compose.yml",
+        "services:\n  pipeline:\n    image: test\n",
+    )
+    _write(
+        tmp_path / "config" / "settings.yaml",
+        "workflow_case_files:\n  mindoro_retro_2023: config/case_mindoro_retro_2023.yaml\n",
+    )
+    _write(tmp_path / "config" / "case_mindoro_retro_2023.yaml", "case_id: test\n")
+    _write(
+        tmp_path / "docs" / "COMMAND_MATRIX.md",
+        "\n".join(
+            [
+                "# Command Matrix",
+                "",
+                "## Launcher Entry Map",
+                "",
+                "| Entry ID | Thesis role | Run kind | Recommended for | Interactive command | Prompt-free phase mapping |",
+                "| --- | --- | --- | --- | --- | --- |",
+                "| `a` | read-only governance | `read_only` | auditor | `x` | `pipeline: phase5_launcher_and_docs_sync` |",
+                "| `b` | read-only governance | `read_only` | auditor | `x` | `pipeline: phase5_launcher_and_docs_sync` |",
+            ]
+        )
+        + "\n",
+    )
+    _write(
+        tmp_path / "config" / "launcher_matrix.schema.json",
+        (REPO_ROOT / "config" / "launcher_matrix.schema.json").read_text(encoding="utf-8"),
+    )
+    base_entry = {
+        "menu_order": 1,
+        "category_id": "read_only_packaging_help_utilities",
+        "workflow_mode": "mindoro_retro_2023",
+        "description": "Read-only stored outputs package.",
+        "rerun_cost": "cheap_read_only",
+        "safe_default": True,
+        "thesis_role": "read_only_governance",
+        "draft_section": "Evidence 8 / governance",
+        "claim_boundary": "Read-only package; it does not recompute science.",
+        "run_kind": "read_only",
+        "recommended_for": "auditor",
+        "confirms_before_run": False,
+        "steps": [
+            {
+                "phase": "phase5_launcher_and_docs_sync",
+                "service": "pipeline",
+                "description": "sync",
+            }
+        ],
+    }
+    entry_a = {**base_entry, "entry_id": "a", "label": "A"}
+    entry_b = {**base_entry, "entry_id": "b", "label": "B"}
+    alias_one = {
+        **base_entry,
+        "entry_id": "alias_one",
+        "label": "Alias one",
+        "menu_hidden": True,
+        "alias_of": "alias_two",
+    }
+    alias_two = {
+        **base_entry,
+        "entry_id": "alias_two",
+        "label": "Alias two",
+        "menu_hidden": True,
+        "alias_of": "alias_one",
+    }
+    matrix = {
+        "catalog_version": "test",
+        "entrypoint": "start.ps1",
+        "categories": [
+            {"category_id": "read_only_packaging_help_utilities", "label": "Read only", "description": "Stored output tools"},
+        ],
+        "role_groups": [
+            {
+                "menu_order": 5,
+                "GroupId": "read_only_governance",
+                "MenuKey": "5",
+                "Label": "Read-only dashboard / packaging / audits / docs",
+                "Description": "Stored-output tools.",
+                "thesis_roles": ["read_only_governance"],
+            }
+        ],
+        "entries": [entry_a, entry_b, alias_one, alias_two],
+    }
+    _write(tmp_path / "config" / "launcher_matrix.json", json.dumps(matrix, indent=2))
+
+    report = validator.audit_launcher_matrix(tmp_path)
+    combined_issues = "\n".join(
+        [*report["global_issues"], *(issue for entry in report["entries"] for issue in entry["issues"])]
+    )
+
+    assert report["status"] == validator.FAIL
+    assert "duplicate visible menu_order '1' in role group 'read_only_governance'" in combined_issues
+    assert "alias cycle detected" in combined_issues

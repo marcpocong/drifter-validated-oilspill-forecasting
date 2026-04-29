@@ -21,7 +21,16 @@ import pandas as pd
 import streamlit as st
 
 from ui.data_access import parse_source_paths, raster_summary, track_summary, trajectory_figures, vector_summary
-from ui.pages.common import preview_artifact, render_figure_cards, render_page_intro, render_status_callout, render_table
+from ui.evidence_contract import ROLE_ADVANCED
+from ui.pages.common import (
+    preview_artifact,
+    render_figure_cards,
+    render_key_takeaway,
+    render_modern_hero,
+    render_section_header,
+    render_status_callout,
+    render_table,
+)
 
 
 def _summarize_source(path) -> dict:
@@ -36,16 +45,20 @@ def _summarize_source(path) -> dict:
 
 
 def render(state: dict, ui_state: dict) -> None:
-    render_page_intro(
+    render_modern_hero(
         "Trajectory Explorer",
-        "This page keeps the trajectory view readable by favoring deterministic paths, sampled ensemble members, centroid or corridor views, and PyGNOME paths where available instead of plotting every particle by default. The dedicated legacy 2016 package has its own page and is not mixed into this main-case explorer.",
-        badge="Read-only explorer | no particle flood",
+        "Advanced read-only explorer for prebuilt trajectory figure sets, source-backed summaries, and optional artifact previews.",
+        badge=ROLE_ADVANCED,
+        eyebrow="Advanced technical inspection",
+        meta=["Prebuilt figures", "No reruns", "No particle flood"],
+        tone="advanced",
     )
 
-    render_status_callout(
+    render_key_takeaway(
         "Explorer rule",
         "Publication figures are the default. Switch to advanced mode only when you need the panel gallery, raw gallery, or lower-level source artifact inspection.",
-        "info",
+        tone="advanced",
+        badge=ROLE_ADVANCED,
     )
 
     case_id = st.selectbox(
@@ -56,6 +69,11 @@ def render(state: dict, ui_state: dict) -> None:
     )
     figures = trajectory_figures(ui_state["visual_layer"], case_id=case_id)
 
+    render_section_header(
+        "Trajectory Figure Set",
+        "The explorer favors deterministic paths, sampled ensembles, centroid/corridor views, and PyGNOME paths where available.",
+        badge=ROLE_ADVANCED,
+    )
     render_figure_cards(
         figures,
         title="Trajectory figure set",
@@ -87,4 +105,8 @@ def render(state: dict, ui_state: dict) -> None:
                 st.json(summary)
             preview_artifact(str(selected_path))
         else:
-            st.info("No source artifact paths were recorded for this selected figure.")
+            render_status_callout(
+                "No source paths",
+                "No source artifact paths were recorded for this selected figure.",
+                "neutral",
+            )

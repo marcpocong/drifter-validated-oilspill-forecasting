@@ -145,7 +145,7 @@
       "run_kind": "scientific_rerun",
       "recommended_for": "researcher",
       "confirms_before_run": true,
-      "notes": "Canonical B1 builder. This does not delete or relabel the repo-preserved archive-only March-family rows, and the same-case A comparator-support lane stays separate and comparator-only. Public-observation and forcing reruns reuse validated persistent local store files before any remote refetch unless INPUT_CACHE_POLICY=force_refresh is selected.",
+      "notes": "Canonical B1 builder. This supports coastal-neighborhood usefulness, not exact 1 km overlap or universal operational accuracy. This does not delete or relabel the repo-preserved archive-only March-family rows, and the same-case A comparator-support lane stays separate and comparator-only. Public-observation and forcing reruns reuse validated persistent local store files before any remote refetch unless INPUT_CACHE_POLICY=force_refresh is selected.",
       "steps": [
         {
           "phase": "phase3b_extended_public",
@@ -557,19 +557,20 @@
       "menu_order": 68,
       "category_id": "sensitivity_appendix_tracks",
       "workflow_mode": "mindoro_retro_2023",
-      "label": "Legacy alias: Mindoro March 13-14 validation + comparator bundle",
-      "description": "Backward-compatible alias for the promoted March 13 -> March 14 R1 public-validation row plus the same-case comparator-support March 14 A lane.",
-      "service_profile": "mixed_pipeline_and_gnome",
+      "label": "Legacy ID alias: Mindoro B1 primary public-validation rerun",
+      "description": "Backward-compatible alias for the promoted March 13 -> March 14 R1 public-validation row.",
+      "service_profile": "pipeline_only",
       "rerun_cost": "expensive",
       "safe_default": false,
-      "thesis_role": "comparator_support",
-      "draft_section": "Legacy alias / Mindoro B1 plus Track A support",
-      "claim_boundary": "Legacy compatibility bundle for older scripts; B1 remains the primary row, Track A remains comparator support only, and PyGNOME is never observational truth.",
-      "run_kind": "comparator_rerun",
+      "thesis_role": "primary_evidence",
+      "draft_section": "Evidence 3 / Mindoro B1 / Chapter 4.2",
+      "claim_boundary": "Only main Philippine public-observation validation claim for Mindoro B1; shared-imagery caveat applies, so it is not an independent day-to-day pair.",
+      "run_kind": "scientific_rerun",
       "recommended_for": "developer",
       "confirms_before_run": true,
+      "alias_of": "mindoro_phase3b_primary_public_validation",
       "menu_hidden": true,
-      "notes": "Compatibility alias retained for older scripts. B1 is the only main-text primary row, the March 13 -> March 14 R0 baseline plus B2/B3 are archive-only provenance rows, PyGNOME remains comparator-only, and the support-side B1 rebuild uses degraded forcing continuation if a temporary provider outage blocks only forcing acquisition.",
+      "notes": "Legacy ID retained for older scripts. Prefer mindoro_phase3b_primary_public_validation in current thesis-facing documentation. This alias supports coastal-neighborhood usefulness, not exact 1 km overlap or universal operational accuracy. It does not run the Track A or PyGNOME comparator-support lane; those remain comparator-only support outside the main B1 claim.",
       "steps": [
         {
           "phase": "phase3b_extended_public",
@@ -579,15 +580,7 @@
         {
           "phase": "phase3b_extended_public_scored_march13_14_reinit",
           "service": "pipeline",
-          "description": "March 13 -> March 14 primary public-validation row",
-          "extra_env": {
-            "FORCING_OUTAGE_POLICY": "continue_degraded"
-          }
-        },
-        {
-          "phase": "phase3b_extended_public_scored_march13_14_reinit_pygnome_comparison",
-          "service": "gnome",
-          "description": "March 13 -> March 14 same-case comparator-support A lane"
+          "description": "March 13 -> March 14 primary public-validation row"
         }
       ]
     },

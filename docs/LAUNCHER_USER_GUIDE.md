@@ -7,6 +7,7 @@
 - Panel mode is the defense-safe default path.
 - The full launcher is the researcher / audit path.
 - The launcher groups entries by thesis role instead of one flat technical list.
+- Panel mode and read-only entries do not rerun science.
 
 ## Current Startup Paths
 
@@ -18,6 +19,7 @@
 .\start.ps1 -ListRole primary_evidence -NoPause
 .\start.ps1 -Help -NoPause
 .\start.ps1 -Explain mindoro_phase3b_primary_public_validation -NoPause
+.\start.ps1 -Explain mindoro_phase3b_primary_public_validation -ExportPlan -NoPause
 .\start.ps1 -Entry <entry_id>
 .\start.ps1 -Entry <entry_id> -DryRun -NoPause
 ```
@@ -45,11 +47,13 @@ Linux uses the same `pwsh ./start.ps1 ...` command shape after PowerShell 7 is i
 - `Q`, `QUIT`, `EXIT` leave the launcher cleanly.
 - `H`, `HELP` open launcher help.
 - `L`, `LIST` show the launcher catalog.
+- `S`, `SEARCH` searches entry IDs, thesis roles, run kinds, categories, and notes.
 - `P`, `PANEL` jump to the defense-safe panel path.
 - `U`, `UI` open the read-only dashboard where that shortcut is available.
 - `R`, `RESTART` restart the read-only dashboard where that shortcut is available.
 - In a section menu, `X` opens inline inspect mode for visible menu numbers or entry IDs without running anything.
 - Inline inspect mode stays inside the current section, shows a compact preview first, and accepts `M`, `MORE` to expand the most recent inspected entry to the full thesis-facing preview.
+- After inspect/search preview, `E`, `EXPORT` writes `output/launcher_plans/<entry_id>.md` and `.json` without running science.
 - Typing a hidden alias entry ID resolves to the canonical entry preview before any execution path.
 - Pressing `Enter` at an execution confirmation prompt cancels cleanly with `Cancelled. No workflow was executed.`
 
@@ -83,6 +87,7 @@ Legacy/archive support:
 Read-only governance:
 
 - Read-only dashboard launch is a shortcut, not a launcher entry ID. Use panel option `1` or `U` / `UI`.
+- Data sources and provenance registry is a read-only panel option `8`, backed by `docs/DATA_SOURCES.md`.
 - `b1_drifter_context_panel`
 - `phase1_audit`
 - `phase2_audit`
@@ -96,7 +101,7 @@ Read-only governance:
 
 - `phase1_mindoro_focus_pre_spill_experiment` -> prefer `phase1_mindoro_focus_provenance`
 - `phase1_production_rerun` -> prefer `phase1_regional_reference_rerun`
-- `mindoro_march13_14_noaa_reinit_stress_test` -> hidden legacy March 13-14 compatibility bundle; prefer `mindoro_phase3b_primary_public_validation`
+- `mindoro_march13_14_noaa_reinit_stress_test` -> hidden legacy ID that resolves to `mindoro_phase3b_primary_public_validation`; it does not run the Track A/PyGNOME comparator lane
 
 ## Runtime Controls
 
@@ -104,6 +109,7 @@ Read-only governance:
 - `FORCING_SOURCE_BUDGET_SECONDS=<seconds>` with default `300`
 - `INPUT_CACHE_POLICY=default|reuse_if_valid|force_refresh`
 - `LAUNCHER_DRY_RUN=1` or `-DryRun` for a no-Docker, no-output-modification command preview
+- `-Explain <entry_id> -ExportPlan` for a no-Docker run-plan export under `output/launcher_plans/`
 
 Interactive launcher runs ask once per entry for forcing wait budget and eligible input-cache reuse choices. Prompt-free container runs with `-T` do not ask those questions.
 
@@ -141,9 +147,11 @@ If you want the freshest read-only packaging before opening the dashboard, refre
 
 - Use launcher entry IDs and role groups as the primary workflow vocabulary.
 - `B1` is the only main Philippine public-observation validation claim.
+- `B1` supports coastal-neighborhood usefulness, not exact 1 km overlap or universal operational accuracy.
 - March 13-14 keeps the shared-imagery caveat explicit.
 - `Track A` and every PyGNOME branch remain comparator-only support.
-- DWH stays a separate external transfer-validation story with observed masks as truth.
+- PyGNOME is never observational truth.
+- DWH is external transfer validation, not Mindoro recalibration.
 - Mindoro oil-type and shoreline outputs remain support/context only.
 - Read-only dashboard, packaging, audit, and docs entries do not recompute science.
 - `phase1_production_rerun` stages `output/phase1_production_rerun/phase1_baseline_selection_candidate.yaml` only; it does not auto-overwrite `config/phase1_baseline_selection.yaml`.
@@ -152,5 +160,6 @@ If you want the freshest read-only packaging before opening the dashboard, refre
 ## Where To Look Next
 
 - [COMMAND_MATRIX.md](COMMAND_MATRIX.md)
+- [DATA_SOURCES.md](DATA_SOURCES.md)
 - [QUICKSTART.md](QUICKSTART.md)
 - [UI_GUIDE.md](UI_GUIDE.md)

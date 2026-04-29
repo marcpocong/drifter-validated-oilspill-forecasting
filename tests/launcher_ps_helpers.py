@@ -12,6 +12,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 START_PS1 = REPO_ROOT / "start.ps1"
+PANEL_PS1 = REPO_ROOT / "panel.ps1"
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,8 @@ def run_launcher(
     stdin: str = "",
     timeout: int = 30,
     extra_env: dict[str, str] | None = None,
+    script_path: Path = START_PS1,
+    cwd: Path = REPO_ROOT,
 ) -> LauncherResult:
     pwsh = require_pwsh()
     fake_bin = tmp_path / "fake-bin"
@@ -78,8 +81,8 @@ def run_launcher(
         env.update(extra_env)
 
     completed = subprocess.run(
-        [pwsh, "-NoProfile", "-File", str(START_PS1), *args],
-        cwd=REPO_ROOT,
+        [pwsh, "-NoProfile", "-File", str(script_path), *args],
+        cwd=cwd,
         input=stdin,
         text=True,
         capture_output=True,
@@ -92,6 +95,25 @@ def run_launcher(
         stdout=completed.stdout,
         stderr=completed.stderr,
         docker_log=docker_log,
+    )
+
+
+def run_panel(
+    args: list[str],
+    tmp_path: Path,
+    stdin: str = "",
+    timeout: int = 30,
+    extra_env: dict[str, str] | None = None,
+    cwd: Path | None = None,
+) -> LauncherResult:
+    return run_launcher(
+        args=args,
+        tmp_path=tmp_path,
+        stdin=stdin,
+        timeout=timeout,
+        extra_env=extra_env,
+        script_path=PANEL_PS1,
+        cwd=cwd or tmp_path,
     )
 
 

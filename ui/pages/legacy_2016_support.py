@@ -21,19 +21,23 @@ import streamlit as st
 
 from ui.evidence_contract import ROLE_LEGACY
 from ui.pages.common import (
+    render_archive_notice,
     render_badge_strip,
     render_export_note,
+    render_feature_grid,
     render_figure_gallery,
+    render_key_takeaway,
     render_markdown_block,
     render_metric_row,
-    render_page_intro,
+    render_modern_hero,
+    render_section_header,
     render_section_stack,
     render_status_callout,
     render_table,
 )
 
 
-def _draft22_legacy_cases_table():
+def _legacy_cases_table():
     import pandas as pd
 
     return pd.DataFrame(
@@ -45,7 +49,7 @@ def _draft22_legacy_cases_table():
     )
 
 
-def _draft22_legacy_fss_table():
+def _legacy_fss_table():
     import pandas as pd
 
     return pd.DataFrame(
@@ -88,10 +92,13 @@ def render(state: dict, ui_state: dict) -> None:
             key="legacy_2016_case_selector",
         )
 
-    render_page_intro(
+    render_modern_hero(
         "Archive — Legacy 2016 Support",
         "This page surfaces the authoritative curated prototype_2016 package. It is support-only legacy material and should be read as historical pipeline context rather than as the main Mindoro or DWH validation evidence.",
         badge=ROLE_LEGACY,
+        eyebrow="Legacy / archive support",
+        meta=["Prototype 2016 package", "Support only", "Read-only artifacts"],
+        tone="legacy",
     )
 
     if export_mode:
@@ -101,6 +108,41 @@ def render(state: dict, ui_state: dict) -> None:
                 "The Phase 4 comparator section remains budget-only and deterministic, and shoreline comparison is still not packaged.",
             ]
         )
+
+    render_key_takeaway(
+        "Legacy 2016 material is historical support only.",
+        "These prototype cases preserve workflow provenance and comparator context, but they do not replace B1 or the DWH external-transfer validation.",
+        tone="legacy",
+        badge=ROLE_LEGACY,
+    )
+    render_archive_notice(
+        "Legacy boundary",
+        "The prototype_2016 lane has no thesis-facing Phase 3B or Phase 3C claim. Phase 3A is comparator-only support, Phase 4 is legacy weathering/fate context, and Phase 5 is packaging.",
+    )
+    render_feature_grid(
+        [
+            {
+                "title": "Three prototype cases",
+                "body": "2016-09-01, 2016-09-06, and 2016-09-17 remain grouped as a preserved legacy support package.",
+                "badge": ROLE_LEGACY,
+                "tone": "legacy",
+            },
+            {
+                "title": "Comparator scope",
+                "body": "OpenDrift versus deterministic PyGNOME material is comparator support only, not observation truth.",
+                "badge": ROLE_LEGACY,
+                "tone": "legacy",
+            },
+            {
+                "title": "Panel posture",
+                "body": "Panel-friendly mode shows a broad support gallery; Advanced mode exposes case filtering and deeper registries.",
+                "badge": ROLE_LEGACY,
+                "tone": "legacy",
+            },
+        ],
+        columns_per_row=3,
+        export_mode=export_mode,
+    )
 
     render_status_callout("ARCHIVE / SUPPORT ONLY — not part of the main Mindoro validation claim.", "ARCHIVE / SUPPORT ONLY — not part of the main Mindoro validation claim.", "warning")
     render_status_callout(
@@ -220,17 +262,17 @@ def render(state: dict, ui_state: dict) -> None:
             export_mode=export_mode,
         )
         render_table(
-            "Draft 22 legacy support cases",
-            _draft22_legacy_cases_table(),
-            download_name="draft22_legacy_2016_support_cases.csv",
+            "Legacy support cases",
+            _legacy_cases_table(),
+            download_name="legacy_2016_support_cases.csv",
             caption="Legacy/prototype support only; not direct public spill validation.",
             height=160,
             export_mode=export_mode,
         )
         render_table(
-            "Draft 22 legacy mean FSS by support surface",
-            _draft22_legacy_fss_table(),
-            download_name="draft22_legacy_2016_mean_fss.csv",
+            "Legacy mean FSS by support surface",
+            _legacy_fss_table(),
+            download_name="legacy_2016_mean_fss.csv",
             caption="Legacy similarity values are displayed only on this archive/support page.",
             height=260,
             export_mode=export_mode,
@@ -333,6 +375,11 @@ def render(state: dict, ui_state: dict) -> None:
         )
         render_markdown_block("Phase 5 packaging summary", state["legacy_2016_packaging_summary"], collapsed=True, export_mode=export_mode)
 
+    render_section_header(
+        "Legacy Details",
+        "The grouped package views below remain secondary support surfaces, with raw registries and case-level rows kept behind the story summary.",
+        badge=ROLE_LEGACY,
+    )
     render_section_stack(
         [
             ("Package overview", _package_overview),
