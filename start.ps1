@@ -836,6 +836,13 @@ function Resolve-LauncherStartupEnv {
         $resolved["PROTOTYPE_2016_ENSEMBLE_POLICY"] = "full_rerun"
     }
 
+    foreach ($passthroughKey in @("DEFENSE_SMOKE_TEST", "DEFENSE_NO_SCIENCE")) {
+        $passthroughValue = [string](Get-Item -Path ("Env:" + $passthroughKey) -ErrorAction SilentlyContinue).Value
+        if (-not [string]::IsNullOrWhiteSpace($passthroughValue)) {
+            $resolved[$passthroughKey] = $passthroughValue
+        }
+    }
+
     return $resolved
 }
 
@@ -1711,6 +1718,31 @@ function Invoke-PanelB1DrifterContext {
 }
 
 function Show-PanelMenu {
+    if ($NoPause) {
+        Clear-Host
+        Write-Section "DRIFTER-VALIDATED OIL SPILL FORECASTING"
+        Write-Host "   PANEL REVIEW MODE" -ForegroundColor White
+        Write-Host ""
+        Write-Host "Non-interactive preview mode (-NoPause)." -ForegroundColor Yellow
+        Write-Host "Use .\panel.ps1 or .\start.ps1 -Panel for the interactive defense menu." -ForegroundColor DarkGray
+        Write-Host ""
+        Write-Host "Panel-safe actions:" -ForegroundColor Yellow
+        Write-Host "  1. Open read-only dashboard" -ForegroundColor White
+        Write-Host "  2. Verify paper numbers against stored scorecards" -ForegroundColor White
+        Write-Host "  3. Rebuild publication figures from stored outputs" -ForegroundColor White
+        Write-Host "  4. Refresh final validation package from stored outputs" -ForegroundColor White
+        Write-Host "  5. Refresh final reproducibility package / command documentation" -ForegroundColor White
+        Write-Host "  6. Show paper-to-output registry" -ForegroundColor White
+        Write-Host "  7. View B1 drifter provenance/context" -ForegroundColor White
+        Write-Host ""
+        Write-Host "Smoke-test-safe examples:" -ForegroundColor Yellow
+        Write-Host "  .\start.ps1 -Explain b1_drifter_context_panel -NoPause" -ForegroundColor Green
+        Write-Host "  .\start.ps1 -Entry b1_drifter_context_panel -NoPause" -ForegroundColor Green
+        Write-Host "  .\start.ps1 -Entry figure_package_publication -NoPause" -ForegroundColor Green
+        Write-Host ""
+        return
+    }
+
     while ($true) {
         Clear-Host
         Write-Section "DRIFTER-VALIDATED OIL SPILL FORECASTING"

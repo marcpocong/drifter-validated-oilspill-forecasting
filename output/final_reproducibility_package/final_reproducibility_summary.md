@@ -6,16 +6,16 @@ This package synchronizes launcher/menu behavior, documentation, and reproducibi
 
 - PowerShell entrypoint: `./start.ps1 -List -NoPause`
 - Source-of-truth launcher matrix: `config/launcher_matrix.json`
-- Safe read-only launcher IDs: `mindoro_march6_recovery_sensitivity`, `phase1_audit`, `phase2_audit`, `final_validation_package`, `phase5_sync`, `trajectory_gallery`, `trajectory_gallery_panel`, `figure_package_publication`, `prototype_legacy_final_figures`
+- Safe read-only launcher IDs: `mindoro_march6_recovery_sensitivity`, `phase1_audit`, `phase2_audit`, `b1_drifter_context_panel`, `final_validation_package`, `phase5_sync`, `trajectory_gallery`, `trajectory_gallery_panel`, `figure_package_publication`, `prototype_legacy_final_figures`
 
 ## Phase Status Highlights
 
 - `phase1` / `phase1_regional_baseline`: Architecture audited; the final 2016-2022 production rerun is still needed.
 - `phase2` / `phase2_machine_readable_forecast`: Scientifically usable as implemented, but not yet frozen.
-- `phase3a` / `A`: Same-case comparator-only support track attached to B1 on the promoted March 14 target. fss_1km=0.0000, fss_3km=0.0441, fss_5km=0.1371, fss_10km=0.2490
-- `phase3b` / `B1`: Promoted primary validation; the focused 2016-2023 Mindoro drifter rerun found cmems_gfs as the historical winner and official B1 now uses cmems_gfs; reportable now but not fully frozen. fss_1km=0.0000, fss_3km=0.0441, fss_5km=0.1371, fss_10km=0.2490
-- `phase3b` / `B2`: B2 legacy honesty reference; not the promoted primary row. fss_1km=0.0000, fss_3km=0.0000, fss_5km=0.0000, fss_10km=0.0000
-- `phase3b` / `B3`: B3 legacy broader-support context; not a primary row. fss_1km=0.1722, fss_3km=0.2004, fss_5km=0.2166, fss_10km=0.2438
+- `phase3a` / `A`: Same-case Track A comparator-only support attached to the March 13 -> March 14 R1 primary validation row. fss_1km=0.0000, fss_3km=0.0441, fss_5km=0.1371, fss_10km=0.2490
+- `phase3b` / `B1`: March 13 -> March 14 R1 primary validation row only; the focused 2016-2023 Mindoro drifter rerun found cmems_gfs as the historical winner, official B1 now uses cmems_gfs, and the stored promoted run remains tied to the existing R1_previous reinit lineage. fss_1km=0.0000, fss_3km=0.0441, fss_5km=0.1371, fss_10km=0.2490
+- `phase3b` / `B2`: B2 archived March 6 sparse reference; preserved for provenance only and not thesis-facing. fss_1km=0.0000, fss_3km=0.0000, fss_5km=0.0000, fss_10km=0.0000
+- `phase3b` / `B3`: B3 archived March 3-6 broader-support reference; preserved for provenance only. fss_1km=0.1722, fss_3km=0.2004, fss_5km=0.2166, fss_10km=0.2438
 - `phase3c` / `C1`: Frozen DWH deterministic transfer-validation baseline. fss_1km=0.5033, fss_3km=0.5523, fss_5km=0.5700, fss_10km=0.6018
 - `phase3c` / `C2`: Frozen DWH ensemble extension on the same truth masks; p50 preferred, p90 support-only. fss_1km=0.4997, fss_3km=0.5299, fss_5km=0.5467, fss_10km=0.5790
 - `phase3c` / `C3`: Frozen DWH cross-model comparator; PyGNOME not truth. fss_1km=0.3197, fss_3km=0.3495, fss_5km=0.3689, fss_10km=0.4068

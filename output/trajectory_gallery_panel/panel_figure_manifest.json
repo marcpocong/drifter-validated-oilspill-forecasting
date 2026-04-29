@@ -1,6 +1,6 @@
 {
   "phase": "trajectory_gallery_panel_polish",
-  "generated_at_utc": "2026-04-12T05:48:37.305220+00:00",
+  "generated_at_utc": "2026-04-28T23:42:11.375421+00:00",
   "output_dir": "output/trajectory_gallery_panel",
   "built_from_existing_outputs_only": true,
   "expensive_scientific_reruns_triggered": false,
@@ -95,7 +95,16 @@
       "plain_language_interpretation": "The promoted March 13 -> March 14 board is presentation-ready as the main Mindoro validation board, provided the shared-imagery caveat is stated honestly.",
       "recommended_for_main_defense": true,
       "source_paths": "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit/qa_march13_seed_mask_on_grid.png;output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit/qa_march13_seed_vs_march14_target.png;output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit/qa_march14_reinit_R1_previous_overlay.png",
-      "notes": "Built from stored March 13 -> March 14 reinit QA figures only."
+      "notes": "Built from stored March 13 -> March 14 reinit QA figures only, with the shared-imagery caveat preserved in the panel text.",
+      "status_key": "mindoro_primary_validation",
+      "status_label": "Mindoro March 13 -> March 14 R1 primary validation row",
+      "status_role": "primary_validation",
+      "status_reportability": "reportable_now_inherited_provisional",
+      "status_official_status": "promoted_primary_validation",
+      "status_frozen_status": "not_frozen",
+      "status_provenance": "March 13 seed, March 14 target, explicit shared March 12 imagery caveat, active Mindoro-specific recipe provenance from the separate focused 2016-2023 drifter rerun, and the preserved raw scientific note that the stored promoted B1 run remains tied to the existing R1_previous reinit lineage. This March 13 -> March 14 R1 label refers to the Phase 3B validation branch, not to the Phase 1 recipe-code family.",
+      "status_panel_text": "Main Mindoro B1 Phase 3B observation-based spatial validation view. This page will use the March 13 -> March 14 R1 primary validation row only. Phase 3B itself does not directly ingest drifters; it inherits the official cmems_gfs B1 recipe from the separate focused 2016-2023 Mindoro drifter rerun after that four-recipe rerun found cmems_gfs as the historical winner and promoted it directly into official B1, while the broader 2016-2022 regional rerun stays reference-only. The stored promoted B1 run remains tied to the existing R1_previous reinit lineage. Keep the shared March 12 imagery caveat explicit.",
+      "status_dashboard_summary": "March 13 -> March 14 R1 primary validation row only; the focused 2016-2023 Mindoro drifter rerun found cmems_gfs as the historical winner, official B1 now uses cmems_gfs, and the stored promoted run remains tied to the existing R1_previous reinit lineage."
     },
     {
       "figure_id": "case_mindoro_retro_2023__phase3a_reinit_crossmodel__opendrift_vs_pygnome__panel_board__2023_03_14__panel__mindoro_crossmodel_reinit_board",
@@ -113,7 +122,16 @@
       "plain_language_interpretation": "The promoted March 14 cross-model board gives a clean side-by-side answer to the model-comparison question while keeping PyGNOME in a comparator-only role.",
       "recommended_for_main_defense": true,
       "source_paths": "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit_pygnome_comparison/qa/qa_march14_crossmodel_R0_reinit_p50_overlay.png;output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit_pygnome_comparison/qa/qa_march14_crossmodel_R1_previous_reinit_p50_overlay.png;output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit_pygnome_comparison/qa/qa_march14_crossmodel_pygnome_reinit_deterministic_overlay.png",
-      "notes": "Built from stored March 13 -> March 14 cross-model QA figures only."
+      "notes": "Built from stored March 13 -> March 14 cross-model QA figures only; PyGNOME remains comparator-only and the shared-imagery caveat stays explicit.",
+      "status_key": "mindoro_crossmodel_comparator",
+      "status_label": "Mindoro March 13 -> March 14 Track A comparator support",
+      "status_role": "comparator_only",
+      "status_reportability": "reportable_comparator_inherited_provisional",
+      "status_official_status": "comparator_only_not_truth",
+      "status_frozen_status": "not_frozen",
+      "status_provenance": "Same March 14 target as the March 13 -> March 14 R1 primary validation row; same-case Track A comparator support remains separate from truth and PyGNOME remains comparator-only.",
+      "status_panel_text": "Same-case Track A comparator support attached to the March 13 -> March 14 R1 primary validation row on the March 14 target. PyGNOME is a comparator, not truth, and Track A is not a co-primary validation row. Archived March 13 -> March 14 R0 comparator outputs are not part of this thesis-facing view.",
+      "status_dashboard_summary": "Same-case Track A comparator-only support attached to the March 13 -> March 14 R1 primary validation row."
     },
     {
       "figure_id": "case_mindoro_retro_2023__phase3b_legacy_strict__opendrift__panel_board__2023_03_06__panel__mindoro_legacy_march6_board",
@@ -131,7 +149,16 @@
       "plain_language_interpretation": "This board keeps the legacy March 6 sparse-reference result visible for transparency, but it should be framed as an honesty and limitations board rather than the main validation board.",
       "recommended_for_main_defense": false,
       "source_paths": "output/CASE_MINDORO_RETRO_2023/phase3b/qa_phase3b_obsmask_vs_p50.png;output/CASE_MINDORO_RETRO_2023/phase3b/qa_phase3b_source_init_validation_overlay.png;output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit/qa_march13_seed_vs_march14_target.png",
-      "notes": "Built from stored March 6 strict QA figures plus one promoted March 13 -> March 14 context panel."
+      "notes": "Built from stored March 6 strict QA figures plus one promoted March 13 -> March 14 context panel, and retained as an honesty-only legacy board.",
+      "status_key": "mindoro_legacy_march6",
+      "status_label": "Mindoro March 6 B2 archived sparse strict reference",
+      "status_role": "legacy_reference",
+      "status_reportability": "archive_only_provenance_reference",
+      "status_official_status": "archive_only_not_thesis_facing",
+      "status_frozen_status": "not_frozen",
+      "status_provenance": "Sparse March 6 reference retained as archive-only provenance material.",
+      "status_panel_text": "Archive only. B2 is preserved for provenance, audit, reproducibility, and methods traceability, but it is not thesis-facing and is not part of the main Mindoro validation page or main paper.",
+      "status_dashboard_summary": "B2 archived March 6 sparse reference; preserved for provenance only and not thesis-facing."
     },
     {
       "figure_id": "case_mindoro_retro_2023__phase2_official__opendrift__panel_board__2023_03_03_to_2023_03_06__panel__mindoro_trajectory_board",
@@ -149,7 +176,16 @@
       "plain_language_interpretation": "The Mindoro trajectory board is one of the clearest early-slide figures because it shows path, spread, and corridor structure without relying on score-table literacy.",
       "recommended_for_main_defense": true,
       "source_paths": "output/trajectory_gallery/case_mindoro_retro_2023__phase2_official__opendrift__deterministic_track_map__2023_03_03_to_2023_03_06__sampled_particle_paths.png;output/trajectory_gallery/case_mindoro_retro_2023__phase2_official__opendrift__ensemble_sampled_member_centroids__2023_03_03_to_2023_03_06__member_centroid_paths.png;output/trajectory_gallery/case_mindoro_retro_2023__phase2_phase3b__opendrift__corridor_hull_view__2023_03_06__p50_p90_hull_overlay.png",
-      "notes": "Built from the existing raw trajectory gallery panels."
+      "notes": "Built from the existing raw trajectory gallery panels.",
+      "status_key": "mindoro_trajectory_context",
+      "status_label": "Mindoro transport trajectory context",
+      "status_role": "trajectory_context",
+      "status_reportability": "scientifically_usable_not_frozen",
+      "status_official_status": "official_transport_context_not_frozen",
+      "status_frozen_status": "not_frozen",
+      "status_provenance": "Phase 2 / Phase 3 transport context built from stored trajectory outputs.",
+      "status_panel_text": "Read-only transport context preserved from stored trajectory outputs. This layer is not thesis-facing main-page evidence and is better read as provenance or audit support.",
+      "status_dashboard_summary": "Transport-context archive/support layer from a scientifically usable but not frozen branch."
     },
     {
       "figure_id": "case_mindoro_retro_2023__phase4__openoil__panel_board__2023_03_03_to_2023_03_06__all_scenarios__panel__mindoro_phase4_oil_budget_board",
@@ -167,7 +203,16 @@
       "plain_language_interpretation": "Mindoro Phase 4 already supports clear oil-type comparisons on the currently reportable transport replay, with the medium-heavy proxy still flagged for mass-balance follow-up.",
       "recommended_for_main_defense": true,
       "source_paths": "output/trajectory_gallery/case_mindoro_retro_2023__phase4__openoil__oil_budget_summary__2023_03_03_to_2023_03_06__all_scenarios__mass_budget_comparison.png;output/trajectory_gallery/case_mindoro_retro_2023__phase4__openoil__oil_budget_timeseries__2023_03_03_to_2023_03_06__fixed_base_medium_heavy_proxy__mass_budget_timeseries.png;output/trajectory_gallery/case_mindoro_retro_2023__phase4__openoil__oil_budget_timeseries__2023_03_03_to_2023_03_06__heavier_oil__mass_budget_timeseries.png;output/trajectory_gallery/case_mindoro_retro_2023__phase4__openoil__oil_budget_timeseries__2023_03_03_to_2023_03_06__lighter_oil__mass_budget_timeseries.png",
-      "notes": "Built from stored Phase 4 oil-budget PNG outputs only; no weathering rerun was triggered."
+      "notes": "Built from stored Phase 4 oil-budget PNG outputs only; no weathering rerun was triggered.",
+      "status_key": "mindoro_phase4_oil_budget",
+      "status_label": "Mindoro Phase 4 oil-budget interpretation",
+      "status_role": "phase4_openoil_only",
+      "status_reportability": "reportable_now_inherited_provisional",
+      "status_official_status": "opendrift_openoil_only_not_cross_model",
+      "status_frozen_status": "not_frozen",
+      "status_provenance": "OpenDrift/OpenOil-only Phase 4 output; inherited-provisional from upstream transport.",
+      "status_panel_text": "These are current OpenDrift/OpenOil Phase 4 interpretation outputs, not cross-model figures.",
+      "status_dashboard_summary": "Phase 4 OpenDrift/OpenOil-only interpretation; inherited-provisional."
     },
     {
       "figure_id": "case_mindoro_retro_2023__phase4__openoil__panel_board__2023_03_03_to_2023_03_06__all_scenarios__panel__mindoro_phase4_shoreline_board",
@@ -185,7 +230,16 @@
       "plain_language_interpretation": "Shoreline arrival outputs and scenario-specific segment impacts are available now for Mindoro, with heavier oils producing the strongest shoreline burden under the current replay.",
       "recommended_for_main_defense": true,
       "source_paths": "output/trajectory_gallery/case_mindoro_retro_2023__phase4__openoil__shoreline_arrival_summary__2023_03_03_to_2023_03_06__all_scenarios__scenario_arrival_bars.png;output/trajectory_gallery/case_mindoro_retro_2023__phase4__openoil__shoreline_impact_summary__2023_03_03_to_2023_03_06__all_scenarios__shoreline_impacts.png;output/trajectory_gallery/case_mindoro_retro_2023__phase4__openoil__shoreline_segment_impact_map__2023_03_03_to_2023_03_06__all_scenarios__segment_midpoint_impacts.png",
-      "notes": "Built from stored Phase 4 shoreline summary figures and CSV-derived gallery outputs only."
+      "notes": "Built from stored Phase 4 shoreline summary figures and CSV-derived gallery outputs only.",
+      "status_key": "mindoro_phase4_shoreline",
+      "status_label": "Mindoro Phase 4 shoreline interpretation",
+      "status_role": "phase4_openoil_only",
+      "status_reportability": "reportable_now_inherited_provisional",
+      "status_official_status": "opendrift_openoil_only_not_cross_model",
+      "status_frozen_status": "not_frozen",
+      "status_provenance": "OpenDrift/OpenOil-only shoreline outputs on the current reportable replay.",
+      "status_panel_text": "These shoreline figures are part of the current OpenDrift/OpenOil interpretation layer and should not be framed as cross-model results.",
+      "status_dashboard_summary": "Phase 4 shoreline interpretation; inherited-provisional."
     },
     {
       "figure_id": "case_dwh_retro_2010_72h__phase3c_external_case_run__opendrift__panel_board__2010_05_21_to_2010_05_23__panel__dwh_deterministic_board",
@@ -200,10 +254,19 @@
       "variant": "panel",
       "relative_path": "output/trajectory_gallery_panel/case_dwh_retro_2010_72h__phase3c_external_case_run__opendrift__panel_board__2010_05_21_to_2010_05_23__panel__dwh_deterministic_board.png",
       "file_path": "/app/output/trajectory_gallery_panel/case_dwh_retro_2010_72h__phase3c_external_case_run__opendrift__panel_board__2010_05_21_to_2010_05_23__panel__dwh_deterministic_board.png",
-      "plain_language_interpretation": "The DWH deterministic board is panel-ready and supports the plain-language claim that the transport framework transfers successfully to a richer external case.",
+      "plain_language_interpretation": "The DWH deterministic board is panel-ready and supports the plain-language claim that a separate external transfer-validation case succeeds on observed DWH truth masks.",
       "recommended_for_main_defense": true,
       "source_paths": "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_run/qa_phase3c_eventcorridor_overlay.png;output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_run/qa_phase3c_overlays.png;output/trajectory_gallery/case_dwh_retro_2010_72h__phase3c_external_case_run__opendrift__deterministic_track_map__2010_05_20_to_2010_05_23__sampled_particle_paths.png",
-      "notes": "Built from stored DWH deterministic QA figures and the raw deterministic track map."
+      "notes": "Built from stored DWH deterministic QA figures and the raw deterministic track map.",
+      "status_key": "dwh_trajectory_context",
+      "status_label": "DWH trajectory context",
+      "status_role": "trajectory_context",
+      "status_reportability": "appendix_support_context",
+      "status_official_status": "trajectory_context_only",
+      "status_frozen_status": "not_frozen",
+      "status_provenance": "Stored deterministic, ensemble, and comparator tracks shown as path context.",
+      "status_panel_text": "Path-intuition context before or after the score-based boards.",
+      "status_dashboard_summary": "Trajectory appendix-support context."
     },
     {
       "figure_id": "case_dwh_retro_2010_72h__phase3c_ensemble__opendrift__panel_board__2010_05_21_to_2010_05_23__panel__dwh_deterministic_vs_ensemble_board",
@@ -218,10 +281,19 @@
       "variant": "panel",
       "relative_path": "output/trajectory_gallery_panel/case_dwh_retro_2010_72h__phase3c_ensemble__opendrift__panel_board__2010_05_21_to_2010_05_23__panel__dwh_deterministic_vs_ensemble_board.png",
       "file_path": "/app/output/trajectory_gallery_panel/case_dwh_retro_2010_72h__phase3c_ensemble__opendrift__panel_board__2010_05_21_to_2010_05_23__panel__dwh_deterministic_vs_ensemble_board.png",
-      "plain_language_interpretation": "This board is ready for the panel because it explains the practical meaning of deterministic, p50, and p90 products side by side on the DWH case.",
+      "plain_language_interpretation": "This board is ready for the panel because it explains deterministic, p50, and p90 side by side against the observed DWH truth corridor on the same readiness-gated forcing stack.",
       "recommended_for_main_defense": true,
       "source_paths": "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_run/qa_phase3c_eventcorridor_overlay.png;output/trajectory_gallery/case_dwh_retro_2010_72h__phase3c_ensemble__opendrift__ensemble_overlay__2010_05_21_to_2010_05_23__eventcorridor_overlay.png;output/trajectory_gallery/case_dwh_retro_2010_72h__phase3c_ensemble__opendrift__ensemble_overlay__2010_05_21_to_2010_05_23__p50_p90_overlays.png",
-      "notes": "Built from stored DWH deterministic and ensemble QA figures plus the raw gallery overlays."
+      "notes": "Built from stored DWH deterministic and ensemble QA figures plus the raw gallery overlays.",
+      "status_key": "dwh_trajectory_context",
+      "status_label": "DWH trajectory context",
+      "status_role": "trajectory_context",
+      "status_reportability": "appendix_support_context",
+      "status_official_status": "trajectory_context_only",
+      "status_frozen_status": "not_frozen",
+      "status_provenance": "Stored deterministic, ensemble, and comparator tracks shown as path context.",
+      "status_panel_text": "Path-intuition context before or after the score-based boards.",
+      "status_dashboard_summary": "Trajectory appendix-support context."
     },
     {
       "figure_id": "case_dwh_retro_2010_72h__phase3c_pygnome_comparator__opendrift_vs_pygnome__panel_board__2010_05_21_to_2010_05_23__panel__dwh_model_comparison_board",
@@ -236,10 +308,19 @@
       "variant": "panel",
       "relative_path": "output/trajectory_gallery_panel/case_dwh_retro_2010_72h__phase3c_pygnome_comparator__opendrift_vs_pygnome__panel_board__2010_05_21_to_2010_05_23__panel__dwh_model_comparison_board.png",
       "file_path": "/app/output/trajectory_gallery_panel/case_dwh_retro_2010_72h__phase3c_pygnome_comparator__opendrift_vs_pygnome__panel_board__2010_05_21_to_2010_05_23__panel__dwh_model_comparison_board.png",
-      "plain_language_interpretation": "The DWH model-comparison board is presentation-ready because it clearly positions PyGNOME as a comparator and keeps the OpenDrift-rich-data success story visible.",
+      "plain_language_interpretation": "The DWH model-comparison board is presentation-ready because it clearly positions PyGNOME as comparator-only while keeping the observed DWH truth masks and OpenDrift transfer-validation result visible.",
       "recommended_for_main_defense": true,
       "source_paths": "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_run/qa_phase3c_eventcorridor_overlay.png;output/trajectory_gallery/case_dwh_retro_2010_72h__phase3c_pygnome_comparator__opendrift_vs_pygnome__comparison_overlay__2010_05_21_to_2010_05_23__eventcorridor_overlay.png;output/trajectory_gallery/case_dwh_retro_2010_72h__phase3c_pygnome_comparator__opendrift_vs_pygnome__comparison_overlay__2010_05_21_to_2010_05_23__per_date_overlays.png",
-      "notes": "Built from stored DWH comparator QA figures and the deterministic event-corridor overlay."
+      "notes": "Built from stored DWH comparator QA figures and the deterministic event-corridor overlay.",
+      "status_key": "dwh_trajectory_context",
+      "status_label": "DWH trajectory context",
+      "status_role": "trajectory_context",
+      "status_reportability": "appendix_support_context",
+      "status_official_status": "trajectory_context_only",
+      "status_frozen_status": "not_frozen",
+      "status_provenance": "Stored deterministic, ensemble, and comparator tracks shown as path context.",
+      "status_panel_text": "Path-intuition context before or after the score-based boards.",
+      "status_dashboard_summary": "Trajectory appendix-support context."
     },
     {
       "figure_id": "case_dwh_retro_2010_72h__phase3c_trajectories__opendrift_vs_pygnome__panel_board__2010_05_20_to_2010_05_23__panel__dwh_trajectory_board",
@@ -254,10 +335,19 @@
       "variant": "panel",
       "relative_path": "output/trajectory_gallery_panel/case_dwh_retro_2010_72h__phase3c_trajectories__opendrift_vs_pygnome__panel_board__2010_05_20_to_2010_05_23__panel__dwh_trajectory_board.png",
       "file_path": "/app/output/trajectory_gallery_panel/case_dwh_retro_2010_72h__phase3c_trajectories__opendrift_vs_pygnome__panel_board__2010_05_20_to_2010_05_23__panel__dwh_trajectory_board.png",
-      "plain_language_interpretation": "The DWH trajectory board is useful appendix-support material because it makes the model-path behavior visible before score comparisons.",
+      "plain_language_interpretation": "The DWH trajectory board is useful appendix-support material because it makes the model-path behavior visible before score comparisons on the observed DWH truth masks.",
       "recommended_for_main_defense": false,
       "source_paths": "output/trajectory_gallery/case_dwh_retro_2010_72h__phase3c_ensemble__opendrift__ensemble_overlay__2010_05_21_to_2010_05_23__p50_p90_overlays.png;output/trajectory_gallery/case_dwh_retro_2010_72h__phase3c_external_case_run__opendrift__deterministic_track_map__2010_05_20_to_2010_05_23__sampled_particle_paths.png;output/trajectory_gallery_panel/_support/case_dwh_retro_2010_72h__phase3c_pygnome_comparator__pygnome__sampled_track_panel__2010_05_20_to_2010_05_23__support__dwh_pygnome_track.png",
-      "notes": "Built from the raw DWH deterministic track map, the raw ensemble overlay, and a new read-only sampled PyGNOME track panel derived from the stored comparator NetCDF."
+      "notes": "Built from the raw DWH deterministic track map, the raw ensemble overlay, and a new read-only sampled PyGNOME track panel derived from the stored comparator NetCDF.",
+      "status_key": "dwh_trajectory_context",
+      "status_label": "DWH trajectory context",
+      "status_role": "trajectory_context",
+      "status_reportability": "appendix_support_context",
+      "status_official_status": "trajectory_context_only",
+      "status_frozen_status": "not_frozen",
+      "status_provenance": "Stored deterministic, ensemble, and comparator tracks shown as path context.",
+      "status_panel_text": "Path-intuition context before or after the score-based boards.",
+      "status_dashboard_summary": "Trajectory appendix-support context."
     }
   ]
 }

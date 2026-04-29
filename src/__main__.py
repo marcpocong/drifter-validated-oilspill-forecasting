@@ -57,6 +57,7 @@ docker-compose exec pipeline runs Phase 1 + 2.
 docker-compose exec gnome   runs Phase 3.
 """
 
+import csv
 import json
 import os
 import sys
@@ -107,6 +108,83 @@ def _prep_command_hint() -> str:
         "docker-compose -f docker-compose.yml exec -T "
         f"-e WORKFLOW_MODE={workflow_mode} -e PIPELINE_PHASE=prep pipeline python -m src"
     )
+
+
+def _defense_smoke_test_enabled() -> bool:
+    return str(os.environ.get("DEFENSE_SMOKE_TEST", "") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _csv_row_count(path: Path) -> int:
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        return sum(1 for _ in csv.DictReader(handle))
+
+
+def _verify_existing_read_only_package(
+    *,
+    label: str,
+    output_dir: str | Path,
+    manifest_path: str | Path,
+    registry_path: str | Path,
+    captions_path: str | Path,
+    talking_points_path: str | Path,
+    built_from_existing_key: str,
+    expensive_rerun_key: str,
+    recommended_figures_key: str = "recommended_main_defense_figures",
+    extra_required_paths: list[str | Path] | None = None,
+) -> dict[str, object]:
+    output_dir_path = Path(output_dir)
+    manifest_file = Path(manifest_path)
+    registry_file = Path(registry_path)
+    captions_file = Path(captions_path)
+    talking_points_file = Path(talking_points_path)
+    required_paths = [
+        output_dir_path,
+        manifest_file,
+        registry_file,
+        captions_file,
+        talking_points_file,
+        *(Path(item) for item in (extra_required_paths or [])),
+    ]
+    missing = [str(path) for path in required_paths if not path.exists()]
+    if missing:
+        raise FileNotFoundError(
+            f"{label} smoke check is missing required stored artifacts: {', '.join(missing)}"
+        )
+
+    manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    if not manifest.get(built_from_existing_key):
+        raise ValueError(
+            f"{label} manifest must keep {built_from_existing_key}=true during defense smoke mode."
+        )
+    if manifest.get(expensive_rerun_key):
+        raise ValueError(
+            f"{label} manifest unexpectedly reports {expensive_rerun_key}=true."
+        )
+
+    registry_rows = _csv_row_count(registry_file)
+    if registry_rows <= 0:
+        raise ValueError(f"{label} registry is empty: {registry_file}")
+
+    recommended = manifest.get(recommended_figures_key) or []
+    if not recommended:
+        raise ValueError(
+            f"{label} manifest must list at least one recommended defense figure under {recommended_figures_key}."
+        )
+
+    return {
+        "output_dir": str(output_dir_path),
+        "manifest_path": str(manifest_file),
+        "registry_path": str(registry_file),
+        "captions_path": str(captions_file),
+        "talking_points_path": str(talking_points_file),
+        "registry_row_count": registry_rows,
+        "recommended_main_defense_figures": list(recommended),
+    }
 
 
 def _current_phase() -> str:
@@ -2314,6 +2392,33 @@ def run_trajectory_gallery_build_phase():
 
 
 def run_trajectory_gallery_panel_polish_phase():
+    if _defense_smoke_test_enabled():
+        print("Starting trajectory gallery panel polish...")
+        print("Defense smoke mode: verifying the stored panel package only. No figure redraw will run in this bounded smoke check.")
+
+        results = _verify_existing_read_only_package(
+            label="trajectory gallery panel package",
+            output_dir=Path("output") / "trajectory_gallery_panel",
+            manifest_path=Path("output") / "trajectory_gallery_panel" / "panel_figure_manifest.json",
+            registry_path=Path("output") / "trajectory_gallery_panel" / "panel_figure_registry.csv",
+            captions_path=Path("output") / "trajectory_gallery_panel" / "panel_figure_captions.md",
+            talking_points_path=Path("output") / "trajectory_gallery_panel" / "panel_figure_talking_points.md",
+            built_from_existing_key="built_from_existing_outputs_only",
+            expensive_rerun_key="expensive_scientific_reruns_triggered",
+        )
+
+        print("\nTrajectory gallery panel smoke check complete.")
+        print(f"Outputs saved to: {results['output_dir']}")
+        print(f"Registry: {results['registry_path']}")
+        print(f"Manifest: {results['manifest_path']}")
+        print(f"Captions: {results['captions_path']}")
+        print(f"Talking points: {results['talking_points_path']}")
+        print(f"Registry rows: {results['registry_row_count']}")
+        print("Recommended main-defense figures:")
+        for figure_id in results["recommended_main_defense_figures"]:
+            print(f"  - {figure_id}")
+        return
+
     from src.services.trajectory_gallery_panel_polish import run_trajectory_gallery_panel_polish
 
     print("Starting trajectory gallery panel polish...")
@@ -2342,6 +2447,36 @@ def run_trajectory_gallery_panel_polish_phase():
 
 
 def run_figure_package_publication_phase():
+    if _defense_smoke_test_enabled():
+        print("Starting publication-grade figure package build...")
+        print("Defense smoke mode: verifying the stored publication package only. No figure redraw will run in this bounded smoke check.")
+
+        results = _verify_existing_read_only_package(
+            label="publication-grade figure package",
+            output_dir=Path("output") / "figure_package_publication",
+            manifest_path=Path("output") / "figure_package_publication" / "publication_figure_manifest.json",
+            registry_path=Path("output") / "figure_package_publication" / "publication_figure_registry.csv",
+            captions_path=Path("output") / "figure_package_publication" / "publication_figure_captions.md",
+            talking_points_path=Path("output") / "figure_package_publication" / "publication_figure_talking_points.md",
+            built_from_existing_key="publication_package_built_from_existing_outputs_only",
+            expensive_rerun_key="expensive_scientific_reruns_triggered",
+            extra_required_paths=[
+                Path("output") / "figure_package_publication" / "publication_figure_inventory.md",
+            ],
+        )
+
+        print("\nPublication-grade figure package smoke check complete.")
+        print(f"Outputs saved to: {results['output_dir']}")
+        print(f"Registry: {results['registry_path']}")
+        print(f"Manifest: {results['manifest_path']}")
+        print(f"Captions: {results['captions_path']}")
+        print(f"Talking points: {results['talking_points_path']}")
+        print(f"Registry rows: {results['registry_row_count']}")
+        print("Recommended main-defense figures:")
+        for figure_id in results["recommended_main_defense_figures"]:
+            print(f"  - {figure_id}")
+        return
+
     from src.services.figure_package_publication import run_figure_package_publication
 
     print("Starting publication-grade figure package build...")

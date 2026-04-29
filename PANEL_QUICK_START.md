@@ -13,6 +13,7 @@ or:
 ```
 
 This opens the panel-safe review menu instead of the full research launcher. Panel mode is review-only / stored-output-only unless you intentionally switch to researcher or audit reruns.
+Use launcher entry IDs and panel options as the user-facing startup vocabulary; raw phase names are not the primary startup commands.
 
 ## What Panel Mode Is For
 

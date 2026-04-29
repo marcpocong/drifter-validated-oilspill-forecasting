@@ -11,4 +11,4 @@ python_package,rasterio,1.4.4,importlib.metadata,
 python_package,shapely,2.1.2,importlib.metadata,
 python_package,pyproj,3.7.1,importlib.metadata,
 python_package,fiona,,importlib.metadata,
-launcher_catalog,launcher_matrix_catalog_version,phase5_launcher_matrix_v2,config/launcher_matrix.json,Source-of-truth launcher/menu matrix used by start.ps1 and Phase 5 sync.
+launcher_catalog,launcher_matrix_catalog_version,phase5_launcher_matrix_v3,config/launcher_matrix.json,Source-of-truth launcher/menu matrix used by start.ps1 and Phase 5 sync.

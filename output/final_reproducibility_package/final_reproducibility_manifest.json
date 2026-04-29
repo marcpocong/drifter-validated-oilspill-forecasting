@@ -1,16 +1,17 @@
 {
   "phase": "phase5_launcher_and_docs_sync",
-  "generated_at_utc": "2026-04-14T14:25:48.026075+00:00",
+  "generated_at_utc": "2026-04-29T00:04:22.627526+00:00",
   "repo_root": "/app",
   "output_dir": "output/final_reproducibility_package",
   "launcher_catalog": {
     "path": "config/launcher_matrix.json",
     "entrypoint": "start.ps1",
-    "catalog_version": "phase5_launcher_matrix_v2",
+    "catalog_version": "phase5_launcher_matrix_v3",
     "safe_read_only_entry_ids": [
       "mindoro_march6_recovery_sensitivity",
       "phase1_audit",
       "phase2_audit",
+      "b1_drifter_context_panel",
       "final_validation_package",
       "phase5_sync",
       "trajectory_gallery",
@@ -135,7 +136,7 @@
     {
       "phase_id": "phase3a",
       "track_id": "A",
-      "track_label": "Mindoro March 13 -> March 14 cross-model comparator",
+      "track_label": "Mindoro March 13 -> March 14 Track A comparator support",
       "readiness_status": "scientifically_informative_comparator",
       "scientifically_reportable": true,
       "scientifically_frozen": false,
@@ -143,13 +144,13 @@
       "main_blocker": "Comparator-only track with a shared-imagery caveat; upstream Mindoro transport baseline is still not frozen.",
       "reportable_now": true,
       "reportability_scope": "comparative_benchmark_discussion",
-      "summary": "Same-case comparator-only support track attached to B1 on the promoted March 14 target. fss_1km=0.0000, fss_3km=0.0441, fss_5km=0.1371, fss_10km=0.2490",
+      "summary": "Same-case Track A comparator-only support attached to the March 13 -> March 14 R1 primary validation row. fss_1km=0.0000, fss_3km=0.0441, fss_5km=0.1371, fss_10km=0.2490",
       "evidence_path": "output/final_validation_package/final_validation_manifest.json"
     },
     {
       "phase_id": "phase3b",
       "track_id": "B1",
-      "track_label": "Mindoro March 13 -> March 14 NOAA reinit primary validation",
+      "track_label": "Mindoro March 13 -> March 14 R1 primary validation row",
       "readiness_status": "scientifically_reportable_primary_validation",
       "scientifically_reportable": true,
       "scientifically_frozen": false,
@@ -157,13 +158,13 @@
       "main_blocker": "Phase 2 is scientifically usable on the promoted cmems_gfs baseline, but the final frozen story still depends on retiring legacy *_ncep runtime IDs from official-mode config space and closing the remaining transport-model provisionality.",
       "reportable_now": true,
       "reportability_scope": "main_text_primary_validation",
-      "summary": "Promoted primary validation; the focused 2016-2023 Mindoro drifter rerun found cmems_gfs as the historical winner and official B1 now uses cmems_gfs; reportable now but not fully frozen. fss_1km=0.0000, fss_3km=0.0441, fss_5km=0.1371, fss_10km=0.2490",
+      "summary": "March 13 -> March 14 R1 primary validation row only; the focused 2016-2023 Mindoro drifter rerun found cmems_gfs as the historical winner, official B1 now uses cmems_gfs, and the stored promoted run remains tied to the existing R1_previous reinit lineage. fss_1km=0.0000, fss_3km=0.0441, fss_5km=0.1371, fss_10km=0.2490",
       "evidence_path": "output/final_validation_package/final_validation_manifest.json"
     },
     {
       "phase_id": "phase3b",
       "track_id": "B2",
-      "track_label": "Mindoro legacy March 6 sparse strict reference",
+      "track_label": "Mindoro March 6 B2 archived sparse strict reference",
       "readiness_status": "scientifically_reportable_legacy_reference",
       "scientifically_reportable": true,
       "scientifically_frozen": false,
@@ -171,13 +172,13 @@
       "main_blocker": "Phase 2 is scientifically usable on the promoted cmems_gfs baseline, but the final frozen story still depends on retiring legacy *_ncep runtime IDs from official-mode config space and closing the remaining transport-model provisionality.",
       "reportable_now": true,
       "reportability_scope": "legacy_sparse_reference",
-      "summary": "B2 legacy honesty reference; not the promoted primary row. fss_1km=0.0000, fss_3km=0.0000, fss_5km=0.0000, fss_10km=0.0000",
+      "summary": "B2 archived March 6 sparse reference; preserved for provenance only and not thesis-facing. fss_1km=0.0000, fss_3km=0.0000, fss_5km=0.0000, fss_10km=0.0000",
       "evidence_path": "output/final_validation_package/final_validation_manifest.json"
     },
     {
       "phase_id": "phase3b",
       "track_id": "B3",
-      "track_label": "Mindoro legacy March 3-6 broader-support reference",
+      "track_label": "Mindoro March 3-6 B3 archived broader-support reference",
       "readiness_status": "scientifically_reportable_legacy_reference",
       "scientifically_reportable": true,
       "scientifically_frozen": false,
@@ -185,7 +186,7 @@
       "main_blocker": "Phase 2 is scientifically usable on the promoted cmems_gfs baseline, but the final frozen story still depends on retiring legacy *_ncep runtime IDs from official-mode config space and closing the remaining transport-model provisionality.",
       "reportable_now": true,
       "reportability_scope": "legacy_broader_support_reference",
-      "summary": "B3 legacy broader-support context; not a primary row. fss_1km=0.1722, fss_3km=0.2004, fss_5km=0.2166, fss_10km=0.2438",
+      "summary": "B3 archived March 3-6 broader-support reference; preserved for provenance only. fss_1km=0.1722, fss_3km=0.2004, fss_5km=0.2166, fss_10km=0.2438",
       "evidence_path": "output/final_validation_package/final_validation_manifest.json"
     },
     {
@@ -274,7 +275,7 @@
     }
   ],
   "manifest_index_summary": {
-    "row_count": 146,
+    "row_count": 159,
     "missing_optional_artifacts": [
       "output/phase4/CASE_DWH_RETRO_2010_72H/phase4_run_manifest.json"
     ]

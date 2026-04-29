@@ -134,7 +134,7 @@ def render(state: dict, ui_state: dict) -> None:
 
     render_page_intro(
         "B1 Drifter Provenance",
-        "This page lets panel reviewers inspect the historical focused Phase 1 drifter provenance behind the selected transport recipe inherited by Mindoro B1, while keeping the B1 public-observation claim boundary explicit and unchanged.",
+        "This page lets panel reviewers inspect the historical focused Phase 1 provenance behind the selected transport recipe inherited by Mindoro B1, while keeping the B1 public-observation claim boundary explicit and unchanged.",
         badge="Panel-friendly | transport-provenance context",
     )
 
@@ -153,7 +153,7 @@ def render(state: dict, ui_state: dict) -> None:
             context.get("page_note"),
             fallback=(
                 "These drifter records support the selected transport recipe used by B1. "
-                "They are not the direct truth mask for the March 13-14 public-observation validation row."
+                "They are not the direct March 13-14 public-observation truth mask for the B1 public-observation validation row."
             ),
         ),
         "warning",
@@ -179,7 +179,17 @@ def render(state: dict, ui_state: dict) -> None:
 
     def _map_and_honesty() -> None:
         _render_map_section(context, export_mode=export_mode)
-        render_status_callout("Missing-data honesty panel", _clean_text(context.get("direct_segment_note")), "warning")
+        render_status_callout(
+            "Missing-data honesty panel",
+            _clean_text(
+                context.get("direct_segment_note"),
+                fallback=(
+                    "No direct March 13-14 2023 accepted drifter segment is stored for B1. "
+                    "The displayed drifter data is the historical focused Phase 1 provenance set used for recipe selection."
+                ),
+            ),
+            "warning",
+        )
         direct_accepted = context.get("direct_accepted_segments_display", pd.DataFrame())
         if not direct_accepted.empty:
             render_table(

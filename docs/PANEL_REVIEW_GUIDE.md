@@ -146,6 +146,7 @@ That view stays stored-output-only.
 
 - It explains the focused historical Phase 1 provenance behind the selected recipe.
 - It does not turn drifters into the March 13-14 truth mask.
+- It makes the claim boundary explicit: B1 drifter provenance is not the direct March 13-14 public-observation validation truth.
 - It explicitly says when no direct March 13-14 2023 accepted drifter segment is stored for `B1`.
 
 ## 9. Why `B1` Is The Main Mindoro Row
