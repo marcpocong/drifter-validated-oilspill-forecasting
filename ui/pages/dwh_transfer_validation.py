@@ -19,6 +19,7 @@ ensure_repo_root_on_path(__file__)
 
 import streamlit as st
 
+from ui.evidence_contract import ROLE_THESIS, assert_no_archive_leak, filter_for_page
 from ui.pages.common import (
     render_export_note,
     render_figure_gallery,
@@ -28,6 +29,32 @@ from ui.pages.common import (
     render_status_callout,
     render_table,
 )
+
+
+def _draft22_dwh_mean_fss_table():
+    import pandas as pd
+
+    return pd.DataFrame(
+        [
+            {"Date/scope": "2010-05-21", "C1 deterministic": "0.4538", "C2 p50": "0.4529", "C2 p90": "0.4930", "C3 PyGNOME comparator": "0.2434"},
+            {"Date/scope": "2010-05-22", "C1 deterministic": "0.4808", "C2 p50": "0.5408", "C2 p90": "0.4870", "C3 PyGNOME comparator": "0.2539"},
+            {"Date/scope": "2010-05-23", "C1 deterministic": "0.4146", "C2 p50": "0.4727", "C2 p90": "0.4442", "C3 PyGNOME comparator": "0.2532"},
+            {"Date/scope": "2010-05-21 to 2010-05-23 corridor", "C1 deterministic": "0.5568", "C2 p50": "0.5389", "C2 p90": "0.4966", "C3 PyGNOME comparator": "0.3612"},
+        ]
+    )
+
+
+def _draft22_dwh_corridor_table():
+    import pandas as pd
+
+    return pd.DataFrame(
+        [
+            {"Track/row": "C1 deterministic", "Forecast cells": "53980", "Observed cells": "44305", "Area ratio": "1.2184", "Centroid distance": "72547.72 m", "IoU": "0.3362", "Dice": "0.5033", "Corridor mean FSS": "0.5568"},
+            {"Track/row": "C2 ensemble p50", "Forecast cells": "51922", "Observed cells": "44305", "Area ratio": "1.1719", "Centroid distance": "94270.47 m", "IoU": "0.3331", "Dice": "0.4997", "Corridor mean FSS": "0.5389"},
+            {"Track/row": "C2 ensemble p90", "Forecast cells": "27776", "Observed cells": "44305", "Area ratio": "0.6269", "Centroid distance": "68939.89 m", "IoU": "0.2938", "Dice": "0.4542", "Corridor mean FSS": "0.4966"},
+            {"Track/row": "C3 PyGNOME comparator", "Forecast cells": "20639", "Observed cells": "44305", "Area ratio": "0.4658", "Centroid distance": "58867.12 m", "IoU": "0.1903", "Dice": "0.3197", "Corridor mean FSS": "0.3612"},
+        ]
+    )
 
 
 def _dwh_subset(df, artifact_groups: set[str]) -> object:
@@ -51,9 +78,9 @@ def _dwh_name_subset(df, include_terms: tuple[str, ...], exclude_terms: tuple[st
 def render(state: dict, ui_state: dict) -> None:
     export_mode = bool(ui_state.get("export_mode"))
     render_page_intro(
-        "DWH Phase 3C Transfer Validation",
-        "This page treats DWH as a separate Phase 3C external transfer-validation lane. It keeps C1 deterministic, C2 ensemble extension, and C3 comparator-only semantics explicit, with public observation-derived masks as truth and no drifter baseline.",
-        badge="Thesis-facing | DWH transfer-validation",
+        "DWH External Transfer Validation",
+        "DWH is a separate external transfer validation story using public daily observation masks on its own fixed 1 km scoring grid.",
+        badge=ROLE_THESIS,
     )
 
     if export_mode:
@@ -65,8 +92,13 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     render_status_callout(
+        "Claim boundary",
+        "DWH is a separate external transfer validation story; it does not recalibrate Mindoro and is not a second Philippine Phase 1 study.",
+        "warning",
+    )
+    render_status_callout(
         "Truth rule",
-        "DWH truth comes from public observation-derived date-composite masks only, and those official masks remain the scoring reference for every displayed FSS value. No drifter baseline is used here.",
+        "Truth semantics: daily date-composite public observation masks; exact sub-daily acquisition times are not claimed.",
         "info",
     )
     render_status_callout(
@@ -79,8 +111,18 @@ def render(state: dict, ui_state: dict) -> None:
         "PyGNOME is comparator-only for DWH. It is never truth and does not replace the deterministic OpenDrift transfer-validation story.",
         "warning",
     )
+    render_status_callout(
+        "Event-corridor score summary",
+        "DWH event-corridor mean FSS: C1 deterministic 0.5568, C2 p50 0.5389, C2 p90 0.4966, C3 PyGNOME comparator 0.3612.",
+        "info",
+    )
 
-    registry = state["dwh_final_registry"]
+    registry = filter_for_page(
+        state["dwh_final_registry"],
+        "dwh_transfer_validation",
+        advanced=bool(ui_state.get("advanced")),
+    )
+    assert_no_archive_leak(registry, "dwh_transfer_validation", advanced=bool(ui_state.get("advanced")))
     truth_figures = _dwh_subset(registry, {"publication/observations"})
     deterministic_figures = _dwh_subset(registry, {"publication/opendrift_deterministic"})
     ensemble_figures = _dwh_subset(registry, {"publication/opendrift_ensemble"})
@@ -113,6 +155,22 @@ def render(state: dict, ui_state: dict) -> None:
 
     def _truth_context() -> None:
         render_status_callout("Observation context", "These figures show the public observation-derived daily masks and the event-corridor union used as truth before any model comparison is discussed.", "info")
+        render_table(
+            "Draft 22 DWH daily and corridor mean FSS",
+            _draft22_dwh_mean_fss_table(),
+            download_name="draft22_dwh_mean_fss.csv",
+            caption="p50 is the preferred probabilistic footprint; p90 is support/comparison only; PyGNOME is comparator-only.",
+            height=190,
+            export_mode=export_mode,
+        )
+        render_table(
+            "Draft 22 DWH event-corridor geometry",
+            _draft22_dwh_corridor_table(),
+            download_name="draft22_dwh_corridor_geometry.csv",
+            caption="Corridor summary values for C1, C2 p50, C2 p90, and C3.",
+            height=210,
+            export_mode=export_mode,
+        )
         render_figure_gallery(
             truth_figures,
             title="Observation truth-context figures",

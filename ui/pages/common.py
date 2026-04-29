@@ -27,6 +27,7 @@ import streamlit as st
 from PIL import Image as PILImage
 
 from ui.data_access import parse_source_paths, read_json, read_text, resolve_repo_path
+from ui.evidence_contract import panel_safe_label, role_badge_for_record
 
 
 def _clean_text_value(value: Any) -> str:
@@ -86,7 +87,7 @@ def render_status_callout(label: str, value: str, tone: str = "info") -> None:
 def render_metric_row(metrics: list[tuple[str, str]], *, export_mode: bool = False) -> None:
     if not metrics:
         return
-    columns_per_row = min(2 if export_mode else len(metrics), len(metrics))
+    columns_per_row = min(2 if export_mode else 3, len(metrics))
     for start in range(0, len(metrics), columns_per_row):
         visible_columns = min(columns_per_row, len(metrics) - start)
         columns = st.columns(visible_columns)
@@ -129,9 +130,19 @@ def render_table(
     if caption:
         st.caption(caption)
     if df.empty:
-        st.info("No packaged table is available for this view in the current repo state.")
+        st.info("Not packaged in current repo state.")
         return
     display_df = df.head(max_rows).copy() if max_rows else df.copy()
+    internal_columns = [
+        column
+        for column in display_df.columns
+        if column in {"status_reportability", "status_official_status", "status_frozen_status"}
+        or "launcher" in str(column).lower()
+    ]
+    if internal_columns:
+        display_df = display_df.drop(columns=internal_columns)
+    for column in display_df.select_dtypes(include=["object"]).columns:
+        display_df[column] = display_df[column].map(panel_safe_label)
     if export_mode and len(display_df) <= 20:
         st.table(display_df)
     else:
@@ -149,7 +160,7 @@ def render_table(
 def render_markdown_block(title: str, content: str, *, collapsed: bool = True, export_mode: bool = False) -> None:
     st.subheader(title)
     if not content.strip():
-        st.info("No packaged note is available for this view in the current repo state.")
+        st.info("Not packaged in current repo state.")
         return
     if collapsed and not export_mode:
         with st.expander(f"Open {title}", expanded=False):
@@ -169,7 +180,7 @@ def render_badge_strip(labels: list[str]) -> None:
 def render_package_cards(packages: list[dict[str, Any]], *, columns_per_row: int = 2, export_mode: bool = False) -> None:
     records = [package for package in packages if package]
     if not records:
-        st.info("No curated package links are available in the current repo state.")
+        st.info("Not packaged in current repo state.")
         return
     if export_mode:
         columns_per_row = min(columns_per_row, 2)
@@ -216,7 +227,7 @@ def render_export_note(lines: list[str]) -> None:
 def render_study_structure_cards(cards: list[dict[str, Any]], *, columns_per_row: int = 3, export_mode: bool = False) -> None:
     records = [card for card in cards if card]
     if not records:
-        st.info("No study-structure cards are available in the current repo state.")
+        st.info("Not packaged in current repo state.")
         return
     if export_mode:
         columns_per_row = min(columns_per_row, 2)
@@ -255,7 +266,7 @@ def render_figure_strip(
     if caption:
         st.caption(caption)
     if df.empty:
-        st.info("No additional figures are available for this view.")
+        st.info("Not packaged in current repo state.")
         return
     records = df.head(limit).to_dict(orient="records")
     columns_per_row = max(1, min(columns_per_row, len(records)))
@@ -275,9 +286,9 @@ def render_figure_strip(
                         try:
                             st.image(str(figure_path), width="stretch")
                         except OSError:
-                            st.info("This packaged figure could not be opened in the strip view.")
+                            st.info("Not packaged in current repo state.")
                     else:
-                        st.info("Figure file is missing on disk.")
+                        st.info("Not packaged in current repo state.")
 
 
 def filter_family(df: pd.DataFrame, code: str) -> pd.DataFrame:
@@ -310,15 +321,6 @@ def _figure_header(row: pd.Series) -> tuple[str, str]:
 
 
 def _status_summary_text(row: pd.Series) -> tuple[str, str]:
-    def _panel_safe(text: str) -> str:
-        return (
-            text.replace("legacy honesty", "legacy reference")
-            .replace("Legacy honesty", "Legacy reference")
-            .replace("inherited-provisional", "support result")
-            .replace("reportable now", "main discussion result")
-            .replace("not_comparable_honestly", "no matched comparison is packaged yet")
-        )
-
     summary = _first_present(
         row.get("short_plain_language_interpretation"),
         row.get("plain_language_interpretation"),
@@ -326,37 +328,11 @@ def _status_summary_text(row: pd.Series) -> tuple[str, str]:
         row.get("status_dashboard_summary"),
     )
     provenance = _first_present(row.get("status_provenance"), row.get("provenance_note"))
-    return _panel_safe(summary), _panel_safe(provenance)
+    return panel_safe_label(summary), panel_safe_label(provenance)
 
 
 def _figure_badges(row: pd.Series) -> list[str]:
-    badges: list[str] = []
-    surface_key = _clean_text_value(row.get("surface_key", "")).lower()
-    if surface_key == "archive_only" or _clean_text_value(row.get("archive_only", "")).lower() == "true":
-        badges.append("Archive only")
-    elif surface_key == "legacy_support" or _clean_text_value(row.get("legacy_support", "")).lower() == "true":
-        badges.append("Legacy support")
-    elif surface_key == "comparator_support" or _clean_text_value(row.get("comparator_support", "")).lower() == "true":
-        badges.append("Comparator support")
-    elif surface_key == "thesis_main" or _clean_text_value(row.get("thesis_surface", "")).lower() == "true":
-        badges.append("Thesis-facing")
-
-    scientific_flag = str(row.get("scientific_vs_display_only") or "").strip()
-    if scientific_flag and _humanize(scientific_flag) not in badges:
-        badges.append(_humanize(scientific_flag))
-    primary_flag = str(row.get("primary_vs_secondary") or "").strip()
-    if primary_flag and _humanize(primary_flag) not in badges:
-        badges.append(_humanize(primary_flag))
-    if str(row.get("comparator_only") or "").strip().lower() == "true" and "Comparator-only" not in badges:
-        badges.append("Comparator-only")
-    if str(row.get("support_only") or "").strip().lower() == "true" and "Support-only" not in badges:
-        badges.append("Support-only")
-    if str(row.get("optional_context_only") or "").strip().lower() == "true" and "Context-only" not in badges:
-        badges.append("Context-only")
-    role = str(row.get("status_role") or "").strip()
-    if role and _humanize(role) not in badges:
-        badges.append(_humanize(role))
-    return badges[:4]
+    return [role_badge_for_record(row.to_dict())]
 
 
 def _figure_download_key(row: pd.Series, figure_path: Path | None, *, namespace: str = "card") -> str:
@@ -380,12 +356,20 @@ def _truncate_text(value: Any, *, limit: int = 140) -> str:
     return f"{truncated}..."
 
 
+def _one_sentence_text(value: Any, *, limit: int = 125) -> str:
+    text = " ".join(str(value or "").split())
+    for marker in (". ", "? ", "! "):
+        marker_index = text.find(marker)
+        if marker_index >= 0:
+            text = text[: marker_index + 1]
+            break
+    return _truncate_text(text, limit=limit)
+
+
 def _gallery_tile_subtitle(row: pd.Series, subtitle: str) -> str:
-    if subtitle.strip():
-        return _truncate_text(subtitle, limit=110)
     status_summary, _ = _status_summary_text(row)
     if status_summary:
-        return _truncate_text(status_summary, limit=110)
+        return _one_sentence_text(status_summary, limit=125)
     interpretation = str(
         _first_present(
             row.get("short_plain_language_interpretation"),
@@ -393,7 +377,9 @@ def _gallery_tile_subtitle(row: pd.Series, subtitle: str) -> str:
             row.get("notes"),
         )
     ).strip()
-    return _truncate_text(interpretation, limit=110)
+    if interpretation:
+        return _one_sentence_text(interpretation, limit=125)
+    return _truncate_text(subtitle, limit=110)
 
 
 def _dialog_copy_blocks(row: pd.Series, subtitle: str) -> list[tuple[str, str]]:
@@ -454,13 +440,12 @@ def _render_missing_figure_tile(title_text: str) -> None:
     st.markdown(
         (
             "<div class='figure-gallery-card__missing'>"
-            "<div class='figure-gallery-card__missing-title'>Image unavailable</div>"
+            "<div class='figure-gallery-card__missing-title'>Not packaged in current repo state.</div>"
             f"<div class='figure-gallery-card__missing-copy'>{html.escape(_truncate_text(title_text, limit=90))}</div>"
             "</div>"
         ),
         unsafe_allow_html=True,
     )
-    st.caption("Image unavailable in current repo state.")
 
 
 def _render_gallery_preview_media(figure_path: Path | None, title_text: str) -> bool:
@@ -469,7 +454,7 @@ def _render_gallery_preview_media(figure_path: Path | None, title_text: str) -> 
             st.image(_gallery_image_bytes(str(figure_path), max_width=1200), width="stretch")
             return True
         except OSError:
-            st.info("The packaged figure exists, but the preview image could not be opened.")
+            _render_missing_figure_tile(title_text)
             return False
     _render_missing_figure_tile(title_text)
     return False
@@ -494,9 +479,9 @@ def _render_figure_gallery_dialog(row_payload: dict[str, Any], *, show_download:
         try:
             st.image(str(figure_path), width="stretch")
         except OSError:
-            st.info("The packaged figure exists, but the image could not be opened in the enlarged view.")
+            _render_missing_figure_tile(title_text)
     else:
-        st.warning("Figure file is missing on disk.")
+        _render_missing_figure_tile(title_text)
 
     if caption_text:
         st.caption(caption_text)
@@ -519,10 +504,10 @@ def _render_figure_gallery_dialog(row_payload: dict[str, Any], *, show_download:
             )
         with action_right:
             if st.button("Close preview", key=f"close::{token}", use_container_width=True):
-                st.rerun()
+                st.session_state["_figure_preview_close_ack"] = token
     else:
         if st.button("Close preview", key=f"close::{token}", use_container_width=True):
-            st.rerun()
+            st.session_state["_figure_preview_close_ack"] = token
 
 
 def render_figure_gallery(
@@ -540,7 +525,7 @@ def render_figure_gallery(
     if caption:
         st.caption(caption)
     if df.empty:
-        st.info("No packaged figures are available for this view yet.")
+        st.info("Not packaged in current repo state.")
         return
 
     records = df.head(limit).to_dict(orient="records") if limit else df.to_dict(orient="records")
@@ -557,17 +542,6 @@ def render_figure_gallery(
             dialog_key = _figure_action_token(row, namespace=title)
             with column:
                 with st.container(border=not export_mode):
-                    if export_mode:
-                        if figure_path and figure_path.exists():
-                            try:
-                                st.image(str(figure_path), width="stretch")
-                            except OSError:
-                                st.info("The packaged figure exists, but the image could not be opened in this gallery view.")
-                        else:
-                            _render_missing_figure_tile(title_text)
-                    else:
-                        _render_gallery_preview_media(figure_path, title_text)
-
                     st.markdown(
                         f"<div class='figure-gallery-card__title'>{html.escape(title_text)}</div>",
                         unsafe_allow_html=True,
@@ -578,6 +552,17 @@ def render_figure_gallery(
                             f"<div class='figure-gallery-card__subtitle'>{html.escape(tile_subtitle)}</div>",
                             unsafe_allow_html=True,
                         )
+                    if export_mode:
+                        if figure_path and figure_path.exists():
+                            try:
+                                st.image(str(figure_path), width="stretch")
+                            except OSError:
+                                _render_missing_figure_tile(title_text)
+                        else:
+                            _render_missing_figure_tile(title_text)
+                    else:
+                        _render_gallery_preview_media(figure_path, title_text)
+
                     if not export_mode:
                         action_left, action_right = st.columns(2)
                         with action_left:
@@ -593,8 +578,6 @@ def render_figure_gallery(
                                     key=_figure_download_key(row, figure_path, namespace="gallery"),
                                     use_container_width=True,
                                 )
-                            else:
-                                st.caption("Download unavailable")
 
 
 def _render_figure_details(
@@ -626,9 +609,9 @@ def _render_figure_details(
                     key=_figure_download_key(row, figure_path, namespace=action_namespace),
                 )
         except OSError:
-            st.info("The packaged figure exists, but the image could not be opened in this view.")
+            _render_missing_figure_tile(title_text)
     else:
-        st.warning("Figure file is missing on disk.")
+        _render_missing_figure_tile(title_text)
     interpretation = str(
         _first_present(
             row.get("short_plain_language_interpretation"),
@@ -660,7 +643,7 @@ def render_figure_cards(
     if caption:
         st.caption(caption)
     if df.empty:
-        st.info("No figures are available for this selection.")
+        st.info("Not packaged in current repo state.")
         return
     records = df.head(limit).to_dict(orient="records") if limit else df.to_dict(orient="records")
     if export_mode:
@@ -709,7 +692,7 @@ def render_source_artifact_summary(row: pd.Series) -> None:
 def preview_artifact(path_value: str | Path | None, *, repo_root: str | Path | None = None) -> None:
     path = resolve_repo_path(path_value, repo_root)
     if path is None or not path.exists():
-        st.info("Selected artifact is not available on disk.")
+        st.info("Not packaged in current repo state.")
         return
     suffix = path.suffix.lower()
     if suffix == ".json":

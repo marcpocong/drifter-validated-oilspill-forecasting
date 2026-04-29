@@ -22,6 +22,7 @@ import streamlit as st
 
 from ui import plots as dashboard_plots
 from ui.data_access import resolve_repo_path
+from ui.evidence_contract import ROLE_ADVANCED
 from ui.pages.common import (
     render_export_note,
     render_metric_row,
@@ -133,9 +134,9 @@ def render(state: dict, ui_state: dict) -> None:
     recipe_ranking = _ranking_summary_table(context.get("recipe_ranking", pd.DataFrame()))
 
     render_page_intro(
-        "B1 Drifter Provenance",
-        "This page lets panel reviewers inspect the historical focused Phase 1 provenance behind the selected transport recipe inherited by Mindoro B1, while keeping the B1 public-observation claim boundary explicit and unchanged.",
-        badge="Panel-friendly | transport-provenance context",
+        "B1 Recipe Provenance — Not Truth Mask",
+        "Advanced reference for the focused Phase 1 drifter provenance behind the selected Mindoro B1 transport recipe.",
+        badge=ROLE_ADVANCED,
     )
 
     if export_mode:
@@ -146,7 +147,7 @@ def render(state: dict, ui_state: dict) -> None:
             ]
         )
 
-    render_status_callout("What the drifter data means here", _clean_text(context.get("evidence_boundary_note")), "info")
+    render_status_callout("What the drifter data means here", "Drifter segments support transport-provenance and recipe selection; they are not direct oil-footprint truth.", "info")
     render_status_callout(
         "Required note",
         _clean_text(
@@ -177,10 +178,10 @@ def render(state: dict, ui_state: dict) -> None:
         )
         st.table(_connection_table(context))
 
-    def _map_and_honesty() -> None:
+    def _map_and_boundary() -> None:
         _render_map_section(context, export_mode=export_mode)
         render_status_callout(
-            "Missing-data honesty panel",
+            "Missing-data boundary panel",
             _clean_text(
                 context.get("direct_segment_note"),
                 fallback=(
@@ -242,7 +243,7 @@ def render(state: dict, ui_state: dict) -> None:
     render_section_stack(
         [
             ("B1 Connection", _connection),
-            ("Map And Honesty", _map_and_honesty),
+            ("Map And Boundary", _map_and_boundary),
             ("Tables And Ranking", _tables_and_ranking),
         ],
         export_mode=export_mode,

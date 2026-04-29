@@ -31,7 +31,7 @@ def render(state: dict, ui_state: dict) -> None:
     render_page_intro(
         "Phase 4 Cross-Model Status",
         "This page makes the current Mindoro Phase 4 comparator decision explicit. It shows why the repo does not yet package a matched PyGNOME Phase 4 comparison and keeps the current Phase 4 results clearly framed as OpenDrift/OpenOil scenario outputs only.",
-        badge="Read-only honesty page | no forced Phase 4 comparator",
+        badge="Read-only status page | no forced Phase 4 comparator",
     )
 
     verdict_text = state["phase4_crossmodel_verdict"]

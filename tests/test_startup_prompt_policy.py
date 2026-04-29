@@ -1,11 +1,17 @@
+import json
 import os
 import io
 import unittest
+from pathlib import Path
 from unittest import mock
 from contextlib import redirect_stdout
 
 import src.__main__ as entrypoint
 from src.utils import startup_prompt_policy as policy
+from src.utils.validate_launcher_matrix import READ_ONLY_PHASES, audit_launcher_matrix
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class StartupPromptPolicyTests(unittest.TestCase):
@@ -158,6 +164,21 @@ class StartupPromptPolicyTests(unittest.TestCase):
         for row in audit_rows:
             has_promptable_pipeline_phase = bool(row["has_promptable_pipeline_phase"])
             self.assertEqual(bool(row["should_prompt_wait_budget"]), has_promptable_pipeline_phase)
+
+    def test_launcher_validation_and_startup_policy_agree_on_read_only_entries(self):
+        report = audit_launcher_matrix(REPO_ROOT)
+        self.assertEqual(report["status"], "PASS")
+
+        matrix = json.loads((REPO_ROOT / "config" / "launcher_matrix.json").read_text(encoding="utf-8"))
+        for entry in matrix["entries"]:
+            if entry["run_kind"] not in {"read_only", "packaging_only"}:
+                continue
+            probe = policy.build_launcher_entry_probe(entry["entry_id"])
+            self.assertFalse(probe["should_prompt_wait_budget"], entry["entry_id"])
+            self.assertTrue(
+                all(step["phase"] in READ_ONLY_PHASES for step in entry["steps"]),
+                entry["entry_id"],
+            )
 
 
 class MainStartupPromptIntegrationTests(unittest.TestCase):

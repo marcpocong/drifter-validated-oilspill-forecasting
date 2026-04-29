@@ -208,7 +208,10 @@ def _temporary_env(updates: dict[str, str | None]):
 
 
 def _probe_generic_data_ingestion_cache() -> list[dict[str, Any]]:
-    from src.services.ingestion import DataIngestionService
+    try:
+        from src.services.ingestion import DataIngestionService
+    except ImportError:
+        return []
 
     service = DataIngestionService()
     hits: list[dict[str, Any]] = []
@@ -230,8 +233,11 @@ def _probe_generic_data_ingestion_cache() -> list[dict[str, Any]]:
 
 
 def _probe_phase1_monthly_caches() -> list[dict[str, Any]]:
-    from src.core.case_context import get_case_context
-    from src.services.phase1_production_rerun import Phase1ProductionRerunService
+    try:
+        from src.core.case_context import get_case_context
+        from src.services.phase1_production_rerun import Phase1ProductionRerunService
+    except ImportError:
+        return []
 
     get_case_context.cache_clear()
     try:
@@ -261,8 +267,11 @@ def _probe_phase1_monthly_caches() -> list[dict[str, Any]]:
 
 
 def _probe_dwh_input_caches() -> list[dict[str, Any]]:
-    from src.services.dwh_phase3c_scientific_forcing import CASE_ID, PREPARED_FORCING_DIR, path_is_smoke_only
-    from src.services.phase3c_external_case_setup import PHASE3C_DIR_NAME
+    try:
+        from src.services.dwh_phase3c_scientific_forcing import CASE_ID, PREPARED_FORCING_DIR, path_is_smoke_only
+        from src.services.phase3c_external_case_setup import PHASE3C_DIR_NAME
+    except ImportError:
+        return []
 
     hits: list[dict[str, Any]] = []
     for filename, source_id in (

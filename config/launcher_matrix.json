@@ -1,5 +1,5 @@
 {
-  "catalog_version": "phase5_launcher_matrix_v3",
+  "catalog_version": "phase5_launcher_matrix_v4",
   "entrypoint": "start.ps1",
   "categories": [
     {
@@ -23,6 +23,59 @@
       "description": "Backward-compatible prototype workflows preserved for debugging and regression."
     }
   ],
+  "role_groups": [
+    {
+      "menu_order": 1,
+      "GroupId": "main_thesis_evidence",
+      "MenuKey": "1",
+      "Label": "Main thesis evidence / reportable",
+      "Description": "Intentional reruns for the defended reportable evidence lanes.",
+      "thesis_roles": [
+        "primary_evidence"
+      ]
+    },
+    {
+      "menu_order": 2,
+      "GroupId": "support_context",
+      "MenuKey": "2",
+      "Label": "Support/context and appendix",
+      "Description": "Support, comparator, and appendix lanes outside the main-text claim.",
+      "thesis_roles": [
+        "support_context",
+        "comparator_support"
+      ]
+    },
+    {
+      "menu_order": 3,
+      "GroupId": "archive_provenance",
+      "MenuKey": "3",
+      "Label": "Archive/provenance",
+      "Description": "Archive, provenance, and governance reruns kept outside the default defense path.",
+      "thesis_roles": [
+        "archive_provenance"
+      ]
+    },
+    {
+      "menu_order": 4,
+      "GroupId": "legacy_debug",
+      "MenuKey": "4",
+      "Label": "Legacy/debug",
+      "Description": "Legacy prototype support and debug paths.",
+      "thesis_roles": [
+        "legacy_support"
+      ]
+    },
+    {
+      "menu_order": 5,
+      "GroupId": "read_only_governance",
+      "MenuKey": "5",
+      "Label": "Read-only dashboard / packaging / audits / docs",
+      "Description": "Defense-safe dashboard, packaging, audit, and documentation surfaces built from stored outputs only.",
+      "thesis_roles": [
+        "read_only_governance"
+      ]
+    }
+  ],
   "entries": [
     {
       "entry_id": "phase1_mindoro_focus_provenance",
@@ -36,7 +89,7 @@
       "safe_default": false,
       "thesis_role": "primary_evidence",
       "draft_section": "Evidence 1 / Focused Mindoro Phase 1 provenance",
-      "claim_boundary": "Primary transport-provenance basis for B1; not direct spill-footprint validation.",
+      "claim_boundary": "Focused Mindoro Phase 1 transport-provenance basis for B1; not direct spill-footprint validation.",
       "run_kind": "scientific_rerun",
       "recommended_for": "researcher",
       "confirms_before_run": true,
@@ -61,7 +114,7 @@
       "safe_default": false,
       "thesis_role": "primary_evidence",
       "draft_section": "Evidence 1 / Focused Mindoro Phase 1 provenance",
-      "claim_boundary": "Primary transport-provenance basis for B1; not direct spill-footprint validation.",
+      "claim_boundary": "Focused Mindoro Phase 1 transport-provenance basis for B1; not direct spill-footprint validation.",
       "run_kind": "scientific_rerun",
       "recommended_for": "researcher",
       "confirms_before_run": true,
@@ -88,7 +141,7 @@
       "safe_default": false,
       "thesis_role": "primary_evidence",
       "draft_section": "Evidence 3 / Mindoro B1 / Chapter 4.2",
-      "claim_boundary": "Only main-text primary Mindoro validation row; shared-imagery caveat applies and it must not be presented as a fully independent day-to-day pair.",
+      "claim_boundary": "Only main Philippine public-observation validation claim for Mindoro B1; shared-imagery caveat applies, so it is not an independent day-to-day pair.",
       "run_kind": "scientific_rerun",
       "recommended_for": "researcher",
       "confirms_before_run": true,
@@ -118,7 +171,7 @@
       "safe_default": false,
       "thesis_role": "primary_evidence",
       "draft_section": "Evidence 5 / DWH Phase 3C external transfer validation",
-      "claim_boundary": "External transfer validation against DWH observation masks; not Mindoro recalibration, and PyGNOME remains comparator-only.",
+      "claim_boundary": "Separate external transfer validation against DWH observation masks; not Mindoro recalibration, and PyGNOME remains comparator-only.",
       "run_kind": "scientific_rerun",
       "recommended_for": "researcher",
       "confirms_before_run": true,
@@ -218,7 +271,7 @@
       "safe_default": false,
       "thesis_role": "archive_provenance",
       "draft_section": "Archive / governance appendix / Phase 1 regional reference",
-      "claim_boundary": "Broader reference/governance lane only; does not replace focused Mindoro provenance.",
+      "claim_boundary": "Broader regional reference/governance lane only; it does not replace focused Mindoro Phase 1 provenance.",
       "run_kind": "archive_rerun",
       "recommended_for": "auditor",
       "confirms_before_run": true,
@@ -243,7 +296,7 @@
       "safe_default": false,
       "thesis_role": "archive_provenance",
       "draft_section": "Archive / governance appendix / Phase 1 regional reference",
-      "claim_boundary": "Broader reference/governance lane only; does not replace focused Mindoro provenance.",
+      "claim_boundary": "Broader regional reference/governance lane only; it does not replace focused Mindoro Phase 1 provenance.",
       "run_kind": "archive_rerun",
       "recommended_for": "auditor",
       "confirms_before_run": true,
@@ -270,7 +323,7 @@
       "safe_default": false,
       "thesis_role": "support_context",
       "draft_section": "Evidence 6 / Mindoro oil-type and shoreline support",
-      "claim_boundary": "Mindoro oil-type and shoreline support/context only; not a second primary validation lane.",
+      "claim_boundary": "Mindoro oil-type and shoreline support/context only; not a primary validation lane.",
       "run_kind": "scientific_rerun",
       "recommended_for": "researcher",
       "confirms_before_run": true,
@@ -295,7 +348,7 @@
       "safe_default": false,
       "thesis_role": "support_context",
       "draft_section": "Evidence 4 and 6 / Mindoro support-context appendix",
-      "claim_boundary": "Support, comparator, and appendix branches only; not the main-text Mindoro validation claim, and PyGNOME remains comparator-only where included.",
+      "claim_boundary": "Track A, PyGNOME, and appendix branches are support/context only; comparator-only support is never truth and this bundle is not the main Philippine validation claim.",
       "run_kind": "archive_rerun",
       "recommended_for": "researcher",
       "confirms_before_run": true,
@@ -419,7 +472,7 @@
       "description": "Appendix-only March 6 threshold, observation-support, and branch recovery matrix over R1 and selected A2 candidates.",
       "service_profile": "pipeline_only",
       "rerun_cost": "moderate",
-      "safe_default": true,
+      "safe_default": false,
       "thesis_role": "archive_provenance",
       "draft_section": "Archive / Mindoro March 6 honesty support",
       "claim_boundary": "Archive/support recovery matrix for March 6 only; it does not replace the preserved March 6 honesty row.",
@@ -550,7 +603,7 @@
       "safe_default": true,
       "thesis_role": "read_only_governance",
       "draft_section": "Evidence 8 / Reproducibility and governance",
-      "claim_boundary": "Read-only audit of the stored Phase 1 state; it does not rerun the Phase 1 science.",
+      "claim_boundary": "Read-only Phase 1 audit only; it does not recompute science.",
       "run_kind": "read_only",
       "recommended_for": "auditor",
       "confirms_before_run": false,
@@ -575,7 +628,7 @@
       "safe_default": true,
       "thesis_role": "read_only_governance",
       "draft_section": "Evidence 8 / Reproducibility and governance",
-      "claim_boundary": "Read-only audit of the stored Phase 2 state; it does not rerun the official forecast path.",
+      "claim_boundary": "Read-only Phase 2 audit only; it does not recompute science.",
       "run_kind": "read_only",
       "recommended_for": "auditor",
       "confirms_before_run": false,
@@ -600,7 +653,7 @@
       "safe_default": true,
       "thesis_role": "read_only_governance",
       "draft_section": "Evidence 1 -> Evidence 3 bridge / Phase 1 provenance to Mindoro B1",
-      "claim_boundary": "Drifter records support B1 recipe provenance only; they are not the direct March 13-14 public-observation truth mask.",
+      "claim_boundary": "Read-only provenance/context panel only; drifters support B1 recipe provenance and are not the direct March 13-14 public-observation truth mask.",
       "run_kind": "read_only",
       "recommended_for": "panel",
       "confirms_before_run": false,
@@ -625,7 +678,7 @@
       "safe_default": true,
       "thesis_role": "read_only_governance",
       "draft_section": "Evidence 8 / Reproducibility and governance",
-      "claim_boundary": "Packaging-only refresh from stored validation outputs; it does not recompute scores.",
+      "claim_boundary": "Presentation/audit package only from stored outputs; it does not recompute science or scores.",
       "run_kind": "packaging_only",
       "recommended_for": "auditor",
       "confirms_before_run": false,
@@ -650,7 +703,7 @@
       "safe_default": true,
       "thesis_role": "read_only_governance",
       "draft_section": "Evidence 8 / Reproducibility and governance",
-      "claim_boundary": "Read-only reproducibility/governance sync layer built from stored outputs and docs only.",
+      "claim_boundary": "Read-only governance/package sync only; it does not recompute science.",
       "run_kind": "packaging_only",
       "recommended_for": "auditor",
       "confirms_before_run": false,
@@ -675,7 +728,7 @@
       "safe_default": true,
       "thesis_role": "read_only_governance",
       "draft_section": "Evidence 8 / Reproducibility and governance",
-      "claim_boundary": "Read-only gallery build from stored outputs only; it does not rerun scientific branches.",
+      "claim_boundary": "Presentation gallery only from stored outputs; it does not recompute science.",
       "run_kind": "packaging_only",
       "recommended_for": "auditor",
       "confirms_before_run": false,
@@ -700,7 +753,7 @@
       "safe_default": true,
       "thesis_role": "read_only_governance",
       "draft_section": "Evidence 8 / Reproducibility and governance",
-      "claim_boundary": "Read-only panel-figure packaging from stored outputs only; it does not rerun scientific branches.",
+      "claim_boundary": "Panel-figure packaging only from stored outputs; it does not recompute science.",
       "run_kind": "packaging_only",
       "recommended_for": "auditor",
       "confirms_before_run": false,
@@ -725,7 +778,7 @@
       "safe_default": true,
       "thesis_role": "read_only_governance",
       "draft_section": "Evidence 8 / Reproducibility and governance",
-      "claim_boundary": "Packaging-only rebuild from stored outputs only; it does not rerun scientific branches or change scores.",
+      "claim_boundary": "Publication/package rebuild only from stored outputs; it does not recompute science or change scores.",
       "run_kind": "packaging_only",
       "recommended_for": "auditor",
       "confirms_before_run": false,
@@ -750,7 +803,7 @@
       "safe_default": true,
       "thesis_role": "legacy_support",
       "draft_section": "Evidence 7 / Legacy 2016 archive support",
-      "claim_boundary": "Legacy 2016 support package only; it is packaging-only and not a Mindoro or DWH validation rerun, and any PyGNOME material inside remains comparator-only support.",
+      "claim_boundary": "Legacy 2016 support/archive only; presentation package built from stored outputs, not a Mindoro or DWH validation rerun, and any PyGNOME material inside remains comparator-only support.",
       "run_kind": "packaging_only",
       "recommended_for": "auditor",
       "confirms_before_run": false,
@@ -815,7 +868,7 @@
       "safe_default": false,
       "thesis_role": "legacy_support",
       "draft_section": "Evidence 7 / Legacy 2016 archive support",
-      "claim_boundary": "Legacy 2016 support/debug lane only; not a current primary validation path, and PyGNOME remains comparator-only.",
+      "claim_boundary": "Legacy 2016 support/archive only; debug/regression lane, not a current primary validation path, and PyGNOME remains comparator-only.",
       "run_kind": "scientific_rerun",
       "recommended_for": "developer",
       "confirms_before_run": true,

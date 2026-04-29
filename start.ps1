@@ -12,6 +12,7 @@
     Canonical paths:
         .\start.ps1 -List -NoPause
         .\start.ps1 -ListRole <thesis_role> -NoPause
+        .\start.ps1 -ValidateMatrix -NoPause
         .\start.ps1 -Help -NoPause
         .\start.ps1 -Explain <entry_id> -NoPause
         .\start.ps1 -Entry <entry_id>
@@ -21,10 +22,12 @@
 param(
     [switch]$List,
     [switch]$Help,
+    [switch]$ValidateMatrix,
     [string]$Entry,
     [string]$Explain,
     [string]$ListRole,
     [switch]$Panel,
+    [switch]$DryRun,
     [switch]$NoPause
 )
 
@@ -40,6 +43,7 @@ $Script:ForcingOutageSkipPayloadPrefix = "FORCING_OUTAGE_SKIP_PAYLOAD="
 $Script:StartupPromptProbePrefix = "STARTUP_PROMPT_PROBE="
 $Script:ComposeMode = $null
 $Script:ComposeModeChecked = $false
+$Script:LauncherNotice = $null
 
 Set-Location $Script:RepoRoot
 
@@ -82,7 +86,7 @@ function Get-ComposeMode {
 }
 
 function Get-ComposeCommandText {
-    $mode = Resolve-ComposeMode
+    $mode = $Script:ComposeMode
     switch ($mode) {
         "docker_compose_v1" { return "docker-compose" }
         default { return "docker compose" }
@@ -117,6 +121,98 @@ function Pause-IfNeeded {
         Write-Host ""
         Pause
     }
+}
+
+function New-LauncherResult {
+    param(
+        [Parameter(Mandatory = $true)][string]$Status,
+        [string]$Message = "",
+        [int]$ExitCode = 0,
+        [object]$LauncherEntry = $null,
+        [string]$RequestedEntryId = "",
+        [bool]$NoWorkflowExecuted = $false
+    )
+
+    return [pscustomobject]@{
+        Status = $Status
+        Message = $Message
+        ExitCode = $ExitCode
+        LauncherEntry = $LauncherEntry
+        RequestedEntryId = $RequestedEntryId
+        NoWorkflowExecuted = $NoWorkflowExecuted
+    }
+}
+
+function Set-LauncherNotice {
+    param(
+        [Parameter(Mandatory = $true)][string]$Message,
+        [ValidateSet("info", "warning", "success", "error")][string]$Level = "info"
+    )
+
+    $Script:LauncherNotice = @{
+        Message = $Message
+        Level = $Level
+    }
+}
+
+function Show-LauncherNotice {
+    if ($null -eq $Script:LauncherNotice) {
+        return
+    }
+
+    $notice = $Script:LauncherNotice
+    $Script:LauncherNotice = $null
+
+    $color = switch ([string]$notice.Level) {
+        "success" { "Green" }
+        "error" { "Red" }
+        "warning" { "Yellow" }
+        default { "Cyan" }
+    }
+
+    Write-Host ""
+    Write-Host ([string]$notice.Message) -ForegroundColor $color
+    Write-Host ""
+}
+
+function Write-LauncherCancelledMessage {
+    param([string]$Message = "Cancelled. No workflow was executed.")
+
+    Write-Host ""
+    Write-Host $Message -ForegroundColor Yellow
+}
+
+function Test-LauncherDryRunRequested {
+    if ($DryRun) {
+        return $true
+    }
+
+    $envValue = [string](Get-Item -Path "Env:LAUNCHER_DRY_RUN" -ErrorAction SilentlyContinue).Value
+    return ($envValue.Trim().ToLowerInvariant() -in @("1", "true", "yes", "y", "on"))
+}
+
+function Test-LauncherInputBuffered {
+    try {
+        return ([Console]::In.Peek() -ne -1)
+    }
+    catch {
+        return $false
+    }
+}
+
+function Get-ComposeUnavailableMessage {
+    param([string]$ActionLabel = "This launcher action")
+
+    return ("{0} requires Docker Compose, but Docker is currently unavailable. Start Docker Desktop or install Docker Compose, then try again." -f $ActionLabel)
+}
+
+function Write-ComposeUnavailableMessage {
+    param([string]$ActionLabel = "This launcher action")
+
+    $message = Get-ComposeUnavailableMessage -ActionLabel $ActionLabel
+    Write-Host ""
+    Write-Host $message -ForegroundColor Yellow
+    return $message
 }
 
 function Ensure-Directories {
@@ -270,6 +366,23 @@ function Get-LauncherCategories {
     return @($matrix.categories)
 }
 
+function Get-LauncherCategoryById {
+    param([Parameter(Mandatory = $true)][string]$CategoryId)
+
+    return Get-LauncherCategories | Where-Object { $_.category_id -eq $CategoryId } | Select-Object -First 1
+}
+
+function Get-LauncherCategoryLabel {
+    param([string]$CategoryId)
+
+    $category = Get-LauncherCategoryById -CategoryId ([string]$CategoryId)
+    if ($null -ne $category) {
+        return [string]$category.label
+    }
+
+    return [string]$CategoryId
+}
+
 function Get-LauncherEntryById {
     param([Parameter(Mandatory = $true)][string]$EntryId)
 
@@ -279,6 +392,32 @@ function Get-LauncherEntryById {
         throw "Unknown launcher entry '$EntryId'. Known entry IDs: $known"
     }
     return $match
+}
+
+function Resolve-LauncherEntryRequest {
+    param([Parameter(Mandatory = $true)][string]$EntryId)
+
+    $requestedEntry = Get-LauncherEntryById -EntryId $EntryId
+    $canonicalEntry = $requestedEntry
+    $visited = @{}
+
+    while ($canonicalEntry.alias_of) {
+        $currentId = [string]$canonicalEntry.entry_id
+        if ($visited.ContainsKey($currentId)) {
+            throw "Launcher alias cycle detected for entry '$EntryId'."
+        }
+
+        $visited[$currentId] = $true
+        $canonicalEntry = Get-LauncherEntryById -EntryId ([string]$canonicalEntry.alias_of)
+    }
+
+    return [pscustomobject]@{
+        RequestedEntry = $requestedEntry
+        RequestedEntryId = [string]$requestedEntry.entry_id
+        CanonicalEntry = $canonicalEntry
+        CanonicalEntryId = [string]$canonicalEntry.entry_id
+        AliasUsed = ([string]$requestedEntry.entry_id -ne [string]$canonicalEntry.entry_id)
+    }
 }
 
 function Get-VisibleLauncherEntries {
@@ -357,7 +496,11 @@ function Test-LauncherEntryNeedsPreview {
 
 function Test-ConsolePromptAvailable {
     try {
-        return [Environment]::UserInteractive -and -not [Console]::IsInputRedirected
+        if ([Console]::IsInputRedirected) {
+            return (Test-LauncherInputBuffered)
+        }
+
+        return [Environment]::UserInteractive
     }
     catch {
         return $false
@@ -376,6 +519,132 @@ function Get-LauncherEntryOutputWarning {
     }
 }
 
+function New-LauncherChoiceResult {
+    param(
+        [Parameter(Mandatory = $true)][string]$Action,
+        [string]$RawInput = "",
+        [string]$Message = "",
+        [string[]]$AllowedOptions = @(),
+        [object]$ResolvedEntry = $null
+    )
+
+    return [pscustomobject]@{
+        Action = $Action
+        RawInput = $RawInput
+        Message = $Message
+        AllowedOptions = @(
+            $AllowedOptions |
+                Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
+                Select-Object -Unique
+        )
+        ResolvedEntry = $ResolvedEntry
+    }
+}
+
+function Get-LauncherAllowedOptionsText {
+    param([string[]]$AllowedOptions)
+
+    return (
+        @(
+            $AllowedOptions |
+                Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
+                Select-Object -Unique
+        ) -join ", "
+    )
+}
+
+function Resolve-LauncherChoice {
+    param(
+        [string]$InputText,
+        [string[]]$AllowedActions = @(),
+        [ValidateSet("ignore", "back", "cancel", "quit")][string]$BlankAction = "ignore",
+        [hashtable]$SelectionMap = @{},
+        [string]$GroupId = "",
+        [string]$ConfirmationEntryId = "",
+        [string[]]$AllowedOptions = @()
+    )
+
+    $normalizedAllowedActions = @(
+        $AllowedActions |
+            ForEach-Object { ([string]$_).Trim().ToLowerInvariant() } |
+            Where-Object { $_ } |
+            Select-Object -Unique
+    )
+
+    $trimmedInput = ([string]$InputText).Trim()
+    $upperInput = $trimmedInput.ToUpperInvariant()
+
+    if ([string]::IsNullOrWhiteSpace($trimmedInput)) {
+        switch ($BlankAction) {
+            "back" { return New-LauncherChoiceResult -Action "back" -AllowedOptions $AllowedOptions }
+            "cancel" { return New-LauncherChoiceResult -Action "cancel" -AllowedOptions $AllowedOptions }
+            "quit" { return New-LauncherChoiceResult -Action "quit" -AllowedOptions $AllowedOptions }
+            default { return New-LauncherChoiceResult -Action "ignore" -AllowedOptions $AllowedOptions }
+        }
+    }
+
+    if (($normalizedAllowedActions -contains "back") -and $upperInput -in @("0", "B", "BACK")) {
+        return New-LauncherChoiceResult -Action "back" -RawInput $trimmedInput -AllowedOptions $AllowedOptions
+    }
+    if (($normalizedAllowedActions -contains "cancel") -and $upperInput -in @("C", "CANCEL")) {
+        return New-LauncherChoiceResult -Action "cancel" -RawInput $trimmedInput -AllowedOptions $AllowedOptions
+    }
+    if (($normalizedAllowedActions -contains "quit") -and $upperInput -in @("Q", "QUIT", "EXIT")) {
+        return New-LauncherChoiceResult -Action "quit" -RawInput $trimmedInput -AllowedOptions $AllowedOptions
+    }
+    if (($normalizedAllowedActions -contains "help") -and $upperInput -in @("H", "HELP")) {
+        return New-LauncherChoiceResult -Action "help" -RawInput $trimmedInput -AllowedOptions $AllowedOptions
+    }
+    if (($normalizedAllowedActions -contains "list") -and $upperInput -in @("L", "LIST")) {
+        return New-LauncherChoiceResult -Action "list" -RawInput $trimmedInput -AllowedOptions $AllowedOptions
+    }
+    if (($normalizedAllowedActions -contains "panel") -and $upperInput -in @("P", "PANEL")) {
+        return New-LauncherChoiceResult -Action "panel" -RawInput $trimmedInput -AllowedOptions $AllowedOptions
+    }
+    if (($normalizedAllowedActions -contains "ui") -and $upperInput -in @("U", "UI")) {
+        return New-LauncherChoiceResult -Action "ui" -RawInput $trimmedInput -AllowedOptions $AllowedOptions
+    }
+    if (($normalizedAllowedActions -contains "restart") -and $upperInput -in @("R", "RESTART")) {
+        return New-LauncherChoiceResult -Action "restart" -RawInput $trimmedInput -AllowedOptions $AllowedOptions
+    }
+    if (($normalizedAllowedActions -contains "explain") -and $upperInput -in @("X", "E", "I", "EXPLAIN", "INSPECT")) {
+        return New-LauncherChoiceResult -Action "explain" -RawInput $trimmedInput -AllowedOptions $AllowedOptions
+    }
+    if (($normalizedAllowedActions -contains "more") -and $upperInput -in @("M", "MORE")) {
+        return New-LauncherChoiceResult -Action "more" -RawInput $trimmedInput -AllowedOptions $AllowedOptions
+    }
+    if ($normalizedAllowedActions -contains "run") {
+        $matchesEntryId = $false
+        if (-not [string]::IsNullOrWhiteSpace($ConfirmationEntryId)) {
+            $matchesEntryId = $trimmedInput.Equals([string]$ConfirmationEntryId, [System.StringComparison]::InvariantCultureIgnoreCase)
+        }
+        if ($upperInput -in @("RUN", "Y", "YES") -or $matchesEntryId) {
+            return New-LauncherChoiceResult -Action "run" -RawInput $trimmedInput -AllowedOptions $AllowedOptions
+        }
+    }
+    if ($normalizedAllowedActions -contains "entry") {
+        try {
+            $resolvedEntry = Resolve-LauncherEntryReference `
+                -Reference $trimmedInput `
+                -SelectionMap $SelectionMap `
+                -GroupId $GroupId `
+                -ThrowIfUnknown
+            return New-LauncherChoiceResult -Action "entry" -RawInput $trimmedInput -AllowedOptions $AllowedOptions -ResolvedEntry $resolvedEntry
+        }
+        catch {
+            return New-LauncherChoiceResult -Action "invalid" -RawInput $trimmedInput -AllowedOptions $AllowedOptions -Message $_.Exception.Message
+        }
+    }
+
+    $allowedText = Get-LauncherAllowedOptionsText -AllowedOptions $AllowedOptions
+    $invalidMessage = if ($allowedText) {
+        "Invalid option '$trimmedInput'. Allowed options: $allowedText."
+    } else {
+        "Invalid option '$trimmedInput'."
+    }
+    return New-LauncherChoiceResult -Action "invalid" -RawInput $trimmedInput -AllowedOptions $AllowedOptions -Message $invalidMessage
+}
+
 function Write-LauncherEntrySummary {
     param(
         [Parameter(Mandatory = $true)]$LauncherEntry,
@@ -386,7 +655,8 @@ function Write-LauncherEntrySummary {
     $prefix = if ($DisplayKey) { "  $DisplayKey. " } else { "  - " }
     Write-Host ("{0}{1}" -f $prefix, $LauncherEntry.label) -ForegroundColor White
     Write-Host ("     id={0}" -f $LauncherEntry.entry_id) -ForegroundColor DarkGray
-    Write-Host ("     thesis role={0} | draft={1}" -f (Format-ThesisRoleLabel -Role ([string]$LauncherEntry.thesis_role)), ([string]$LauncherEntry.draft_section)) -ForegroundColor Yellow
+    Write-Host ("     category={0} | thesis role={1}" -f (Get-LauncherCategoryLabel -CategoryId ([string]$LauncherEntry.category_id)), (Format-ThesisRoleLabel -Role ([string]$LauncherEntry.thesis_role))) -ForegroundColor Yellow
+    Write-Host ("     draft={0}" -f ([string]$LauncherEntry.draft_section)) -ForegroundColor Yellow
 
     $safetyTag = if ([bool]$LauncherEntry.safe_default) { "safe-default" } else { "explicit-confirm" }
     $tags = @(
@@ -406,133 +676,258 @@ function Write-LauncherEntrySummary {
     Write-Host ("     boundary={0}" -f [string]$LauncherEntry.claim_boundary) -ForegroundColor Gray
 }
 
-function Show-LauncherEntryPreview {
+function Get-LauncherEntrySafetyText {
     param([Parameter(Mandatory = $true)]$LauncherEntry)
 
-    $stepsSummary = ($LauncherEntry.steps | ForEach-Object { "{0}:{1}" -f $_.service, $_.phase }) -join " -> "
+    if ([bool]$LauncherEntry.safe_default) {
+        return "safe default"
+    }
 
-    Clear-Host
-    Write-Section "ENTRY PREVIEW"
-    Write-Host ""
+    return "explicit confirmation required"
+}
+
+function Get-LauncherEntryShortStepSummary {
+    param([Parameter(Mandatory = $true)]$LauncherEntry)
+
+    return ((@($LauncherEntry.steps) | ForEach-Object { "{0}:{1}" -f [string]$_.service, [string]$_.phase }) -join " -> ")
+}
+
+function Write-LauncherEntryPreviewContent {
+    param(
+        [Parameter(Mandatory = $true)]$LauncherEntry,
+        [string]$RequestedEntryId = "",
+        [switch]$IncludeNotes
+    )
+
     Write-Host ("Entry ID: {0}" -f [string]$LauncherEntry.entry_id) -ForegroundColor Yellow
-    if ($LauncherEntry.alias_of) {
-        Write-Host ("Preferred / canonical ID: {0}" -f [string]$LauncherEntry.alias_of) -ForegroundColor DarkGray
+    if (-not [string]::IsNullOrWhiteSpace($RequestedEntryId) -and ([string]$RequestedEntryId -ne [string]$LauncherEntry.entry_id)) {
+        Write-Host ("Requested alias: {0}" -f [string]$RequestedEntryId) -ForegroundColor DarkGray
     }
     Write-Host ("Label: {0}" -f [string]$LauncherEntry.label) -ForegroundColor White
+    Write-Host ("Category: {0}" -f (Get-LauncherCategoryLabel -CategoryId ([string]$LauncherEntry.category_id))) -ForegroundColor White
     Write-Host ("Thesis role: {0}" -f (Format-ThesisRoleLabel -Role ([string]$LauncherEntry.thesis_role))) -ForegroundColor White
     Write-Host ("Draft section: {0}" -f [string]$LauncherEntry.draft_section) -ForegroundColor White
     Write-Host ("Claim boundary: {0}" -f [string]$LauncherEntry.claim_boundary) -ForegroundColor White
     Write-Host ("Run kind: {0}" -f (Format-RunKindLabel -RunKind ([string]$LauncherEntry.run_kind))) -ForegroundColor White
     Write-Host ("Rerun cost: {0}" -f [string]$LauncherEntry.rerun_cost) -ForegroundColor White
-    $safetyText = if ([bool]$LauncherEntry.safe_default) { "safe default" } else { "explicit confirmation required" }
-    Write-Host ("Safety: {0}" -f $safetyText) -ForegroundColor White
-    Write-Host ("Recommended for: {0}" -f [string]$LauncherEntry.recommended_for) -ForegroundColor White
-    Write-Host ("Steps/phases: {0}" -f $stepsSummary) -ForegroundColor White
+    $safetyText = Get-LauncherEntrySafetyText -LauncherEntry $LauncherEntry
+    Write-Host ("Safety / recommended for: {0} / {1}" -f $safetyText, [string]$LauncherEntry.recommended_for) -ForegroundColor White
+    Write-Host "Steps that would run:" -ForegroundColor White
+    $stepIndex = 0
+    foreach ($step in @($LauncherEntry.steps)) {
+        $stepIndex += 1
+        Write-Host ("  {0}. {1}:{2} - {3}" -f $stepIndex, [string]$step.service, [string]$step.phase, [string]$step.description) -ForegroundColor DarkGray
+    }
     Write-Host ("Output warning: {0}" -f (Get-LauncherEntryOutputWarning -LauncherEntry $LauncherEntry)) -ForegroundColor Yellow
-    if ($LauncherEntry.notes) {
+    if ($IncludeNotes -and $LauncherEntry.notes) {
         Write-Host ("Notes: {0}" -f [string]$LauncherEntry.notes) -ForegroundColor DarkGray
     }
 }
 
+function Write-LauncherEntryCompactPreview {
+    param(
+        [Parameter(Mandatory = $true)]$LauncherEntry,
+        [string]$RequestedEntryId = ""
+    )
+
+    Write-Host ""
+    Write-Host "Inspect preview:" -ForegroundColor Cyan
+    Write-Host ("  Entry ID: {0}" -f [string]$LauncherEntry.entry_id) -ForegroundColor Yellow
+    if (-not [string]::IsNullOrWhiteSpace($RequestedEntryId) -and ([string]$RequestedEntryId -ne [string]$LauncherEntry.entry_id)) {
+        Write-Host ("  Requested alias: {0}" -f [string]$RequestedEntryId) -ForegroundColor DarkGray
+    }
+    Write-Host ("  Label: {0}" -f [string]$LauncherEntry.label) -ForegroundColor White
+    Write-Host ("  Category: {0}" -f (Get-LauncherCategoryLabel -CategoryId ([string]$LauncherEntry.category_id))) -ForegroundColor White
+    Write-Host ("  Thesis role: {0}" -f (Format-ThesisRoleLabel -Role ([string]$LauncherEntry.thesis_role))) -ForegroundColor White
+    Write-Host ("  Draft 22 section: {0}" -f [string]$LauncherEntry.draft_section) -ForegroundColor White
+    Write-Host ("  Claim boundary: {0}" -f [string]$LauncherEntry.claim_boundary) -ForegroundColor White
+    Write-Host ("  Run kind: {0}" -f (Format-RunKindLabel -RunKind ([string]$LauncherEntry.run_kind))) -ForegroundColor White
+    Write-Host ("  Rerun cost: {0}" -f [string]$LauncherEntry.rerun_cost) -ForegroundColor White
+    Write-Host ("  Safety / confirmation: {0}" -f (Get-LauncherEntrySafetyText -LauncherEntry $LauncherEntry)) -ForegroundColor White
+    Write-Host ("  Recommended for: {0}" -f [string]$LauncherEntry.recommended_for) -ForegroundColor White
+    Write-Host ("  Step summary: {0}" -f (Get-LauncherEntryShortStepSummary -LauncherEntry $LauncherEntry)) -ForegroundColor DarkGray
+}
+
+function Show-LauncherEntryPreview {
+    param(
+        [Parameter(Mandatory = $true)]$LauncherEntry,
+        [string]$RequestedEntryId = ""
+    )
+
+    Clear-Host
+    Write-Section "ENTRY PREVIEW"
+    Write-Host ""
+    Write-LauncherEntryPreviewContent `
+        -LauncherEntry $LauncherEntry `
+        -RequestedEntryId $RequestedEntryId `
+        -IncludeNotes
+}
+
 function Confirm-LauncherEntryRun {
-    param([Parameter(Mandatory = $true)]$LauncherEntry)
+    param(
+        [Parameter(Mandatory = $true)]$LauncherEntry,
+        [string]$RequestedEntryId = ""
+    )
 
     if (-not (Test-LauncherEntryNeedsPreview -LauncherEntry $LauncherEntry)) {
-        return
+        return (New-LauncherResult -Status "confirmed" -LauncherEntry $LauncherEntry -RequestedEntryId $RequestedEntryId)
     }
 
     if (-not (Test-ConsolePromptAvailable)) {
-        throw "Launcher entry '$([string]$LauncherEntry.entry_id)' requires interactive confirmation. Run .\start.ps1 -Explain $([string]$LauncherEntry.entry_id) first, then rerun it from an interactive PowerShell session."
+        throw "Launcher entry '$([string]$LauncherEntry.entry_id)' requires interactive confirmation. Run .\start.ps1 -Explain $([string]$LauncherEntry.entry_id) or .\start.ps1 -Entry $([string]$LauncherEntry.entry_id) -DryRun first, then rerun it from an interactive PowerShell session."
     }
 
-    Show-LauncherEntryPreview -LauncherEntry $LauncherEntry
+    Show-LauncherEntryPreview -LauncherEntry $LauncherEntry -RequestedEntryId $RequestedEntryId
     Write-Host ""
+
+    $confirmationPrompt = if (Test-LauncherEntryReadOnlyLike -LauncherEntry $LauncherEntry) {
+        "Confirm [Y/YES=run | C=cancel | Enter=cancel]"
+    } else {
+        "Confirm [RUN/Y/YES/$([string]$LauncherEntry.entry_id)=run | C=cancel | Enter=cancel]"
+    }
+    $allowedOptions = if (Test-LauncherEntryReadOnlyLike -LauncherEntry $LauncherEntry) {
+        @("Y", "YES", "C", "CANCEL", "Enter")
+    } else {
+        @("RUN", "Y", "YES", [string]$LauncherEntry.entry_id, "C", "CANCEL", "Enter")
+    }
 
     if (Test-LauncherEntryReadOnlyLike -LauncherEntry $LauncherEntry) {
         while ($true) {
-            $choice = (Read-Host "Type Y to continue, or press Enter to cancel").Trim()
-            if ([string]::IsNullOrWhiteSpace($choice)) {
-                throw "Launch cancelled before execution."
+            $choice = Resolve-LauncherChoice `
+                -InputText (Read-Host $confirmationPrompt) `
+                -AllowedActions @("run", "cancel") `
+                -BlankAction "cancel" `
+                -AllowedOptions $allowedOptions
+            switch ($choice.Action) {
+                "run" {
+                    return (New-LauncherResult -Status "confirmed" -LauncherEntry $LauncherEntry -RequestedEntryId $RequestedEntryId)
+                }
+                "cancel" {
+                    return (New-LauncherResult -Status "cancelled" -Message "Cancelled. No workflow was executed." -LauncherEntry $LauncherEntry -RequestedEntryId $RequestedEntryId -NoWorkflowExecuted $true)
+                }
             }
-            if ($choice.ToUpperInvariant() -in @("Y", "YES")) {
-                return
-            }
-            Write-Host "Enter Y to continue, or press Enter to cancel." -ForegroundColor DarkYellow
+            Write-Host ("Invalid option '{0}'. Allowed options: {1}." -f $choice.RawInput, (Get-LauncherAllowedOptionsText -AllowedOptions $allowedOptions)) -ForegroundColor DarkYellow
         }
     }
 
-    $entryId = [string]$LauncherEntry.entry_id
     while ($true) {
-        $choice = (Read-Host ("Type RUN or {0} to continue, or press Enter to cancel" -f $entryId)).Trim()
-        if ([string]::IsNullOrWhiteSpace($choice)) {
-            throw "Launch cancelled before execution."
+        $choice = Resolve-LauncherChoice `
+            -InputText (Read-Host $confirmationPrompt) `
+            -AllowedActions @("run", "cancel") `
+            -BlankAction "cancel" `
+            -ConfirmationEntryId ([string]$LauncherEntry.entry_id) `
+            -AllowedOptions $allowedOptions
+        switch ($choice.Action) {
+            "run" {
+                return (New-LauncherResult -Status "confirmed" -LauncherEntry $LauncherEntry -RequestedEntryId $RequestedEntryId)
+            }
+            "cancel" {
+                return (New-LauncherResult -Status "cancelled" -Message "Cancelled. No workflow was executed." -LauncherEntry $LauncherEntry -RequestedEntryId $RequestedEntryId -NoWorkflowExecuted $true)
+            }
         }
-        if ($choice -eq "RUN" -or $choice -eq $entryId) {
-            return
-        }
-        Write-Host ("Enter RUN or {0} to continue, or press Enter to cancel." -f $entryId) -ForegroundColor DarkYellow
+        Write-Host ("Invalid option '{0}'. Allowed options: {1}." -f $choice.RawInput, (Get-LauncherAllowedOptionsText -AllowedOptions $allowedOptions)) -ForegroundColor DarkYellow
     }
 }
 
-function Get-LauncherRoleGroups {
+function Get-DefaultLauncherRoleGroups {
     return @(
         @{
+            menu_order = 1
             MenuKey = "1"
             GroupId = "main_thesis_evidence"
-            Label = "Main thesis evidence reruns"
-            Description = "Intentional reruns for the main thesis evidence lanes."
+            Label = "Main thesis evidence / reportable"
+            Description = "Intentional reruns for the defended reportable evidence lanes."
+            thesis_roles = @("primary_evidence")
         },
         @{
+            menu_order = 2
             MenuKey = "2"
             GroupId = "support_context"
-            Label = "Support/context and appendix reruns"
-            Description = "Support, comparator, and appendix reruns outside the main-text claim."
+            Label = "Support/context and appendix"
+            Description = "Support, comparator, and appendix lanes outside the main-text claim."
+            thesis_roles = @("support_context", "comparator_support")
         },
         @{
+            menu_order = 3
             MenuKey = "3"
             GroupId = "archive_provenance"
-            Label = "Archive/provenance reruns"
+            Label = "Archive/provenance"
             Description = "Archive, provenance, and governance reruns kept outside the default defense path."
+            thesis_roles = @("archive_provenance")
         },
         @{
+            menu_order = 4
             MenuKey = "4"
             GroupId = "legacy_debug"
-            Label = "Legacy prototype/debug reruns"
+            Label = "Legacy/debug"
             Description = "Legacy prototype support and debug paths."
+            thesis_roles = @("legacy_support")
         },
         @{
+            menu_order = 5
             MenuKey = "5"
             GroupId = "read_only_governance"
-            Label = "Read-only packaging, audits, dashboard, and docs"
-            Description = "Safe packaging and audit surfaces built from stored outputs only."
+            Label = "Read-only dashboard / packaging / audits / docs"
+            Description = "Defense-safe dashboard, packaging, audit, and documentation surfaces built from stored outputs only."
+            thesis_roles = @("read_only_governance")
         }
     )
+}
+
+function Get-LauncherRoleGroups {
+    $matrix = Get-LauncherMatrix
+    $roleGroups = @($matrix.role_groups)
+    if ($roleGroups) {
+        return @($roleGroups | Sort-Object menu_order, MenuKey, GroupId)
+    }
+
+    return Get-DefaultLauncherRoleGroups
+}
+
+function Get-LauncherRoleGroupById {
+    param([Parameter(Mandatory = $true)][string]$GroupId)
+
+    $match = Get-LauncherRoleGroups | Where-Object {
+        ([string]$_.GroupId) -eq $GroupId -or ([string]$_.group_id) -eq $GroupId
+    } | Select-Object -First 1
+    if ($null -eq $match) {
+        throw "Unknown launcher role group '$GroupId'."
+    }
+
+    return $match
+}
+
+function Get-LauncherRoleGroupThesisRoles {
+    param([Parameter(Mandatory = $true)]$RoleGroup)
+
+    $roles = @($RoleGroup.thesis_roles)
+    if ($roles) {
+        return @($roles | ForEach-Object { [string]$_ })
+    }
+
+    $roleGroupId = if ($RoleGroup.PSObject.Properties.Name -contains "GroupId" -and $RoleGroup.GroupId) {
+        [string]$RoleGroup.GroupId
+    } else {
+        [string]$RoleGroup.group_id
+    }
+
+    switch ($roleGroupId) {
+        "main_thesis_evidence" { return @("primary_evidence") }
+        "support_context" { return @("support_context", "comparator_support") }
+        "archive_provenance" { return @("archive_provenance") }
+        "legacy_debug" { return @("legacy_support") }
+        "read_only_governance" { return @("read_only_governance") }
+        default { return @() }
+    }
 }
 
 function Get-LauncherEntriesForRoleGroup {
     param([Parameter(Mandatory = $true)][string]$GroupId)
 
     $entries = Get-VisibleLauncherEntries
-    switch ($GroupId) {
-        "main_thesis_evidence" {
-            return @($entries | Where-Object { $_.thesis_role -eq "primary_evidence" })
-        }
-        "support_context" {
-            return @($entries | Where-Object { $_.thesis_role -in @("support_context", "comparator_support") })
-        }
-        "archive_provenance" {
-            return @($entries | Where-Object { $_.thesis_role -eq "archive_provenance" })
-        }
-        "legacy_debug" {
-            return @($entries | Where-Object { $_.thesis_role -eq "legacy_support" })
-        }
-        "read_only_governance" {
-            return @($entries | Where-Object { $_.thesis_role -eq "read_only_governance" })
-        }
-        default {
-            throw "Unknown launcher role group '$GroupId'."
-        }
-    }
+    $roleGroup = Get-LauncherRoleGroupById -GroupId $GroupId
+    $roles = Get-LauncherRoleGroupThesisRoles -RoleGroup $roleGroup
+    return @($entries | Where-Object { ([string]$_.thesis_role) -in $roles })
 }
 
 function Test-LauncherEntryMatchesRoleGroup {
@@ -541,33 +936,21 @@ function Test-LauncherEntryMatchesRoleGroup {
         [Parameter(Mandatory = $true)][string]$GroupId
     )
 
-    switch ($GroupId) {
-        "main_thesis_evidence" {
-            return ([string]$LauncherEntry.thesis_role -eq "primary_evidence")
-        }
-        "support_context" {
-            return ([string]$LauncherEntry.thesis_role -in @("support_context", "comparator_support"))
-        }
-        "archive_provenance" {
-            return ([string]$LauncherEntry.thesis_role -eq "archive_provenance")
-        }
-        "legacy_debug" {
-            return ([string]$LauncherEntry.thesis_role -eq "legacy_support")
-        }
-        "read_only_governance" {
-            return ([string]$LauncherEntry.thesis_role -eq "read_only_governance")
-        }
-        default {
-            return $false
-        }
+    try {
+        $roleGroup = Get-LauncherRoleGroupById -GroupId $GroupId
+        $roles = Get-LauncherRoleGroupThesisRoles -RoleGroup $roleGroup
+        return ([string]$LauncherEntry.thesis_role -in $roles)
+    }
+    catch {
+        return $false
     }
 }
 
-function Resolve-LauncherRoleGroupEntryReference {
+function Resolve-LauncherEntryReference {
     param(
         [Parameter(Mandatory = $true)][string]$Reference,
-        [Parameter(Mandatory = $true)][hashtable]$SelectionMap,
-        [Parameter(Mandatory = $true)][string]$GroupId,
+        [hashtable]$SelectionMap = @{},
+        [string]$GroupId = "",
         [switch]$ThrowIfUnknown
     )
 
@@ -579,27 +962,115 @@ function Resolve-LauncherRoleGroupEntryReference {
         return $null
     }
 
+    $requestedEntryId = $null
     if ($SelectionMap.ContainsKey($trimmedReference)) {
-        return Get-LauncherEntryById -EntryId $SelectionMap[$trimmedReference]
+        $requestedEntryId = [string]$SelectionMap[$trimmedReference]
     }
 
-    $launcherEntry = Get-LauncherEntries | Where-Object { $_.entry_id -eq $trimmedReference } | Select-Object -First 1
-    if ($null -eq $launcherEntry) {
-        if ($ThrowIfUnknown) {
-            $menuNumbers = (($SelectionMap.Keys | Sort-Object {[int]$_}) -join ", ")
-            throw "Unknown selection '$trimmedReference'. Use a visible menu number ($menuNumbers) or an entry ID from this section."
+    if (-not $requestedEntryId) {
+        $launcherEntry = Get-LauncherEntries | Where-Object { $_.entry_id -eq $trimmedReference } | Select-Object -First 1
+        if ($null -eq $launcherEntry) {
+            if ($ThrowIfUnknown) {
+                $menuNumbers = (($SelectionMap.Keys | Sort-Object {[int]$_}) -join ", ")
+                if ([string]::IsNullOrWhiteSpace($menuNumbers)) {
+                    throw "Unknown selection '$trimmedReference'. Use an entry ID from this section."
+                }
+                throw "Unknown selection '$trimmedReference'. Use a visible menu number ($menuNumbers) or an entry ID from this section."
+            }
+            return $null
         }
-        return $null
+
+        $requestedEntryId = [string]$launcherEntry.entry_id
     }
 
-    if (-not (Test-LauncherEntryMatchesRoleGroup -LauncherEntry $launcherEntry -GroupId $GroupId)) {
+    $resolvedEntry = Resolve-LauncherEntryRequest -EntryId $requestedEntryId
+    if ($GroupId -and -not (Test-LauncherEntryMatchesRoleGroup -LauncherEntry $resolvedEntry.CanonicalEntry -GroupId $GroupId)) {
         if ($ThrowIfUnknown) {
             throw "Entry '$trimmedReference' is not part of this section. Use a visible menu number or an entry ID shown in this menu."
         }
         return $null
     }
 
-    return $launcherEntry
+    return $resolvedEntry
+}
+
+function Invoke-LauncherRoleGroupInspectMode {
+    param(
+        [Parameter(Mandatory = $true)][string]$GroupId,
+        [Parameter(Mandatory = $true)][hashtable]$SelectionMap,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+
+    $selectionSummary = (($SelectionMap.Keys | Sort-Object {[int]$_}) | ForEach-Object {
+        "{0}={1}" -f $_, $SelectionMap[$_]
+    }) -join " | "
+    $lastPreview = $null
+
+    Write-Host ""
+    Write-Host ("Inspect mode for {0}" -f $Label) -ForegroundColor Yellow
+    Write-Host "No workflow will run from this prompt." -ForegroundColor White
+    Write-Host "Enter a visible menu number or an entry ID from this section." -ForegroundColor White
+    Write-Host "Press Enter, B, BACK, or 0 to return to this section." -ForegroundColor White
+    Write-Host "Type C to cancel inspect mode, or Q to exit the launcher." -ForegroundColor White
+    if (-not [string]::IsNullOrWhiteSpace($selectionSummary)) {
+        Write-Host ("Visible choices: {0}" -f $selectionSummary) -ForegroundColor DarkGray
+    }
+
+    while ($true) {
+        $allowedActions = @("entry", "back", "cancel", "quit")
+        $allowedOptions = @("number", "entry_id", "B", "BACK", "0", "C", "CANCEL", "Q", "QUIT", "EXIT")
+        $prompt = "Inspect [number | entry_id | Enter/B=back | C=cancel | Q=quit]"
+        if ($null -ne $lastPreview) {
+            $allowedActions += "more"
+            $allowedOptions += @("M", "MORE")
+            $prompt = "Inspect [number | entry_id | M=more | Enter/B=back | C=cancel | Q=quit]"
+        }
+
+        $choice = Resolve-LauncherChoice `
+            -InputText (Read-Host $prompt) `
+            -AllowedActions $allowedActions `
+            -BlankAction "back" `
+            -SelectionMap $SelectionMap `
+            -GroupId $GroupId `
+            -AllowedOptions $allowedOptions
+
+        switch ($choice.Action) {
+            "back" { return }
+            "cancel" {
+                Set-LauncherNotice -Message "Cancelled. No workflow was executed." -Level "warning"
+                return
+            }
+            "quit" {
+                Write-Host ""
+                Write-Host "Goodbye." -ForegroundColor DarkGray
+                exit 0
+            }
+            "more" {
+                Write-Host ""
+                Write-Host "Full preview:" -ForegroundColor Cyan
+                Write-LauncherEntryPreviewContent `
+                    -LauncherEntry $lastPreview.CanonicalEntry `
+                    -RequestedEntryId $lastPreview.RequestedEntryId `
+                    -IncludeNotes
+                Write-Host ""
+                Write-Host "Inspect mode remains active. Enter another number or entry ID, or press Enter/B to return to this section." -ForegroundColor DarkGray
+                continue
+            }
+            "entry" {
+                $lastPreview = $choice.ResolvedEntry
+                Write-LauncherEntryCompactPreview `
+                    -LauncherEntry $lastPreview.CanonicalEntry `
+                    -RequestedEntryId $lastPreview.RequestedEntryId
+                Write-Host "  Type M or MORE for the full thesis-facing preview of this entry." -ForegroundColor DarkGray
+                Write-Host "  Inspect mode remains active. Enter another number or entry ID, or press Enter/B to return to this section." -ForegroundColor DarkGray
+                continue
+            }
+            "invalid" {
+                Write-Host ("Invalid inspect option '{0}'. Allowed options: {1}." -f $choice.RawInput, (Get-LauncherAllowedOptionsText -AllowedOptions $allowedOptions)) -ForegroundColor DarkYellow
+                continue
+            }
+        }
+    }
 }
 
 function ConvertTo-Hashtable {
@@ -861,7 +1332,10 @@ function Invoke-StartupPromptProbe {
 }
 
 function Resolve-LauncherStartupEnv {
-    param([Parameter(Mandatory = $true)]$LauncherEntry)
+    param(
+        [Parameter(Mandatory = $true)]$LauncherEntry,
+        [switch]$SkipInteractiveProbe
+    )
 
     $resolved = @{
         "RUN_STARTUP_PROMPTS_RESOLVED" = "1"
@@ -871,7 +1345,7 @@ function Resolve-LauncherStartupEnv {
     $explicitBudget = Get-ExplicitForcingBudgetSetting
     $explicitCachePolicy = Get-ExplicitInputCachePolicySetting
     $explicitPrototype2016EnsemblePolicy = Get-ExplicitPrototype2016EnsemblePolicySetting
-    $interactivePromptAllowed = Test-LauncherStartupPromptInteractive
+    $interactivePromptAllowed = (-not $SkipInteractiveProbe) -and (Test-LauncherStartupPromptInteractive)
     $readOnlyCategory = ([string]$LauncherEntry.category_id -eq "read_only_packaging_help_utilities")
     $probe = $null
 
@@ -939,7 +1413,7 @@ function Invoke-DockerPhase {
         -ExtraEnv $phaseEnv
 
     if ($phaseResult.ExitCode -eq 0) {
-        return
+        return (New-LauncherResult -Status "phase_completed")
     }
 
     if ($phaseResult.ExitCode -eq $Script:ForcingOutageSkipExitCode) {
@@ -984,7 +1458,7 @@ function Invoke-DockerPhase {
         if ($payload.manifest_path) {
             Write-Host "Manifest: $($payload.manifest_path)" -ForegroundColor DarkGray
         }
-        return
+        return (New-LauncherResult -Status "phase_skipped")
     }
 
     if ($Phase -eq "prep" -and $Service -eq "pipeline" -and $phaseResult.ExitCode -eq $Script:PrepOutageExitCode) {
@@ -1015,50 +1489,154 @@ function Invoke-DockerPhase {
         }
 
         while ($true) {
-            $decision = (Read-Host "Type R to reuse validated cache, or C to cancel").Trim().ToUpperInvariant()
-            if ($decision -eq "R") {
+            $decision = Resolve-LauncherChoice `
+                -InputText (Read-Host "Type R to reuse validated cache, or C to cancel") `
+                -AllowedActions @("cancel") `
+                -AllowedOptions @("R", "C", "CANCEL")
+            if ($decision.RawInput.ToUpperInvariant() -eq "R") {
                 $retryEnv = @{}
                 foreach ($key in $phaseEnv.Keys) {
                     $retryEnv[$key] = $phaseEnv[$key]
                 }
                 $retryEnv["PREP_REUSE_APPROVED_SOURCE"] = [string]$payload.source_id
                 $retryEnv["PREP_REUSE_APPROVED_ONCE"] = "1"
-                Invoke-DockerPhase `
+                return (Invoke-DockerPhase `
                     -Phase $Phase `
                     -Description "$Description (reuse approved for $($payload.source_id))" `
                     -WorkflowMode $WorkflowMode `
                     -Service $Service `
                     -ExtraEnv $retryEnv `
-                    -ReuseDecisionConsumed
-                return
+                    -ReuseDecisionConsumed)
             }
-            if ($decision -eq "C") {
+            if ($decision.Action -eq "cancel") {
                 Update-PrepManifestCancelledByUser `
                     -RunName ([string]$payload.run_name) `
                     -SourceId ([string]$payload.source_id) `
                     -CachePath ([string]$payload.cache_path) `
                     -RemoteError ([string]$payload.error) `
                     -Validation $payload.validation
-                throw "Prep cancelled by user after remote-service outage for source '$($payload.source_id)'."
+                return (New-LauncherResult -Status "cancelled" -Message ("Cancelled. Prep reuse was declined for source '{0}'." -f [string]$payload.source_id))
             }
-            Write-Host "Enter R to reuse the validated same-case cache, or C to cancel." -ForegroundColor DarkYellow
+            Write-Host "Invalid option. Allowed options: R, C, CANCEL." -ForegroundColor DarkYellow
         }
     }
 
     throw "Phase '$Phase' failed in service '$Service' with exit code $($phaseResult.ExitCode)."
 }
 
-function Invoke-LauncherEntry {
-    param([Parameter(Mandatory = $true)]$LauncherEntry)
+function Start-LauncherTranscript {
+    param([Parameter(Mandatory = $true)][string]$Path)
 
-    Confirm-LauncherEntryRun -LauncherEntry $LauncherEntry
+    try {
+        Start-Transcript -Path $Path -Append | Out-Null
+        return $true
+    }
+    catch {
+        Write-Host "WARNING - Transcript could not be started. Continuing without transcript logging." -ForegroundColor DarkYellow
+        Write-Host ("  {0}" -f $_.Exception.Message) -ForegroundColor Yellow
+        return $false
+    }
+}
+
+function Stop-LauncherTranscriptSafe {
+    param([bool]$TranscriptStarted = $false)
+
+    if (-not $TranscriptStarted) {
+        return
+    }
+
+    try {
+        Stop-Transcript | Out-Null
+    }
+    catch {
+        Write-Host "WARNING - Transcript could not be stopped cleanly." -ForegroundColor DarkYellow
+        Write-Host ("  {0}" -f $_.Exception.Message) -ForegroundColor Yellow
+    }
+}
+
+function Get-LauncherStepCommandPreview {
+    param(
+        [Parameter(Mandatory = $true)]$LauncherEntry,
+        [Parameter(Mandatory = $true)]$Step,
+        [hashtable]$ExtraEnv = @{}
+    )
+
+    $parts = @((Get-ComposeCommandText), "exec", "-T")
+    foreach ($key in ($ExtraEnv.Keys | Sort-Object)) {
+        $parts += @("-e", ("{0}={1}" -f $key, $ExtraEnv[$key]))
+    }
+    $parts += @(
+        "-e", ("WORKFLOW_MODE={0}" -f [string]$LauncherEntry.workflow_mode),
+        "-e", ("PIPELINE_PHASE={0}" -f [string]$Step.phase),
+        [string]$Step.service,
+        "python",
+        "-m",
+        "src"
+    )
+
+    return ($parts -join " ")
+}
+
+function Show-LauncherDryRunPlan {
+    param(
+        [Parameter(Mandatory = $true)]$LauncherEntry,
+        [string]$RequestedEntryId = ""
+    )
+
+    $entryStartupEnv = Resolve-LauncherStartupEnv -LauncherEntry $LauncherEntry -SkipInteractiveProbe
+    Show-LauncherEntryPreview -LauncherEntry $LauncherEntry -RequestedEntryId $RequestedEntryId
+    Write-Host ""
+    Write-Host "Dry-run startup policy:" -ForegroundColor Yellow
+    Write-Host "  INPUT_CACHE_POLICY=$($entryStartupEnv['INPUT_CACHE_POLICY'])" -ForegroundColor DarkGray
+    Write-Host "  FORCING_SOURCE_BUDGET_SECONDS=$($entryStartupEnv['FORCING_SOURCE_BUDGET_SECONDS'])" -ForegroundColor DarkGray
+    if ($entryStartupEnv.ContainsKey("PROTOTYPE_2016_ENSEMBLE_POLICY")) {
+        Write-Host "  PROTOTYPE_2016_ENSEMBLE_POLICY=$($entryStartupEnv['PROTOTYPE_2016_ENSEMBLE_POLICY'])" -ForegroundColor DarkGray
+    }
+
+    Write-Host ""
+    Write-Host "Exact commands that would run:" -ForegroundColor Yellow
+    $stepIndex = 0
+    foreach ($step in @($LauncherEntry.steps)) {
+        $stepIndex += 1
+        $stepExtraEnv = Merge-Hashtables `
+            -Base $entryStartupEnv `
+            -Override (ConvertTo-Hashtable -InputObject $step.extra_env)
+        Write-Host ("  [{0}/{1}] {2}" -f $stepIndex, @($LauncherEntry.steps).Count, (Get-LauncherStepCommandPreview -LauncherEntry $LauncherEntry -Step $step -ExtraEnv $stepExtraEnv)) -ForegroundColor DarkGray
+    }
+
+    Write-Host ""
+    Write-Host "Dry run only. No Docker commands were executed and no outputs were modified." -ForegroundColor Green
+}
+
+function Invoke-LauncherEntry {
+    param(
+        [Parameter(Mandatory = $true)]$LauncherEntry,
+        [string]$RequestedEntryId = ""
+    )
+
+    if (Test-LauncherDryRunRequested) {
+        Show-LauncherDryRunPlan -LauncherEntry $LauncherEntry -RequestedEntryId $RequestedEntryId
+        return (New-LauncherResult -Status "dry_run" -Message "Dry run only. No Docker commands were executed." -LauncherEntry $LauncherEntry -RequestedEntryId $RequestedEntryId -NoWorkflowExecuted $true)
+    }
+
+    $confirmationResult = Confirm-LauncherEntryRun -LauncherEntry $LauncherEntry -RequestedEntryId $RequestedEntryId
+    if ($confirmationResult.Status -eq "cancelled") {
+        Write-LauncherCancelledMessage -Message $confirmationResult.Message
+        return $confirmationResult
+    }
+
+    if (-not (Resolve-ComposeMode)) {
+        $message = Write-ComposeUnavailableMessage -ActionLabel ("Launcher entry '{0}'" -f [string]$LauncherEntry.entry_id)
+        return (New-LauncherResult -Status "docker_unavailable" -Message $message -ExitCode 2 -LauncherEntry $LauncherEntry -RequestedEntryId $RequestedEntryId -NoWorkflowExecuted $true)
+    }
+
     Ensure-Directories
     $entryId = [string]$LauncherEntry.entry_id
     $workflowMode = [string]$LauncherEntry.workflow_mode
     $logFile = "logs\run_${entryId}_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
     $startTime = Get-Date
+    $transcriptStarted = Start-LauncherTranscript -Path $logFile
 
-    Start-Transcript -Path $logFile -Append | Out-Null
     try {
         Write-Host "Starting Docker containers..." -ForegroundColor Yellow
         $previousErrorActionPreference = $ErrorActionPreference
@@ -1094,12 +1672,18 @@ function Invoke-LauncherEntry {
                 -Override (ConvertTo-Hashtable -InputObject $step.extra_env)
             Write-Host ""
             Write-Host "[$index/$($steps.Count)]" -ForegroundColor Cyan -NoNewline
-            Invoke-DockerPhase `
+            $phaseInvocationResult = Invoke-DockerPhase `
                 -Phase ([string]$step.phase) `
                 -Description ([string]$step.description) `
                 -WorkflowMode $workflowMode `
                 -Service ([string]$step.service) `
                 -ExtraEnv $stepExtraEnv
+            if ($phaseInvocationResult -and $phaseInvocationResult.Status -eq "cancelled") {
+                Write-Host ""
+                Write-Host ($phaseInvocationResult.Message) -ForegroundColor Yellow
+                Write-Host "Log saved to: $logFile" -ForegroundColor DarkGray
+                return (New-LauncherResult -Status "cancelled" -Message $phaseInvocationResult.Message -LauncherEntry $LauncherEntry -RequestedEntryId $RequestedEntryId)
+            }
         }
 
         $duration = (Get-Date) - $startTime
@@ -1108,15 +1692,16 @@ function Invoke-LauncherEntry {
         Write-Host "Entry ID: $entryId" -ForegroundColor Yellow
         Write-Host ("Runtime: {0:D2}h {1:D2}m {2:D2}s" -f $duration.Hours, $duration.Minutes, $duration.Seconds) -ForegroundColor Yellow
         Write-Host "Log saved to: $logFile" -ForegroundColor DarkGray
+        return (New-LauncherResult -Status "success" -Message "Launcher entry completed." -LauncherEntry $LauncherEntry -RequestedEntryId $RequestedEntryId)
     }
     catch {
         Write-Host ""
         Write-Host "[ERROR] $($_.Exception.Message)" -ForegroundColor Red
         Write-Host "Log saved to: $logFile" -ForegroundColor DarkGray
-        throw
+        return (New-LauncherResult -Status "failed" -Message $_.Exception.Message -ExitCode 1 -LauncherEntry $LauncherEntry -RequestedEntryId $RequestedEntryId)
     }
     finally {
-        Stop-Transcript | Out-Null
+        Stop-LauncherTranscriptSafe -TranscriptStarted $transcriptStarted
     }
 }
 
@@ -1160,11 +1745,69 @@ Start-Process `$targetUrl
     }
 }
 
+function Test-ReadOnlyUiHealth {
+    param([int]$Port = 8501)
+
+    $healthUrl = "http://127.0.0.1:$Port/_stcore/health"
+    try {
+        $response = Invoke-WebRequest `
+            -UseBasicParsing `
+            -Uri $healthUrl `
+            -TimeoutSec 2 `
+            -ErrorAction Stop
+        return ($response.StatusCode -ge 200 -and $response.StatusCode -lt 300)
+    }
+    catch {
+        return $false
+    }
+}
+
+function Test-ReadOnlyUiProcessRunning {
+    $probeCommand = "(pgrep -f 'streamlit run ui/app.py' >/dev/null 2>&1) || (ps -ef 2>/dev/null | grep -F 'streamlit run ui/app.py' | grep -v grep >/dev/null 2>&1)"
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        Invoke-ComposeCommand -ComposeArgs @("exec", "-T", "pipeline", "sh", "-lc", $probeCommand) *> $null
+        $probeExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    return ($probeExitCode -eq 0)
+}
+
+function Stop-ReadOnlyUiProcess {
+    param([switch]$Quiet)
+
+    $stopCommand = "pkill -f 'streamlit run ui/app.py' >/dev/null 2>&1 || true"
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        Invoke-ComposeCommand -ComposeArgs @("exec", "-T", "pipeline", "sh", "-lc", $stopCommand) 2>&1 | ForEach-Object {
+            if (-not $Quiet) {
+                Write-ProcessLine $_
+            }
+        }
+        $stopExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    return ($stopExitCode -eq 0)
+}
+
 function Invoke-ReadOnlyUi {
     param(
         [switch]$RestartPipeline,
         [string]$LandingPath = ""
     )
+
+    if (-not (Resolve-ComposeMode)) {
+        Write-ComposeUnavailableMessage -ActionLabel "The read-only dashboard"
+        return $false
+    }
 
     if ($RestartPipeline) {
         Write-Host "Restarting compose services for a clean UI refresh..." -ForegroundColor Yellow
@@ -1203,6 +1846,24 @@ function Invoke-ReadOnlyUi {
         $landingUrl = "{0}/{1}" -f $landingUrl.TrimEnd("/"), $LandingPath.TrimStart("/")
     }
 
+    if ((-not $RestartPipeline) -and (Test-ReadOnlyUiHealth)) {
+        Write-Host ""
+        Write-Host "Read-only Streamlit UI is already running." -ForegroundColor Green
+        Write-Host ("Open {0}" -f $landingUrl) -ForegroundColor Yellow
+        Write-Host "Use R / RESTART from panel mode if you need a clean dashboard process." -ForegroundColor DarkGray
+        if ($LandingPath) {
+            Start-DelayedBrowserLaunch -Url $landingUrl -Label "requested dashboard page"
+        }
+        return $true
+    }
+
+    if ((-not $RestartPipeline) -and (Test-ReadOnlyUiProcessRunning)) {
+        Write-Host ""
+        Write-Host "Found a stale Streamlit process in the pipeline container; stopping it before relaunch." -ForegroundColor Yellow
+        [void](Stop-ReadOnlyUiProcess -Quiet)
+        Start-Sleep -Seconds 1
+    }
+
     Write-Host ""
     Write-Host "Launching read-only Streamlit UI..." -ForegroundColor Yellow
     Write-Host ("Open {0} while this process is running." -f $landingUrl) -ForegroundColor DarkGray
@@ -1237,8 +1898,17 @@ function Invoke-ReadOnlyUi {
     }
 
     if ($uiExitCode -ne 0) {
+        if (Test-ReadOnlyUiHealth) {
+            Write-Host ""
+            Write-Host "Read-only Streamlit UI is already running." -ForegroundColor Green
+            Write-Host ("Open {0}" -f $landingUrl) -ForegroundColor Yellow
+            Write-Host "Use R / RESTART from panel mode if you need a clean dashboard process." -ForegroundColor DarkGray
+            return $true
+        }
         throw "Read-only UI exited with code $uiExitCode."
     }
+
+    return $true
 }
 
 function Invoke-ContainerPythonScript {
@@ -1249,6 +1919,11 @@ function Invoke-ContainerPythonScript {
         [string[]]$ScriptArgs = @(),
         [hashtable]$ExtraEnv = @{}
     )
+
+    if (-not (Resolve-ComposeMode)) {
+        Write-ComposeUnavailableMessage -ActionLabel $Description
+        return $false
+    }
 
     Write-Host ""
     Write-Host ">>> $Description" -ForegroundColor Yellow
@@ -1276,6 +1951,8 @@ function Invoke-ContainerPythonScript {
     if ($scriptExitCode -ne 0) {
         throw "Container Python script exited with code $scriptExitCode."
     }
+
+    return $true
 }
 
 function Get-DisplayPath {
@@ -1425,6 +2102,33 @@ function Export-CsvToExcelWorkbook {
     }
 }
 
+function Invoke-LauncherMatrixValidation {
+    Clear-Host
+    Write-Section "LAUNCHER MATRIX VALIDATION"
+    Write-Host ""
+    Write-Host "Validating config\launcher_matrix.json without Docker or science execution..." -ForegroundColor Yellow
+    Write-Host ""
+
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        & python -m src.utils.validate_launcher_matrix 2>&1 | ForEach-Object { Write-ProcessLine $_ }
+        $validationExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    Write-Host ""
+    if ($validationExitCode -eq 0) {
+        Write-Host "[SUCCESS] Launcher matrix validation passed." -ForegroundColor Green
+        return (New-LauncherResult -Status "success" -Message "Launcher matrix validation passed." -ExitCode 0 -NoWorkflowExecuted $true)
+    }
+
+    Write-Host "[FAIL] Launcher matrix validation found issues." -ForegroundColor Red
+    return (New-LauncherResult -Status "failed" -Message "Launcher matrix validation found issues." -ExitCode $validationExitCode -NoWorkflowExecuted $true)
+}
+
 function Show-LauncherList {
     param([string]$Role)
 
@@ -1446,11 +2150,14 @@ function Show-LauncherList {
     Write-Host "Full launcher: .\start.ps1  # researcher/audit path" -ForegroundColor Yellow
     Write-Host "Catalog: $($matrix.catalog_version)" -ForegroundColor Yellow
     Write-Host "List by role: .\start.ps1 -ListRole <thesis_role> -NoPause" -ForegroundColor Yellow
+    Write-Host "Validate catalog: .\start.ps1 -ValidateMatrix -NoPause" -ForegroundColor Yellow
     Write-Host "Explain one entry: .\start.ps1 -Explain <entry_id> -NoPause" -ForegroundColor Yellow
+    Write-Host "Dry-run one entry: .\start.ps1 -Entry <entry_id> -DryRun -NoPause" -ForegroundColor Yellow
     Write-Host ("Prompt-free container run: {0} exec -T -e WORKFLOW_MODE=<workflow_mode> -e PIPELINE_PHASE=<phase> <pipeline|gnome> python -m src" -f $compose) -ForegroundColor Yellow
     Write-Host ("Read-only UI: {0} exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501" -f $compose) -ForegroundColor Yellow
     Write-Host ""
     Write-Host "Use user-facing entry IDs and thesis-role groupings here. Raw phase names are not the primary startup commands." -ForegroundColor White
+    Write-Host "Shared controls: B/BACK/0=back, C/CANCEL=cancel, Q/QUIT/EXIT=exit, H/HELP=help, L/LIST=list, P/PANEL=panel, U/UI=dashboard, R/RESTART=dashboard restart when available." -ForegroundColor White
     Write-Host ""
 
     if ($normalizedRole) {
@@ -1516,18 +2223,25 @@ function Show-Help {
     Write-Host "  .\start.ps1" -ForegroundColor Green
     Write-Host "  .\start.ps1 -List -NoPause" -ForegroundColor Green
     Write-Host "  .\start.ps1 -ListRole primary_evidence -NoPause" -ForegroundColor Green
+    Write-Host "  .\start.ps1 -ValidateMatrix -NoPause" -ForegroundColor Green
     Write-Host "  .\start.ps1 -Explain mindoro_phase3b_primary_public_validation -NoPause" -ForegroundColor Green
     Write-Host "  .\start.ps1 -Entry <entry_id>" -ForegroundColor Green
+    Write-Host "  .\start.ps1 -Entry <entry_id> -DryRun -NoPause" -ForegroundColor Green
     Write-Host ""
     Write-Host "Preferred user-facing entry IDs:" -ForegroundColor Yellow
     Write-Host "  phase1_mindoro_focus_provenance" -ForegroundColor White
-    Write-Host "  b1_drifter_context_panel" -ForegroundColor White
     Write-Host "  mindoro_phase3b_primary_public_validation" -ForegroundColor White
+    Write-Host "  mindoro_reportable_core" -ForegroundColor White
     Write-Host "  dwh_reportable_bundle" -ForegroundColor White
     Write-Host "  phase1_regional_reference_rerun" -ForegroundColor White
     Write-Host "  mindoro_phase4_only" -ForegroundColor White
+    Write-Host "  mindoro_appendix_sensitivity_bundle" -ForegroundColor White
+    Write-Host "  b1_drifter_context_panel" -ForegroundColor White
+    Write-Host "  phase5_sync" -ForegroundColor White
+    Write-Host "  prototype_legacy_final_figures" -ForegroundColor White
+    Write-Host "  Read-only dashboard launch: panel option 1 or U/UI shortcut (no separate entry_id)" -ForegroundColor White
     Write-Host ""
-    Write-Host "Compatibility aliases still work, but they are no longer the preferred wording:" -ForegroundColor Yellow
+    Write-Host "Hidden compatibility IDs still work, but they are no longer the preferred wording:" -ForegroundColor Yellow
     Write-Host "  phase1_mindoro_focus_pre_spill_experiment" -ForegroundColor Gray
     Write-Host "  phase1_production_rerun" -ForegroundColor Gray
     Write-Host "  mindoro_march13_14_noaa_reinit_stress_test" -ForegroundColor Gray
@@ -1538,6 +2252,14 @@ function Show-Help {
     Write-Host "  .\start.ps1 -Entry final_validation_package" -ForegroundColor Green
     Write-Host "  .\start.ps1 -Entry phase5_sync" -ForegroundColor Green
     Write-Host "  .\start.ps1 -Entry figure_package_publication" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "Shared controls:" -ForegroundColor Yellow
+    Write-Host "  B/BACK/0 = go back when a previous menu exists" -ForegroundColor White
+    Write-Host "  C/CANCEL = cancel the current selection cleanly" -ForegroundColor White
+    Write-Host "  Q/QUIT/EXIT = exit cleanly" -ForegroundColor White
+    Write-Host "  H/HELP = show help; L/LIST = show the launcher catalog" -ForegroundColor White
+    Write-Host "  P/PANEL = panel path; U/UI and R/RESTART are read-only dashboard shortcuts when available" -ForegroundColor White
+    Write-Host "  X/INSPECT inside a section = compact inline preview without running the entry" -ForegroundColor White
     Write-Host ""
     Write-Host "Intentional scientific rerun examples:" -ForegroundColor Yellow
     Write-Host "  .\start.ps1 -Entry phase1_mindoro_focus_provenance" -ForegroundColor Gray
@@ -1554,7 +2276,7 @@ function Show-Help {
     Write-Host "Guardrails:" -ForegroundColor Yellow
     Write-Host "  - Panel mode is the defense-safe default. The full launcher is for researcher/audit use." -ForegroundColor White
     Write-Host "  - Use launcher entry IDs and role groups as the user-facing startup vocabulary. Raw phase names are secondary implementation details." -ForegroundColor White
-    Write-Host "  - B1 is the only main-text primary Mindoro validation row, and the March 13 -> March 14 pair keeps the shared-imagery caveat explicit." -ForegroundColor White
+    Write-Host "  - B1 is the only main Philippine public-observation validation claim, and the March 13 -> March 14 pair keeps the shared-imagery caveat explicit." -ForegroundColor White
     Write-Host "  - Track A and every PyGNOME branch remain comparator-only support, never observational truth." -ForegroundColor White
     Write-Host "  - DWH is a separate external transfer-validation story, not Mindoro recalibration." -ForegroundColor White
     Write-Host "  - Mindoro Phase 4 oil-type and shoreline outputs remain support/context only." -ForegroundColor White
@@ -1579,13 +2301,14 @@ function Show-LauncherRoleGroupMenu {
         [Parameter(Mandatory = $true)][string]$Description
     )
 
-    while ($true) {
+    :roleGroupMenuLoop while ($true) {
         $entries = Get-LauncherEntriesForRoleGroup -GroupId $GroupId
         $selectionMap = @{}
         $displayIndex = 1
 
         Clear-Host
         Write-Section $Label
+        Show-LauncherNotice
         Write-Host ""
         Write-Host $Description -ForegroundColor DarkGray
         Write-Host ""
@@ -1605,98 +2328,100 @@ function Show-LauncherRoleGroupMenu {
             Write-Host ""
         }
 
-        Write-Host "  X. Explain a visible menu number or entry ID without running it" -ForegroundColor Yellow
+        Write-Host "  X. Inspect / explain entries in this section" -ForegroundColor Yellow
+        Write-Host "  L. List launcher catalog" -ForegroundColor Yellow
+        Write-Host "  H. Help" -ForegroundColor Yellow
         Write-Host "  B. Back" -ForegroundColor Yellow
+        Write-Host "  C. Cancel and return" -ForegroundColor Yellow
         Write-Host "  Q. Exit" -ForegroundColor Yellow
         Write-Host ""
 
-        $choice = (Read-Host "Select an option").Trim()
-        if ([string]::IsNullOrWhiteSpace($choice)) {
-            continue
+        $allowedActions = @("entry", "explain", "list", "help", "back", "cancel", "quit")
+        $allowedOptions = @("visible menu number", "entry_id", "X", "INSPECT", "L", "LIST", "H", "HELP", "B", "BACK", "0", "C", "CANCEL", "Q", "QUIT", "EXIT")
+        if ($GroupId -eq "read_only_governance") {
+            $allowedActions += @("ui", "restart", "panel")
+            $allowedOptions += @("U", "UI", "R", "RESTART", "P", "PANEL")
         }
 
-        switch ($choice.ToUpperInvariant()) {
-            "U" {
-                if ($GroupId -eq "read_only_governance") {
-                    Write-Section "READ-ONLY UI"
-                    try {
-                        Invoke-ReadOnlyUi
-                    }
-                    catch {
-                        Pause-IfNeeded
-                    }
-                    Pause-IfNeeded
-                    continue
+        $choice = Resolve-LauncherChoice `
+            -InputText (Read-Host "Select an option") `
+            -AllowedActions $allowedActions `
+            -BlankAction "ignore" `
+            -SelectionMap $selectionMap `
+            -GroupId $GroupId `
+            -AllowedOptions $allowedOptions
+
+        switch ($choice.Action) {
+            "ignore" { continue roleGroupMenuLoop }
+            "ui" {
+                Write-Section "READ-ONLY UI"
+                try {
+                    [void](Invoke-ReadOnlyUi)
                 }
-            }
-            "R" {
-                if ($GroupId -eq "read_only_governance") {
-                    Write-Section "FULL UI REFRESH"
-                    try {
-                        Invoke-ReadOnlyUi -RestartPipeline
-                    }
-                    catch {
-                        Pause-IfNeeded
-                    }
-                    Pause-IfNeeded
-                    continue
+                catch {
+                    Write-Host "[ERROR] $($_.Exception.Message)" -ForegroundColor Red
                 }
+                Pause-IfNeeded
+                continue roleGroupMenuLoop
             }
-            "P" {
-                if ($GroupId -eq "read_only_governance") {
-                    Show-PanelMenu
-                    continue
+            "restart" {
+                Write-Section "FULL UI REFRESH"
+                try {
+                    [void](Invoke-ReadOnlyUi -RestartPipeline)
                 }
-            }
-            "X" {
-                $entryReference = (Read-Host "Menu number or entry ID to explain").Trim()
-                if (-not [string]::IsNullOrWhiteSpace($entryReference)) {
-                    try {
-                        $launcherEntry = Resolve-LauncherRoleGroupEntryReference `
-                            -Reference $entryReference `
-                            -SelectionMap $selectionMap `
-                            -GroupId $GroupId `
-                            -ThrowIfUnknown
-                        Show-LauncherEntryPreview -LauncherEntry $launcherEntry
-                        Pause-IfNeeded
-                    }
-                    catch {
-                        Write-Host "[ERROR] $($_.Exception.Message)" -ForegroundColor Red
-                        Start-Sleep -Seconds 2
-                    }
+                catch {
+                    Write-Host "[ERROR] $($_.Exception.Message)" -ForegroundColor Red
                 }
-                continue
+                Pause-IfNeeded
+                continue roleGroupMenuLoop
             }
-            "B" { return }
-            "Q" {
+            "panel" {
+                Show-PanelMenu -ReturnToCaller
+                continue roleGroupMenuLoop
+            }
+            "explain" {
+                Invoke-LauncherRoleGroupInspectMode `
+                    -GroupId $GroupId `
+                    -SelectionMap $selectionMap `
+                    -Label $Label
+                continue roleGroupMenuLoop
+            }
+            "list" {
+                Show-LauncherList
+                continue roleGroupMenuLoop
+            }
+            "help" {
+                Show-Help
+                continue roleGroupMenuLoop
+            }
+            "back" { return }
+            "cancel" {
+                Set-LauncherNotice -Message "Cancelled. No workflow was executed." -Level "warning"
+                return
+            }
+            "quit" {
                 Write-Host ""
                 Write-Host "Goodbye." -ForegroundColor DarkGray
                 exit 0
             }
-        }
-
-        $launcherEntry = Resolve-LauncherRoleGroupEntryReference `
-            -Reference $choice `
-            -SelectionMap $selectionMap `
-            -GroupId $GroupId
-        if ($null -ne $launcherEntry) {
-            Write-Section $launcherEntry.label
-            try {
-                Invoke-LauncherEntry -LauncherEntry $launcherEntry
-            }
-            catch {
+            "entry" {
+                $launcherEntry = $choice.ResolvedEntry.CanonicalEntry
+                Write-Section $launcherEntry.label
+                $entryResult = Invoke-LauncherEntry `
+                    -LauncherEntry $launcherEntry `
+                    -RequestedEntryId $choice.ResolvedEntry.RequestedEntryId
+                if ($entryResult.Status -eq "cancelled" -and $entryResult.NoWorkflowExecuted) {
+                    Set-LauncherNotice -Message $entryResult.Message -Level "warning"
+                }
                 Pause-IfNeeded
+                continue roleGroupMenuLoop
             }
-            Pause-IfNeeded
-            continue
+            "invalid" {
+                Write-Host $choice.Message -ForegroundColor Red
+                Start-Sleep -Seconds 2
+                continue roleGroupMenuLoop
+            }
         }
-
-        if ($GroupId -eq "read_only_governance") {
-            Write-Host "Invalid option. Use a visible menu number or entry ID, U, R, P, X, B, or Q." -ForegroundColor Red
-        } else {
-            Write-Host "Invalid option. Use a visible menu number or entry ID, X, B, or Q." -ForegroundColor Red
-        }
-        Start-Sleep -Seconds 2
     }
 }
 
@@ -1742,9 +2467,12 @@ function Show-PaperOutputRegistry {
 
 function Invoke-PanelPaperVerification {
     Write-Section "VERIFY PAPER NUMBERS AGAINST STORED SCORECARDS"
-    Invoke-ContainerPythonScript `
+    $scriptResult = Invoke-ContainerPythonScript `
         -Description "Read-only paper-results verification from stored outputs only" `
         -ScriptPath "src/services/panel_review_check.py"
+    if (-not $scriptResult) {
+        return $false
+    }
 
     $csvPath = "output\panel_review_check\panel_results_match_check.csv"
     $jsonPath = "output\panel_review_check\panel_results_match_check.json"
@@ -1783,21 +2511,29 @@ function Invoke-PanelPaperVerification {
             -Label $preferredLabel
         Show-PanelVerificationQuickActions -PanelOutputs $panelOutputs
     }
+
+    return $true
 }
 
 function Invoke-PanelB1DrifterContext {
     $launcherEntry = Get-LauncherEntryById -EntryId "b1_drifter_context_panel"
     Write-Section $launcherEntry.label
-    Invoke-LauncherEntry -LauncherEntry $launcherEntry
+    $entryResult = Invoke-LauncherEntry -LauncherEntry $launcherEntry
+    if ($entryResult.Status -notin @("success", "dry_run")) {
+        return $entryResult
+    }
     Write-Host ""
     Write-Host "Next step: the read-only dashboard should open directly on 'B1 Drifter Provenance'." -ForegroundColor Yellow
     Write-Host "If it does not switch automatically, open http://localhost:8501/b1-drifter-provenance or click 'B1 Drifter Provenance' in the sidebar." -ForegroundColor DarkGray
     Write-Host "These drifter records support the selected transport recipe used by B1. They are not the direct March 13-14 public-observation truth mask." -ForegroundColor DarkGray
     Write-Host ("Stored context outputs: {0}" -f (Get-DisplayPath -Path "output\panel_drifter_context")) -ForegroundColor Green
-    Invoke-ReadOnlyUi -LandingPath "b1-drifter-provenance"
+    [void](Invoke-ReadOnlyUi -LandingPath "b1-drifter-provenance")
+    return $entryResult
 }
 
 function Show-PanelMenu {
+    param([switch]$ReturnToCaller)
+
     if ($NoPause) {
         Clear-Host
         Write-Section "DRIFTER-VALIDATED OIL SPILL FORECASTING"
@@ -1823,10 +2559,11 @@ function Show-PanelMenu {
         return
     }
 
-    while ($true) {
+    :panelMenuLoop while ($true) {
         Clear-Host
         Write-Section "DRIFTER-VALIDATED OIL SPILL FORECASTING"
         Write-Host "   PANEL REVIEW MODE" -ForegroundColor White
+        Show-LauncherNotice
         Write-Host ""
         Write-Host "Recommended panel checks:" -ForegroundColor Yellow
         Write-Host "  1. Open read-only dashboard [READ-ONLY]" -ForegroundColor White
@@ -1846,115 +2583,176 @@ function Show-PanelMenu {
         Write-Host ""
         Write-Host "Advanced:" -ForegroundColor Yellow
         Write-Host "  A. Open full research launcher [ADVANCED ONLY]" -ForegroundColor White
+        Write-Host "  U. Open read-only dashboard shortcut [READ-ONLY]" -ForegroundColor White
+        Write-Host "  R. Restart the read-only dashboard [READ-ONLY]" -ForegroundColor White
+        Write-Host "  L. List launcher catalog" -ForegroundColor White
         Write-Host "  H. Help / interpretation guide [READ-ONLY]" -ForegroundColor White
+        if ($ReturnToCaller) {
+            Write-Host "  B. Back" -ForegroundColor White
+            Write-Host "  C. Cancel and return" -ForegroundColor White
+        } else {
+            Write-Host "  B. Open launcher home" -ForegroundColor White
+            Write-Host "  C. Cancel and open launcher home" -ForegroundColor White
+        }
         Write-Host "  Q. Exit" -ForegroundColor White
         Write-Host ""
 
-        $choice = (Read-Host "Select an option").Trim()
-        if ([string]::IsNullOrWhiteSpace($choice)) {
-            continue
-        }
+        $choice = Resolve-LauncherChoice `
+            -InputText (Read-Host "Select an option") `
+            -AllowedActions @("ui", "restart", "list", "help", "back", "cancel", "quit", "panel") `
+            -BlankAction "ignore" `
+            -AllowedOptions @("1", "2", "3", "4", "5", "6", "7", "A", "U", "UI", "R", "RESTART", "L", "LIST", "H", "HELP", "B", "BACK", "0", "C", "CANCEL", "Q", "QUIT", "EXIT")
 
-        switch ($choice.ToUpperInvariant()) {
+        switch ($choice.RawInput.ToUpperInvariant()) {
             "1" {
                 Write-Section "READ-ONLY DASHBOARD"
                 try {
-                    Invoke-ReadOnlyUi
+                    [void](Invoke-ReadOnlyUi)
                 }
                 catch {
-                    Pause-IfNeeded
+                    Write-Host "[ERROR] $($_.Exception.Message)" -ForegroundColor Red
                 }
                 Pause-IfNeeded
-                continue
+                continue panelMenuLoop
             }
             "2" {
                 try {
-                    Invoke-PanelPaperVerification
+                    [void](Invoke-PanelPaperVerification)
                 }
                 catch {
-                    Pause-IfNeeded
+                    Write-Host "[ERROR] $($_.Exception.Message)" -ForegroundColor Red
                 }
                 Pause-IfNeeded
-                continue
+                continue panelMenuLoop
             }
             "3" {
                 $launcherEntry = Get-LauncherEntryById -EntryId "figure_package_publication"
                 Write-Section $launcherEntry.label
-                try {
-                    Invoke-LauncherEntry -LauncherEntry $launcherEntry
-                }
-                catch {
-                    Pause-IfNeeded
+                $entryResult = Invoke-LauncherEntry -LauncherEntry $launcherEntry
+                if ($entryResult.Status -eq "cancelled" -and $entryResult.NoWorkflowExecuted) {
+                    Set-LauncherNotice -Message $entryResult.Message -Level "warning"
                 }
                 Pause-IfNeeded
-                continue
+                continue panelMenuLoop
             }
             "4" {
                 $launcherEntry = Get-LauncherEntryById -EntryId "final_validation_package"
                 Write-Section $launcherEntry.label
-                try {
-                    Invoke-LauncherEntry -LauncherEntry $launcherEntry
-                }
-                catch {
-                    Pause-IfNeeded
+                $entryResult = Invoke-LauncherEntry -LauncherEntry $launcherEntry
+                if ($entryResult.Status -eq "cancelled" -and $entryResult.NoWorkflowExecuted) {
+                    Set-LauncherNotice -Message $entryResult.Message -Level "warning"
                 }
                 Pause-IfNeeded
-                continue
+                continue panelMenuLoop
             }
             "5" {
                 $launcherEntry = Get-LauncherEntryById -EntryId "phase5_sync"
                 Write-Section $launcherEntry.label
-                try {
-                    Invoke-LauncherEntry -LauncherEntry $launcherEntry
-                }
-                catch {
-                    Pause-IfNeeded
+                $entryResult = Invoke-LauncherEntry -LauncherEntry $launcherEntry
+                if ($entryResult.Status -eq "cancelled" -and $entryResult.NoWorkflowExecuted) {
+                    Set-LauncherNotice -Message $entryResult.Message -Level "warning"
                 }
                 Pause-IfNeeded
-                continue
+                continue panelMenuLoop
             }
             "6" {
                 Show-PaperOutputRegistry
-                continue
+                continue panelMenuLoop
             }
             "7" {
                 try {
-                    Invoke-PanelB1DrifterContext
+                    $entryResult = Invoke-PanelB1DrifterContext
+                    if ($entryResult -and $entryResult.Status -eq "cancelled" -and $entryResult.NoWorkflowExecuted) {
+                        Set-LauncherNotice -Message $entryResult.Message -Level "warning"
+                    }
                 }
                 catch {
-                    Pause-IfNeeded
+                    Write-Host "[ERROR] $($_.Exception.Message)" -ForegroundColor Red
                 }
                 Pause-IfNeeded
-                continue
+                continue panelMenuLoop
             }
-            "A" {
-                Show-Menu -ReturnToCaller
-                continue
+        }
+
+        switch ($choice.Action) {
+            "ignore" { continue panelMenuLoop }
+            "ui" {
+                Write-Section "READ-ONLY DASHBOARD"
+                try {
+                    [void](Invoke-ReadOnlyUi)
+                }
+                catch {
+                    Write-Host "[ERROR] $($_.Exception.Message)" -ForegroundColor Red
+                }
+                Pause-IfNeeded
+                continue panelMenuLoop
             }
-            "H" {
+            "restart" {
+                Write-Section "READ-ONLY DASHBOARD RESTART"
+                try {
+                    [void](Invoke-ReadOnlyUi -RestartPipeline)
+                }
+                catch {
+                    Write-Host "[ERROR] $($_.Exception.Message)" -ForegroundColor Red
+                }
+                Pause-IfNeeded
+                continue panelMenuLoop
+            }
+            "list" {
+                Show-LauncherList
+                continue panelMenuLoop
+            }
+            "help" {
                 Show-PanelGuide
-                continue
+                continue panelMenuLoop
             }
-            "Q" {
+            "panel" { continue panelMenuLoop }
+            "back" {
+                if ($ReturnToCaller) {
+                    return
+                }
+                Show-Menu
+                return
+            }
+            "cancel" {
+                Set-LauncherNotice -Message "Cancelled. No workflow was executed." -Level "warning"
+                if ($ReturnToCaller) {
+                    return
+                }
+                Show-Menu
+                return
+            }
+            "quit" {
                 Write-Host ""
                 Write-Host "Goodbye." -ForegroundColor DarkGray
                 exit 0
             }
+            "invalid" {
+                if ($choice.RawInput.ToUpperInvariant() -eq "A") {
+                    if ($ReturnToCaller) {
+                        Show-Menu -ReturnToCaller
+                    } else {
+                        Show-Menu
+                    }
+                    continue panelMenuLoop
+                }
+                Write-Host $choice.Message -ForegroundColor Red
+                Start-Sleep -Seconds 2
+                continue panelMenuLoop
+            }
         }
-
-        Write-Host "Invalid option. Use 1-7, A, H, or Q." -ForegroundColor Red
-        Start-Sleep -Seconds 2
     }
 }
 
 function Show-Menu {
     param([switch]$ReturnToCaller)
 
-    while ($true) {
+    :launcherHomeLoop while ($true) {
         $groups = Get-LauncherRoleGroups
 
         Clear-Host
         Write-Section "DRIFTER-VALIDATED OIL SPILL FORECASTING"
+        Show-LauncherNotice
         Write-Host ""
         Write-Host "Panel mode is the defense-safe default." -ForegroundColor Yellow
         Write-Host "This full launcher is for intentional researcher/audit work and is organized by thesis role instead of raw phase names." -ForegroundColor DarkYellow
@@ -1972,59 +2770,84 @@ function Show-Menu {
         Write-Host "  H. Help" -ForegroundColor Yellow
         if ($ReturnToCaller) {
             Write-Host "  B. Back" -ForegroundColor Yellow
+            Write-Host "  C. Cancel and return" -ForegroundColor Yellow
+        } else {
+            Write-Host "  C. Cancel current selection" -ForegroundColor Yellow
         }
         Write-Host "  Q. Exit" -ForegroundColor Yellow
         Write-Host ""
 
-        $choice = (Read-Host "Select an option").Trim()
-        if ([string]::IsNullOrWhiteSpace($choice)) {
-            continue
-        }
+        $choice = Resolve-LauncherChoice `
+            -InputText (Read-Host "Select an option") `
+            -AllowedActions @("panel", "list", "help", "back", "cancel", "quit") `
+            -BlankAction "ignore" `
+            -AllowedOptions @("P", "PANEL", "1", "2", "3", "4", "5", "L", "LIST", "H", "HELP", "B", "BACK", "0", "C", "CANCEL", "Q", "QUIT", "EXIT")
 
-        switch ($choice.ToUpperInvariant()) {
-            "P" {
-                Show-PanelMenu
-                continue
+        switch ($choice.Action) {
+            "ignore" { continue launcherHomeLoop }
+            "panel" {
+                if ($ReturnToCaller) {
+                    Show-PanelMenu -ReturnToCaller
+                } else {
+                    Show-PanelMenu
+                }
+                continue launcherHomeLoop
             }
-            "L" {
+            "list" {
                 Show-LauncherList
-                continue
+                continue launcherHomeLoop
             }
-            "H" {
+            "help" {
                 Show-Help
-                continue
+                continue launcherHomeLoop
             }
-            "B" {
+            "back" {
                 if ($ReturnToCaller) {
                     return
                 }
+                continue launcherHomeLoop
             }
-            "Q" {
+            "cancel" {
+                if ($ReturnToCaller) {
+                    Set-LauncherNotice -Message "Cancelled. No workflow was executed." -Level "warning"
+                    return
+                }
+                Set-LauncherNotice -Message "Cancelled. No workflow was executed." -Level "warning"
+                continue launcherHomeLoop
+            }
+            "quit" {
                 Write-Host ""
                 Write-Host "Goodbye." -ForegroundColor DarkGray
                 exit 0
             }
         }
 
-        $matchedGroup = $groups | Where-Object { $_.MenuKey -eq $choice } | Select-Object -First 1
+        $matchedGroup = $groups | Where-Object { [string]$_.MenuKey -eq [string]$choice.RawInput } | Select-Object -First 1
         if ($matchedGroup) {
             Show-LauncherRoleGroupMenu `
                 -GroupId ([string]$matchedGroup.GroupId) `
                 -Label ([string]$matchedGroup.Label) `
                 -Description ([string]$matchedGroup.Description)
-            continue
+            continue launcherHomeLoop
         }
 
-        if ($ReturnToCaller) {
-            Write-Host "Invalid option. Use P, 1-5, L, H, B, or Q." -ForegroundColor Red
+        if ($choice.Action -eq "invalid") {
+            Write-Host $choice.Message -ForegroundColor Red
         } else {
-            Write-Host "Invalid option. Use P, 1-5, L, H, or Q." -ForegroundColor Red
+            Write-Host "Invalid option. Use P, 1-5, L, H, C, or Q." -ForegroundColor Red
         }
         Start-Sleep -Seconds 2
+        continue launcherHomeLoop
     }
 }
 
 try {
+    if ($ValidateMatrix) {
+        $validationResult = Invoke-LauncherMatrixValidation
+        Pause-IfNeeded
+        exit $validationResult.ExitCode
+    }
+
     if ($List) {
         Show-LauncherList
         exit 0
@@ -2041,18 +2864,28 @@ try {
     }
 
     if ($Explain) {
-        $launcherEntry = Get-LauncherEntryById -EntryId $Explain
-        Show-LauncherEntryPreview -LauncherEntry $launcherEntry
+        $resolvedEntry = Resolve-LauncherEntryRequest -EntryId $Explain
+        Show-LauncherEntryPreview `
+            -LauncherEntry $resolvedEntry.CanonicalEntry `
+            -RequestedEntryId $resolvedEntry.RequestedEntryId
         Pause-IfNeeded
         exit 0
     }
 
     if ($Entry) {
-        $launcherEntry = Get-LauncherEntryById -EntryId $Entry
-        Write-Section $launcherEntry.label
-        Invoke-LauncherEntry -LauncherEntry $launcherEntry
+        $resolvedEntry = Resolve-LauncherEntryRequest -EntryId $Entry
+        Write-Section $resolvedEntry.CanonicalEntry.label
+        $entryResult = Invoke-LauncherEntry `
+            -LauncherEntry $resolvedEntry.CanonicalEntry `
+            -RequestedEntryId $resolvedEntry.RequestedEntryId
         Pause-IfNeeded
-        exit 0
+        if ($entryResult.Status -in @("success", "dry_run", "cancelled")) {
+            exit 0
+        }
+        if ($entryResult.Status -eq "docker_unavailable") {
+            exit $entryResult.ExitCode
+        }
+        exit 1
     }
 
     if ($Panel) {

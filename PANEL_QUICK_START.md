@@ -17,19 +17,30 @@ Use launcher entry IDs and panel options as the user-facing startup vocabulary; 
 
 ## What Panel Mode Is For
 
-1. Opening the read-only dashboard
-2. Verifying stored manuscript numbers against stored scorecards
-3. Rebuilding publication figures from stored outputs only
-4. Inspecting the focused Phase 1 drifter provenance behind the selected `B1` recipe
-5. Refreshing the final validation package from stored outputs only
-6. Refreshing the docs/reproducibility package from stored outputs only
-7. Opening the paper-to-output registry
+1. Open read-only dashboard
+2. Verify paper numbers against stored scorecards
+3. Rebuild publication figures from stored outputs
+4. Refresh final validation package from stored outputs
+5. Refresh final reproducibility package / command documentation
+6. Show paper-to-output registry
+7. View B1 drifter provenance/context
 
 ## What Panel Mode Does Not Do By Default
 
 - It does not rerun expensive scientific workflows.
 - It does not promote archive, appendix, or personal-experiment outputs into defended evidence.
 - It does not treat the full launcher as the default defense path.
+
+## Panel Menu Controls
+
+- `B`, `BACK`, `0` go back to launcher home when that path is available.
+- `C`, `CANCEL` cancel cleanly without throwing an error banner.
+- `Q`, `QUIT`, `EXIT` leave the launcher cleanly.
+- `A` opens the full research launcher when you intentionally need the advanced path.
+- `U`, `UI` open the read-only dashboard shortcut.
+- `R`, `RESTART` restart the read-only dashboard shortcut.
+- `L`, `LIST` show the launcher catalog.
+- `H`, `HELP` opens the panel interpretation guide.
 
 ## Draft 22 / Final Manuscript Evidence Boundaries
 

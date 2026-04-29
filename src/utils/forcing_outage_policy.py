@@ -10,7 +10,22 @@ import time
 import traceback
 from typing import Any
 
-import requests
+try:
+    import requests
+except ModuleNotFoundError:
+    class _RequestsExceptionFallback:
+        pass
+
+    class _RequestsExceptionsFallback:
+        Timeout = _RequestsExceptionFallback
+        ConnectionError = _RequestsExceptionFallback
+        SSLError = _RequestsExceptionFallback
+        HTTPError = _RequestsExceptionFallback
+
+    class _RequestsFallback:
+        exceptions = _RequestsExceptionsFallback
+
+    requests = _RequestsFallback()
 
 
 FORCING_OUTAGE_POLICY_ENV = "FORCING_OUTAGE_POLICY"

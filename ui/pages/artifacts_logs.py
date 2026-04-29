@@ -19,7 +19,7 @@ ensure_repo_root_on_path(__file__)
 
 import streamlit as st
 
-from ui.pages.common import preview_artifact, render_export_note, render_markdown_block, render_page_intro, render_section_stack, render_table
+from ui.pages.common import preview_artifact, render_export_note, render_markdown_block, render_metric_row, render_page_intro, render_section_stack, render_table
 
 
 def render(state: dict, ui_state: dict) -> None:
@@ -43,6 +43,18 @@ def render(state: dict, ui_state: dict) -> None:
     manifests = state["final_manifest_index"]
     logs = state["final_log_index"]
     panel_review_check = state["panel_review_check_table"]
+
+    def _package_overview() -> None:
+        render_metric_row(
+            [
+                ("Case registry rows", str(len(case_registry))),
+                ("Output catalog rows", str(len(catalog))),
+                ("Manifest index rows", str(len(manifests))),
+                ("Log index rows", str(len(logs))),
+            ],
+            export_mode=export_mode,
+        )
+        st.info("Panel-friendly mode keeps raw artifact, manifest, and log previews out of the main story. Switch to Advanced for direct read-only inspection.")
 
     def _panel_review() -> None:
         render_table(
@@ -140,15 +152,21 @@ def render(state: dict, ui_state: dict) -> None:
         render_markdown_block("Publication captions", state["publication_captions"], collapsed=True, export_mode=export_mode)
         render_markdown_block("Publication talking points", state["publication_talking_points"], collapsed=True, export_mode=export_mode)
 
-    render_section_stack(
-        [
-            ("Panel review", _panel_review),
-            ("Case registry", _case_registry),
+    sections = [
+        ("Package overview", _package_overview),
+        ("Panel review", _panel_review),
+        ("Case registry", _case_registry),
+        ("Package notes", _package_notes),
+    ]
+    if ui_state["advanced"] and not export_mode:
+        sections[3:3] = [
             ("Output catalog", _output_catalog),
             ("Manifest index", _manifest_index),
             ("Log index", _log_index),
-            ("Package notes", _package_notes),
-        ],
+        ]
+
+    render_section_stack(
+        sections,
         export_mode=export_mode,
         use_tabs=ui_state["advanced"],
     )

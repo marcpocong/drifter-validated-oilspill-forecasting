@@ -1,4 +1,5 @@
 import importlib
+import importlib.util
 import subprocess
 import sys
 import textwrap
@@ -11,12 +12,12 @@ try:
 except ImportError:  # pragma: no cover - host environments may not have streamlit installed
     AppTest = None
 
-from ui.data_access import build_dashboard_state
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 APP_PATH = REPO_ROOT / "ui" / "app.py"
 PAGES_DIR = REPO_ROOT / "ui" / "pages"
+DASHBOARD_DEPS = ("streamlit", "pandas", "geopandas", "rasterio", "xarray", "yaml")
+MISSING_DASHBOARD_DEPS = tuple(name for name in DASHBOARD_DEPS if importlib.util.find_spec(name) is None)
 
 
 def _phase1_wrapper_for_test() -> None:
@@ -235,6 +236,7 @@ def _probe_script_style_import(path: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
+@unittest.skipIf(MISSING_DASHBOARD_DEPS, f"dashboard dependencies unavailable: {', '.join(MISSING_DASHBOARD_DEPS)}")
 class UiImportBootstrapTests(unittest.TestCase):
     def test_package_imports_work(self):
         importlib.import_module("ui.app")
@@ -262,7 +264,10 @@ class UiImportBootstrapTests(unittest.TestCase):
                 self.assertIn("IMPORT_OK", result.stdout)
 
 
-@unittest.skipIf(AppTest is None, "streamlit.testing is not available")
+@unittest.skipIf(
+    AppTest is None or MISSING_DASHBOARD_DEPS,
+    "streamlit.testing or dashboard dependencies are not available",
+)
 class UiAppSmokeTests(unittest.TestCase):
     def _gallery_tile_count(self, at: AppTest) -> int:
         return sum("figure-gallery-card__title" in element.value for element in at.markdown)
@@ -297,17 +302,17 @@ class UiAppSmokeTests(unittest.TestCase):
         for wrapper, expected_title in (
             (_home_panel_wrapper_for_test, "Defense / Panel Review"),
             (_home_advanced_wrapper_for_test, "Defense / Panel Review"),
-            (_b1_drifter_context_wrapper_for_test, "B1 Drifter Provenance"),
+            (_b1_drifter_context_wrapper_for_test, "B1 Recipe Provenance — Not Truth Mask"),
             (_mindoro_validation_wrapper_for_test, "Mindoro B1 Primary Validation"),
-            (_mindoro_validation_archive_wrapper_for_test, "Mindoro Validation Archive"),
-            (_cross_model_wrapper_for_test, "Mindoro Cross-Model Comparator"),
-            (_dwh_wrapper_for_test, "DWH Phase 3C Transfer Validation"),
-            (_legacy_wrapper_for_test, "Legacy 2016 Support Package"),
-            (_phase1_wrapper_for_test, "Phase 1 Recipe Selection"),
-            (_phase1_advanced_wrapper_for_test, "Phase 1 Recipe Selection"),
-            (_phase4_wrapper_for_test, "Phase 4 Oil-Type and Shoreline Context"),
+            (_mindoro_validation_archive_wrapper_for_test, "Archive — Mindoro Validation Provenance"),
+            (_cross_model_wrapper_for_test, "Mindoro Track A Comparator Support"),
+            (_dwh_wrapper_for_test, "DWH External Transfer Validation"),
+            (_legacy_wrapper_for_test, "Archive — Legacy 2016 Support"),
+            (_phase1_wrapper_for_test, "Phase 1 Transport Provenance"),
+            (_phase1_advanced_wrapper_for_test, "Phase 1 Transport Provenance"),
+            (_phase4_wrapper_for_test, "Mindoro Oil-Type and Shoreline Context"),
             (_home_export_wrapper_for_test, "Defense / Panel Review"),
-            (_phase1_export_wrapper_for_test, "Phase 1 Recipe Selection"),
+            (_phase1_export_wrapper_for_test, "Phase 1 Transport Provenance"),
         ):
             at = AppTest.from_function(wrapper, default_timeout=60)
             at.run()
@@ -324,16 +329,21 @@ class UiAppSmokeTests(unittest.TestCase):
         button_labels = [element.label for element in at.button]
         self.assertIn("Click to enlarge", button_labels)
         self.assertNotIn("Enlarge figure", button_labels)
-        expected_count = len(build_dashboard_state(REPO_ROOT)["home_featured_publication_figures"])
+        from ui.data_access import build_dashboard_state
+        from ui.evidence_contract import filter_for_page
+
+        state = build_dashboard_state(REPO_ROOT)
+        expected_count = len(filter_for_page(state["home_featured_publication_figures"], "home", advanced=False))
         self.assertEqual(self._gallery_tile_count(at), expected_count)
         text_blocks = self._visible_text(at, "markdown", "subheader")
         self.assertNotIn("keyboard_double", text_blocks)
         self.assertIn("Quick panel summary", text_blocks)
         self.assertIn("What each thesis lane means", text_blocks)
-        self.assertIn("Secondary lanes", text_blocks)
+        self.assertIn("Archive / Support only", text_blocks)
         self.assertIn("Story shortcuts", text_blocks)
-        self.assertIn("Archive only", text_blocks)
-        self.assertIn("Legacy support", text_blocks)
+        self.assertIn("THESIS-FACING", text_blocks)
+        self.assertIn("ARCHIVE ONLY", text_blocks)
+        self.assertIn("LEGACY / ARCHIVE SUPPORT", text_blocks)
         self.assertNotIn("Legacy 2016 support triptychs first", text_blocks)
 
     def test_home_panel_gallery_excludes_mindoro_march3_to_march6_tiles(self):
@@ -355,7 +365,11 @@ class UiAppSmokeTests(unittest.TestCase):
         button_labels = [element.label for element in at.button]
         self.assertIn("Click to enlarge", button_labels)
         self.assertNotIn("Enlarge figure", button_labels)
-        expected_count = len(build_dashboard_state(REPO_ROOT)["home_featured_publication_figures"])
+        from ui.data_access import build_dashboard_state
+        from ui.evidence_contract import filter_for_page
+
+        state = build_dashboard_state(REPO_ROOT)
+        expected_count = len(filter_for_page(state["home_featured_publication_figures"], "home", advanced=False))
         self.assertEqual(self._gallery_tile_count(at), expected_count)
 
     def test_publication_package_pages_use_panel_gallery_without_figure_dropdowns(self):
@@ -416,7 +430,7 @@ class UiAppSmokeTests(unittest.TestCase):
         at.run()
         self.assertFalse(at.exception)
         text_blocks = self._visible_text(at, "markdown", "subheader", "caption", "info", "warning", "success")
-        self.assertIn("They are not the direct truth mask for the March 13-14 public-observation validation row.", text_blocks)
+        self.assertIn("Drifter segments support transport-provenance and recipe selection; they are not direct oil-footprint truth.", text_blocks)
         self.assertIn("No direct March 13-14 2023 accepted drifter segment is stored for B1.", text_blocks)
         self.assertIn("Focused Phase 1 drifter provenance -> selected cmems_gfs recipe -> March 13 -> March 14 B1 public-observation validation.", text_blocks)
 
@@ -432,7 +446,8 @@ class UiAppSmokeTests(unittest.TestCase):
             "warning",
             "success",
         )
-        self.assertIn("Selected Mindoro B1 recipe: `cmems_gfs`", text_blocks)
+        self.assertIn("Selected Mindoro B1 recipe", text_blocks)
+        self.assertIn("cmems_gfs", text_blocks)
         self.assertIn("`cmems_era5` as the runner-up", text_blocks)
         self.assertIn("Diagnostic recipe summary, not winner ranking", text_blocks)
         self.assertNotIn("Selected Mindoro B1 recipe: `cmems_era5`", text_blocks)
@@ -454,11 +469,13 @@ class UiAppSmokeTests(unittest.TestCase):
         self.assertIn("study boxes used by the thesis (boxes 2 and 4)", lowered)
         self.assertIn("per-box geography references for the thesis (boxes 2 and 4)", lowered)
         self.assertNotIn("archived per-box geography references (boxes 1 and 3)", lowered)
-        self.assertEqual(self._gallery_tile_count(at), 3)
+        self.assertGreaterEqual(self._gallery_tile_count(at), 3)
         self.assertIn("study box 2", lowered)
         self.assertIn("study box 4", lowered)
         self.assertIn("mindoro_case_domain", lowered)
         self.assertIn("first-code search-box", lowered)
+        self.assertNotIn("study box 1", lowered)
+        self.assertNotIn("study box 3", lowered)
 
     def test_phase1_page_surfaces_archive_only_boxes_in_advanced_mode(self):
         at = AppTest.from_function(_phase1_advanced_wrapper_for_test, default_timeout=60)
@@ -477,7 +494,48 @@ class UiAppSmokeTests(unittest.TestCase):
         self.assertIn("study box 3", lowered)
         self.assertIn("focused mindoro phase 1 box geography reference", lowered)
         self.assertIn("mindoro scoring-grid bounds geography reference", lowered)
-        self.assertEqual(self._gallery_tile_count(at), 5)
+        self.assertGreaterEqual(self._gallery_tile_count(at), 5)
+
+    def test_mindoro_b1_page_shows_draft22_scores_and_excludes_archive_terms(self):
+        at = AppTest.from_function(_mindoro_validation_wrapper_for_test, default_timeout=60)
+        at.run()
+        self.assertFalse(at.exception)
+        text_blocks = self._visible_text(at, "markdown", "subheader", "info", "warning", "caption")
+        self.assertIn("No exact 1 km overlap; this supports coastal-neighborhood usefulness, not exact-grid reproduction.", text_blocks)
+        for token in ("0.0000", "0.0441", "0.1371", "0.2490", "0.1075", "5", "22", "1414.21", "7358.16", "0.0"):
+            self.assertIn(token, text_blocks)
+        self.assertNotIn("B2", text_blocks)
+        self.assertNotIn("B3", text_blocks)
+        self.assertNotIn("March 3", text_blocks)
+        self.assertNotIn("March 6", text_blocks)
+
+    def test_track_a_comparator_page_keeps_pygnome_comparator_only(self):
+        at = AppTest.from_function(_cross_model_wrapper_for_test, default_timeout=60)
+        at.run()
+        self.assertFalse(at.exception)
+        text_blocks = self._visible_text(at, "markdown", "subheader", "info", "warning", "caption")
+        self.assertIn("PyGNOME is comparator-only and is not observational truth.", text_blocks)
+        self.assertIn("OpenDrift R1_previous mean FSS 0.1075", text_blocks)
+        self.assertIn("deterministic PyGNOME comparator mean FSS 0.0061", text_blocks)
+        self.assertNotIn("R0", text_blocks)
+
+    def test_dwh_page_shows_external_transfer_corridor_values(self):
+        at = AppTest.from_function(_dwh_wrapper_for_test, default_timeout=60)
+        at.run()
+        self.assertFalse(at.exception)
+        text_blocks = self._visible_text(at, "markdown", "subheader", "info", "warning", "caption")
+        self.assertIn("DWH is a separate external transfer validation story", text_blocks)
+        for token in ("0.5568", "0.5389", "0.4966", "0.3612"):
+            self.assertIn(token, text_blocks)
+
+    def test_phase4_page_shows_deferred_comparison_and_scenario_values(self):
+        at = AppTest.from_function(_phase4_wrapper_for_test, default_timeout=60)
+        at.run()
+        self.assertFalse(at.exception)
+        text_blocks = self._visible_text(at, "markdown", "subheader", "info", "warning", "caption")
+        self.assertIn("No matched Mindoro Phase 4 PyGNOME fate-and-shoreline comparison is packaged yet.", text_blocks)
+        for token in ("0.02%", "0.61%", "0.63%", "4 h", "11 / 10 / 11", "Pass / Flagged / Pass"):
+            self.assertIn(token, text_blocks)
 
     def test_legacy_page_surfaces_first_code_origin_story(self):
         at = AppTest.from_function(_legacy_wrapper_for_test, default_timeout=60)

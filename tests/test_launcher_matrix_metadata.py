@@ -15,6 +15,7 @@ class LauncherMatrixMetadataTests(unittest.TestCase):
         cls.matrix = json.loads(LAUNCHER_MATRIX_PATH.read_text(encoding="utf-8"))
         cls.entries = cls.matrix["entries"]
         cls.entry_map = {entry["entry_id"]: entry for entry in cls.entries}
+        cls.role_groups = cls.matrix.get("role_groups") or []
 
     def test_all_entries_have_required_fields(self):
         required_fields = (
@@ -50,6 +51,23 @@ class LauncherMatrixMetadataTests(unittest.TestCase):
             self.assertIsInstance(entry["confirms_before_run"], bool)
             self.assertIsInstance(entry["steps"], list)
             self.assertTrue(entry["steps"], f"{entry['entry_id']} must define at least one step")
+            if entry.get("alias_of"):
+                self.assertIn("menu_hidden", entry, f"{entry['entry_id']} alias must declare menu_hidden metadata")
+                self.assertTrue(entry["menu_hidden"], f"{entry['entry_id']} alias must stay hidden from the default menu")
+
+    def test_role_groups_define_launcher_home_lanes(self):
+        group_ids = {group.get("GroupId") for group in self.role_groups}
+        self.assertTrue(self.role_groups, "launcher_matrix.json should define role_groups for the home menu")
+        self.assertEqual(
+            group_ids,
+            {
+                "main_thesis_evidence",
+                "support_context",
+                "archive_provenance",
+                "legacy_debug",
+                "read_only_governance",
+            },
+        )
 
     def test_new_aliases_exist_and_old_ids_remain(self):
         self.assertIn("phase1_mindoro_focus_provenance", self.entry_map)
@@ -65,6 +83,38 @@ class LauncherMatrixMetadataTests(unittest.TestCase):
             self.entry_map["phase1_production_rerun"].get("alias_of"),
             "phase1_regional_reference_rerun",
         )
+
+    def test_canonical_entry_set_stays_stable_and_aliases_stay_hidden(self):
+        canonical_entry_ids = (
+            "phase1_mindoro_focus_provenance",
+            "mindoro_phase3b_primary_public_validation",
+            "mindoro_reportable_core",
+            "dwh_reportable_bundle",
+            "phase1_regional_reference_rerun",
+            "mindoro_phase4_only",
+            "mindoro_appendix_sensitivity_bundle",
+            "b1_drifter_context_panel",
+            "phase5_sync",
+            "prototype_legacy_final_figures",
+        )
+        alias_targets = {
+            "phase1_mindoro_focus_pre_spill_experiment": "phase1_mindoro_focus_provenance",
+            "phase1_production_rerun": "phase1_regional_reference_rerun",
+        }
+        hidden_legacy_ids = ("mindoro_march13_14_noaa_reinit_stress_test",)
+
+        for entry_id in canonical_entry_ids:
+            self.assertIn(entry_id, self.entry_map)
+            self.assertFalse(self.entry_map[entry_id].get("alias_of"), entry_id)
+
+        for alias_id, target_id in alias_targets.items():
+            self.assertIn(alias_id, self.entry_map)
+            self.assertEqual(self.entry_map[alias_id].get("alias_of"), target_id)
+            self.assertTrue(self.entry_map[alias_id].get("menu_hidden"), alias_id)
+
+        for entry_id in hidden_legacy_ids:
+            self.assertIn(entry_id, self.entry_map)
+            self.assertTrue(self.entry_map[entry_id].get("menu_hidden"), entry_id)
 
     def test_aliases_point_to_existing_entries_and_duplicate_steps_safely(self):
         for entry in self.entries:
@@ -110,6 +160,7 @@ class LauncherMatrixMetadataTests(unittest.TestCase):
     def test_b1_claim_boundary_mentions_shared_imagery_caveat(self):
         boundary = self.entry_map["mindoro_phase3b_primary_public_validation"]["claim_boundary"].lower()
         self.assertRegex(boundary, r"shared[- ]imagery")
+        self.assertIn("only main philippine public-observation validation claim", boundary)
 
     def test_b1_drifter_context_entry_stays_read_only_and_not_direct(self):
         entry = self.entry_map["b1_drifter_context_panel"]
@@ -142,6 +193,54 @@ class LauncherMatrixMetadataTests(unittest.TestCase):
         ).lower()
         self.assertIn("external transfer", combined)
         self.assertIn("not mindoro recalibration", combined)
+
+    def test_launcher_docs_list_canonical_entries_and_dashboard_shortcut(self):
+        doc_paths = (
+            REPO_ROOT / "README.md",
+            REPO_ROOT / "PANEL_QUICK_START.md",
+            REPO_ROOT / "docs" / "COMMAND_MATRIX.md",
+            REPO_ROOT / "docs" / "LAUNCHER_USER_GUIDE.md",
+        )
+        combined = "\n".join(path.read_text(encoding="utf-8") for path in doc_paths)
+        lowered = combined.lower()
+
+        for entry_id in (
+            "phase1_mindoro_focus_provenance",
+            "mindoro_phase3b_primary_public_validation",
+            "mindoro_reportable_core",
+            "dwh_reportable_bundle",
+            "phase1_regional_reference_rerun",
+            "mindoro_phase4_only",
+            "mindoro_appendix_sensitivity_bundle",
+            "b1_drifter_context_panel",
+            "phase5_sync",
+            "prototype_legacy_final_figures",
+        ):
+            self.assertIn(entry_id, combined)
+
+        self.assertIn("panel option `1`", lowered)
+        self.assertTrue("u` / `ui`" in lowered or "`u`, `ui`" in lowered)
+        self.assertIn("shortcut, not a separate launcher entry id", lowered)
+
+    def test_panel_option_labels_match_command_matrix_and_quick_start(self):
+        start_text = (REPO_ROOT / "start.ps1").read_text(encoding="utf-8")
+        command_matrix_text = (REPO_ROOT / "docs" / "COMMAND_MATRIX.md").read_text(encoding="utf-8")
+        panel_quick_start_text = (REPO_ROOT / "PANEL_QUICK_START.md").read_text(encoding="utf-8")
+
+        exact_panel_labels = (
+            "Open read-only dashboard",
+            "Verify paper numbers against stored scorecards",
+            "Rebuild publication figures from stored outputs",
+            "Refresh final validation package from stored outputs",
+            "Refresh final reproducibility package / command documentation",
+            "Show paper-to-output registry",
+            "View B1 drifter provenance/context",
+        )
+
+        for label in exact_panel_labels:
+            self.assertIn(label, start_text)
+            self.assertIn(label, command_matrix_text)
+            self.assertIn(label, panel_quick_start_text)
 
 
 if __name__ == "__main__":

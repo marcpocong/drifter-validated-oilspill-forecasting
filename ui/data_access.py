@@ -780,7 +780,7 @@ def curated_package_roots(repo_root: str | Path | None = None) -> list[dict[str,
         {
             "package_id": "mindoro_comparator",
             "label": "Mindoro comparator package",
-            "page_label": "Mindoro Cross-Model Comparator",
+            "page_label": "Mindoro Track A Comparator Support",
             "relative_path": str(MINDORO_FINAL_DIR / "publication" / "comparator_pygnome"),
             "description": "Curated comparator-only subgroup for the thesis-facing March 14 Track A support view after archived R0-only materials were moved out of the main story.",
             "secondary_note": "Track A is comparator-only; archived R0 outputs live on the archive page.",
@@ -789,7 +789,7 @@ def curated_package_roots(repo_root: str | Path | None = None) -> list[dict[str,
         {
             "package_id": "mindoro_validation_archive",
             "label": "Mindoro validation archive",
-            "page_label": "Mindoro Validation Archive",
+            "page_label": "Archive — Mindoro Validation Provenance",
             "relative_path": str(FINAL_VALIDATION_DIR),
             "description": "Archived March13-14 R0 baseline, older R0-including March13-14 outputs, and preserved March-family legacy rows retained for provenance only.",
             "secondary_note": "Archive-only; not thesis-facing evidence.",
@@ -798,7 +798,7 @@ def curated_package_roots(repo_root: str | Path | None = None) -> list[dict[str,
         {
             "package_id": "dwh_phase3c_final",
             "label": "DWH Phase 3C final package",
-            "page_label": "DWH Phase 3C Transfer Validation",
+            "page_label": "DWH External Transfer Validation",
             "relative_path": str(DWH_FINAL_DIR),
             "description": "Curated frozen DWH transfer-validation package with C1/C2/C3 kept separate and explicit.",
             "secondary_note": "No drifter baseline is used for DWH.",
@@ -807,7 +807,7 @@ def curated_package_roots(repo_root: str | Path | None = None) -> list[dict[str,
         {
             "package_id": "legacy_2016_final",
             "label": "Legacy 2016 final package",
-            "page_label": "Legacy 2016 Support Package",
+            "page_label": "Archive — Legacy 2016 Support",
             "relative_path": str(LEGACY_2016_FINAL_DIR),
             "description": "Authoritative curated support-only package for the thesis-facing prototype_2016 legacy flow.",
             "secondary_note": "Support-only; visible flow is Phase 1 / 2 / 3A / 4 / 5.",
@@ -816,7 +816,7 @@ def curated_package_roots(repo_root: str | Path | None = None) -> list[dict[str,
         {
             "package_id": "phase4_context_status",
             "label": "Phase 4 context",
-            "page_label": "Phase 4 Oil-Type and Shoreline Context",
+            "page_label": "Mindoro Oil-Type and Shoreline Context",
             "relative_path": str(PHASE4_DIR),
             "description": "Mindoro Phase 4 OpenDrift/OpenOil context with the no-matched-comparator decision already folded into the plain-language page.",
             "secondary_note": "No matched Phase 4 PyGNOME comparison is packaged yet.",
@@ -1210,7 +1210,7 @@ def load_b1_drifter_context(repo_root: str | Path | None = None) -> dict[str, An
         )
 
     return {
-        "title": "B1 Drifter Provenance / Transport Context",
+        "title": "B1 Recipe Provenance — Not Truth Mask",
         "page_note": (
             "These drifter records support the selected transport recipe used by B1. "
             "They are not the direct truth mask for the March 13-14 public-observation validation row."
@@ -1487,6 +1487,8 @@ def curated_recommended_figures(repo_root: str | Path | None = None) -> pd.DataF
 
 
 def home_featured_publication_figures(repo_root: str | Path | None = None) -> pd.DataFrame:
+    from ui.evidence_contract import assert_no_archive_leak, filter_for_page
+
     featured = _filter_surface_rows(curated_recommended_figures(repo_root), require_home_visible=True)
     registry = publication_registry(repo_root)
     phase1_context = registry.loc[
@@ -1512,6 +1514,8 @@ def home_featured_publication_figures(repo_root: str | Path | None = None) -> pd
         return featured
     if "figure_id" in featured.columns:
         featured = featured.drop_duplicates(subset=["figure_id"], keep="first")
+    featured = filter_for_page(featured, "home", advanced=False)
+    assert_no_archive_leak(featured, "home", advanced=False)
     return _sort_home_story_rows(featured)
 
 

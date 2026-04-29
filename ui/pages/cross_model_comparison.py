@@ -19,6 +19,7 @@ ensure_repo_root_on_path(__file__)
 
 import streamlit as st
 
+from ui.evidence_contract import ROLE_COMPARATOR, assert_no_archive_leak, filter_for_page
 from ui.pages.common import (
     render_export_note,
     render_figure_gallery,
@@ -28,6 +29,35 @@ from ui.pages.common import (
     render_status_callout,
     render_table,
 )
+
+
+def _draft22_track_a_table():
+    import pandas as pd
+
+    return pd.DataFrame(
+        [
+            {
+                "Model/branch": "OpenDrift R1_previous",
+                "Forecast cells": "5",
+                "Nearest distance": "1414.21 m",
+                "FSS 1 km": "0.0000",
+                "FSS 3 km": "0.0441",
+                "FSS 5 km": "0.1371",
+                "FSS 10 km": "0.2490",
+                "Mean FSS": "0.1075",
+            },
+            {
+                "Model/branch": "PyGNOME deterministic",
+                "Forecast cells": "6",
+                "Nearest distance": "6082.76 m",
+                "FSS 1 km": "0.0000",
+                "FSS 3 km": "0.0000",
+                "FSS 5 km": "0.0000",
+                "FSS 10 km": "0.0244",
+                "Mean FSS": "0.0061",
+            },
+        ]
+    )
 
 
 def _filter_table(df, *, surface_key: str) -> object:
@@ -42,21 +72,36 @@ def _filter_table(df, *, surface_key: str) -> object:
 def render(state: dict, ui_state: dict) -> None:
     export_mode = bool(ui_state.get("export_mode"))
     registry = state["mindoro_final_registry"]
-    figures = registry.loc[
-        registry.get("artifact_group", "").astype(str).eq("publication/comparator_pygnome")
-        & registry.get("surface_key", "").astype(str).eq("comparator_support")
-    ].reset_index(drop=True)
-    comparator_ranking = _filter_table(state["mindoro_comparator_ranking"], surface_key="comparator_support")
-    comparator_summary = _filter_table(state["mindoro_comparator_summary"], surface_key="comparator_support")
+    figures = filter_for_page(
+        registry.loc[
+            registry.get("artifact_group", "").astype(str).eq("publication/comparator_pygnome")
+            & registry.get("surface_key", "").astype(str).eq("comparator_support")
+        ].reset_index(drop=True),
+        "cross_model_comparison",
+        advanced=bool(ui_state.get("advanced")),
+    )
+    comparator_ranking = filter_for_page(
+        _filter_table(state["mindoro_comparator_ranking"], surface_key="comparator_support"),
+        "cross_model_comparison",
+        advanced=bool(ui_state.get("advanced")),
+    )
+    comparator_summary = filter_for_page(
+        _filter_table(state["mindoro_comparator_summary"], surface_key="comparator_support"),
+        "cross_model_comparison",
+        advanced=bool(ui_state.get("advanced")),
+    )
+    assert_no_archive_leak(figures, "cross_model_comparison", advanced=bool(ui_state.get("advanced")))
+    assert_no_archive_leak(comparator_ranking, "cross_model_comparison", advanced=bool(ui_state.get("advanced")))
+    assert_no_archive_leak(comparator_summary, "cross_model_comparison", advanced=bool(ui_state.get("advanced")))
     archive_package = next(
         (package for package in state.get("curated_package_roots", []) if package.get("package_id") == "mindoro_validation_archive"),
         None,
     )
 
     render_page_intro(
-        "Mindoro Cross-Model Comparator",
-        "This page is the dedicated home for the thesis-facing Mindoro Track A support comparison. It stays comparator-only, uses the same March 14 target as the March 13 -> March 14 R1 primary validation row, and never lets PyGNOME read like truth or a co-primary validation row.",
-        badge="Comparator support | Mindoro Track A",
+        "Mindoro Track A Comparator Support",
+        "Track A is same-case OpenDrift-PyGNOME comparator support for the March 13-14 Mindoro case. It is not a second validation row.",
+        badge=ROLE_COMPARATOR,
     )
 
     if export_mode:
@@ -68,19 +113,33 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     render_status_callout(
-        "Support comparison only",
-        "This page stays comparator-only. It helps compare model behavior on the same target, but it does not replace the main OpenDrift-versus-observation claim.",
+        "PyGNOME comparator boundary",
+        "PyGNOME is comparator-only and is not observational truth.",
         "warning",
     )
     render_status_callout(
         "Relationship to B1",
-        "Track A is attached to the B1 package as supporting cross-model context on the same March 14 target. Archived March 13 -> March 14 R0 comparator outputs were moved to the Mindoro Validation Archive page.",
+        "Track A is attached to the B1 package as supporting cross-model context on the same March 14 target. It contextualizes model behavior and never replaces the main B1 public-observation validation claim.",
         "info",
     )
     render_status_callout(
-        "Phase 4 honesty note",
+        "Track A score summary",
+        "OpenDrift R1_previous mean FSS 0.1075; deterministic PyGNOME comparator mean FSS 0.0061. PyGNOME nearest distance is 6082.76 m.",
+        "info",
+    )
+    render_status_callout(
+        "Phase 4 boundary note",
         "This page stays in Phase 3 spatial-comparator territory only. No matched Mindoro Phase 4 PyGNOME package is shown here; the current Mindoro Phase 4 layer remains OpenDrift/OpenOil scenario context only.",
         "warning",
+    )
+
+    render_table(
+        "Draft 22 Track A comparator values",
+        _draft22_track_a_table(),
+        download_name="draft22_mindoro_track_a_comparator_values.csv",
+        caption="OpenDrift R1_previous is compared with deterministic PyGNOME as support only.",
+        height=180,
+        export_mode=export_mode,
     )
 
     render_figure_gallery(
@@ -98,7 +157,7 @@ def render(state: dict, ui_state: dict) -> None:
             "Comparator ranking",
             comparator_ranking,
             download_name="march13_14_reinit_crossmodel_model_ranking.csv",
-            caption="Curated thesis-facing ranking table for the same-case March 14 comparator lane after removing the archived R0 row.",
+            caption="Curated thesis-facing ranking table for the same-case March 14 comparator lane after archive-only rows are removed.",
             height=260,
             export_mode=export_mode,
         )
@@ -106,7 +165,7 @@ def render(state: dict, ui_state: dict) -> None:
             "Comparator summary",
             comparator_summary,
             download_name="march13_14_reinit_crossmodel_summary.csv",
-            caption="Curated thesis-facing summary table for the Mindoro comparator subgroup after removing the archived R0 row.",
+            caption="Curated thesis-facing summary table for the Mindoro comparator subgroup after archive-only rows are removed.",
             height=260,
             export_mode=export_mode,
         )
@@ -117,7 +176,7 @@ def render(state: dict, ui_state: dict) -> None:
                 "Comparator ranking",
                 comparator_ranking,
                 download_name="march13_14_reinit_crossmodel_model_ranking.csv",
-                caption="Curated thesis-facing ranking table for the same-case March 14 comparator lane after removing the archived R0 row.",
+                caption="Curated thesis-facing ranking table for the same-case March 14 comparator lane after archive-only rows are removed.",
                 height=260,
             )
         with right:
@@ -125,18 +184,18 @@ def render(state: dict, ui_state: dict) -> None:
                 "Comparator summary",
                 comparator_summary,
                 download_name="march13_14_reinit_crossmodel_summary.csv",
-                caption="Curated thesis-facing summary table for the Mindoro comparator subgroup after removing the archived R0 row.",
+                caption="Curated thesis-facing summary table for the Mindoro comparator subgroup after archive-only rows are removed.",
                 height=260,
             )
 
     if archive_package:
         render_status_callout(
             "Archive note",
-            "For the March 13 -> March 14 R0 archived baseline and other R0-including March13-14 comparator outputs, use the Mindoro Validation Archive page.",
+            "Archived comparator outputs are not displayed here. Use Archive — Mindoro Validation Provenance for provenance-only review.",
             "warning",
         )
         render_package_cards(
-            [{**archive_package, "button_label": "Open Mindoro Validation Archive"}],
+            [{**archive_package, "button_label": "Open Mindoro validation archive"}],
             columns_per_row=1,
             export_mode=export_mode,
         )

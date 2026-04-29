@@ -14,8 +14,9 @@ def test_launcher_claim_boundaries_keep_main_thesis_separation():
     dwh_boundary = entries["dwh_reportable_bundle"]["claim_boundary"].lower()
     phase1_boundary = entries["phase1_mindoro_focus_provenance"]["claim_boundary"].lower()
 
-    assert "only main-text primary" in b1_boundary
+    assert "only main philippine public-observation validation claim" in b1_boundary
     assert "shared-imagery" in b1_boundary
+    assert "independent day-to-day pair" in b1_boundary
     assert "not the direct" in drifter_boundary
     assert "external transfer validation" in dwh_boundary
     assert "not mindoro recalibration" in dwh_boundary
@@ -34,3 +35,10 @@ def test_docs_keep_pygnome_and_drifter_language_honest():
     assert "pygnome is comparator-only" in combined or "pygnome remains comparator-only" in combined
     assert "drifter provenance" in combined
     assert "not the direct" in combined
+
+
+def test_command_matrix_keeps_panel_b1_context_option_in_sync():
+    command_matrix = read_text(next(path for path in DOC_PATHS if path.name == "COMMAND_MATRIX.md"))
+    lowered = command_matrix.lower()
+    assert "panel option `7`" in lowered
+    assert "b1_drifter_context_panel" in command_matrix

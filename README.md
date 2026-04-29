@@ -111,34 +111,46 @@ The launcher entrypoint is [start.ps1](start.ps1), and the current entry catalog
 - Panel mode is the defense-safe default.
 - The full launcher is the researcher/audit path.
 - Use launcher entry IDs and role groups as the user-facing vocabulary.
+- Read-only dashboard launch is a shortcut, not a separate matrix entry ID. Use panel option `1` or `U` / `UI`.
 - The README entry IDs below were checked against `config/launcher_matrix.json`.
 
 ### Preferred Entry IDs
 
-- Main evidence reruns: `phase1_mindoro_focus_provenance`, `mindoro_phase3b_primary_public_validation`, `dwh_reportable_bundle`, `mindoro_reportable_core`
-- Support/context reruns: `mindoro_phase4_only`, `mindoro_appendix_sensitivity_bundle`
-- Archive/provenance reruns: `phase1_regional_reference_rerun`, `mindoro_march13_14_phase1_focus_trial`, `mindoro_march6_recovery_sensitivity`, `mindoro_march23_extended_public_stress_test`
-- Read-only governance surfaces: `b1_drifter_context_panel`, `phase1_audit`, `phase2_audit`, `final_validation_package`, `phase5_sync`, `trajectory_gallery`, `trajectory_gallery_panel`, `figure_package_publication`
+- Main thesis evidence / reportable: `phase1_mindoro_focus_provenance`, `mindoro_phase3b_primary_public_validation`, `dwh_reportable_bundle`, `mindoro_reportable_core`
+- Support/context and appendix: `mindoro_phase4_only`, `mindoro_appendix_sensitivity_bundle`
+- Archive/provenance: `phase1_regional_reference_rerun`, `mindoro_march13_14_phase1_focus_trial`, `mindoro_march6_recovery_sensitivity`, `mindoro_march23_extended_public_stress_test`
+- Read-only dashboard / packaging / audits / docs: `b1_drifter_context_panel`, `phase1_audit`, `phase2_audit`, `final_validation_package`, `phase5_sync`, `trajectory_gallery`, `trajectory_gallery_panel`, `figure_package_publication`
 - Legacy/archive support: `prototype_legacy_final_figures`, `prototype_2021_bundle`, `prototype_legacy_bundle`
 
-### Compatibility Aliases
+### Compatibility Aliases / Hidden Legacy IDs
 
 - `phase1_mindoro_focus_pre_spill_experiment` -> prefer `phase1_mindoro_focus_provenance`
 - `phase1_production_rerun` -> prefer `phase1_regional_reference_rerun`
-- `mindoro_march13_14_noaa_reinit_stress_test` -> compatibility alias only; prefer `mindoro_phase3b_primary_public_validation`
+- `mindoro_march13_14_noaa_reinit_stress_test` -> hidden legacy March 13-14 compatibility bundle; prefer `mindoro_phase3b_primary_public_validation`
 
 ### Useful Commands
 
 ```powershell
+.\panel.ps1
+.\start.ps1 -Panel
 .\start.ps1 -List -NoPause
 .\start.ps1 -ListRole primary_evidence -NoPause
 .\start.ps1 -Help -NoPause
 .\start.ps1 -Explain mindoro_phase3b_primary_public_validation -NoPause
+.\start.ps1 -Entry mindoro_phase3b_primary_public_validation -DryRun -NoPause
 ```
+
+Launcher controls:
+
+- `B`, `BACK`, `0` go back when a previous launcher menu exists.
+- `C`, `CANCEL` cancel the current selection cleanly.
+- `Q`, `QUIT`, `EXIT` leave the launcher cleanly.
+- `X`, `INSPECT` preview entries inline inside a launcher section without running them.
+- Hidden aliases still work, but they resolve to the canonical entry preview before execution.
 
 ## Scientific Guardrails
 
-- `B1` is the only main-text primary Philippine / Mindoro validation claim.
+- `B1` is the only main Philippine public-observation validation claim.
 - `B1` supports coastal-neighborhood usefulness, not exact 1 km overlap.
 - Keep the March 13-14 shared-imagery caveat explicit.
 - `Track A` and PyGNOME branches are comparator-only support, never the observational scoring reference.

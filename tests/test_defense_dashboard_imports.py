@@ -50,7 +50,7 @@ def test_dashboard_source_contains_no_rerun_commands_on_import():
 def test_b1_drifter_page_contains_required_plain_language_notes():
     text = read_text(UI_DRIFTER_PAGE_PATH)
     required = (
-        "B1 Drifter Provenance",
+        "B1 Recipe Provenance — Not Truth Mask",
         "support the selected transport recipe",
         "public-observation validation",
         "not the direct",

@@ -22,7 +22,9 @@ import streamlit as st
 
 from src.core.artifact_status import get_artifact_status
 from ui.data_access import figure_subset
+from ui.evidence_contract import ROLE_ARCHIVE
 from ui.pages.common import (
+    render_badge_strip,
     render_export_note,
     render_figure_gallery,
     render_markdown_block,
@@ -100,9 +102,9 @@ def render(state: dict, ui_state: dict) -> None:
     transport_context_figures = figure_subset("panel", case_id=case_id, surface_keys=["advanced_only"])
 
     render_page_intro(
-        "Mindoro Validation Archive",
+        "Archive — Mindoro Validation Provenance",
         "This page centralizes archived Mindoro validation material that remains repo-preserved for provenance, audit, and reproducibility. The main paper and thesis-facing Mindoro reporting will use the March 13 -> March 14 R1 primary validation row only.",
-        badge="Archive only | Mindoro provenance and audit",
+        badge=ROLE_ARCHIVE,
     )
 
     if export_mode:
@@ -113,7 +115,7 @@ def render(state: dict, ui_state: dict) -> None:
             ]
         )
 
-    render_status_callout("Archive only", "These materials are preserved for provenance and team audit. They are not thesis-facing.", "warning")
+    render_status_callout("ARCHIVE / SUPPORT ONLY — not part of the main Mindoro validation claim.", "ARCHIVE / SUPPORT ONLY — not part of the main Mindoro validation claim.", "warning")
     render_status_callout(
         "Main paper rule",
         "The March 13 -> March 14 R1 primary validation row will be the only thesis-facing Mindoro Phase 3B validation row used in the main paper.",
@@ -134,6 +136,7 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     def _r0_archived_baseline() -> None:
+        render_badge_strip([ROLE_ARCHIVE])
         render_status_callout(
             "Not thesis-facing",
             "The March 13 -> March 14 R0 archived baseline is preserved for provenance and reproducibility only. It is excluded from thesis-facing methodology, tables, figures, and headline claims.",
@@ -166,6 +169,7 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     def _r0_including_outputs() -> None:
+        render_badge_strip([ROLE_ARCHIVE])
         render_status_callout(
             "Provenance-only older outputs",
             "Older March13-14 outputs that included or foregrounded R0 remain accessible here only. They are repo-preserved and archive-only.",
@@ -198,6 +202,7 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     def _b2_archive() -> None:
+        render_badge_strip([ROLE_ARCHIVE])
         render_figure_gallery(
             b2_figures,
             title="B2 archived March 6 sparse-reference row",
@@ -217,6 +222,7 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     def _b3_archive() -> None:
+        render_badge_strip([ROLE_ARCHIVE])
         render_figure_gallery(
             b3_figures,
             title="B3 archived March 3-6 broader-support row",
@@ -236,8 +242,9 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     def _transport_context() -> None:
+        render_badge_strip([ROLE_ARCHIVE])
         if transport_context_figures is None or transport_context_figures.empty:
-            st.info("No additional transport-context archive figures are packaged for this view in the current repo state.")
+            st.info("Not packaged in current repo state.")
             return
         render_figure_gallery(
             transport_context_figures,
@@ -250,6 +257,7 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     def _archive_tables() -> None:
+        render_badge_strip([ROLE_ARCHIVE])
         render_table(
             "Archived Mindoro validation registry",
             archive_registry,

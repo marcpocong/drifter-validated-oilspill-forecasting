@@ -19,6 +19,7 @@ ensure_repo_root_on_path(__file__)
 
 import streamlit as st
 
+from ui.evidence_contract import ROLE_THESIS, assert_no_archive_leak, filter_for_page
 from ui.pages.common import (
     render_export_note,
     render_figure_gallery,
@@ -29,6 +30,36 @@ from ui.pages.common import (
     render_status_callout,
     render_table,
 )
+
+
+def _draft22_b1_score_table():
+    import pandas as pd
+
+    return pd.DataFrame(
+        [
+            {"Metric": "Forecast cells", "Value": "5"},
+            {"Metric": "Observed cells", "Value": "22"},
+            {"Metric": "Nearest distance", "Value": "1414.21 m"},
+            {"Metric": "Centroid distance", "Value": "7358.16 m"},
+            {"Metric": "IoU", "Value": "0.0"},
+            {"Metric": "Dice", "Value": "0.0"},
+            {"Metric": "Mean FSS", "Value": "0.1075"},
+        ]
+    )
+
+
+def _draft22_b1_fss_table():
+    import pandas as pd
+
+    return pd.DataFrame(
+        [
+            {"Neighborhood window": "1 km", "FSS": "0.0000", "Interpretation": "No exact-grid overlap"},
+            {"Neighborhood window": "3 km", "FSS": "0.0441", "Interpretation": "Neighborhood agreement begins"},
+            {"Neighborhood window": "5 km", "FSS": "0.1371", "Interpretation": "Agreement visible at intermediate scale"},
+            {"Neighborhood window": "10 km", "FSS": "0.2490", "Interpretation": "Strongest agreement at broadest window"},
+            {"Neighborhood window": "Mean", "FSS": "0.1075", "Interpretation": "Overall mean across four windows"},
+        ]
+    )
 
 
 def _mindoro_final_subset(
@@ -80,83 +111,98 @@ def render(state: dict, ui_state: dict) -> None:
 
     render_page_intro(
         "Mindoro B1 Primary Validation",
-        "This page leads with the Mindoro March 13 -> March 14 R1 primary validation row as the only thesis-facing Mindoro result. Track A stays comparator-only, while the March 13 -> March 14 R0 archived baseline and the preserved March-family legacy rows were moved to the Mindoro Validation Archive page.",
-        badge="Thesis-facing | Mindoro B1 primary validation",
+        "Mindoro B1 is the only main Philippine public-observation validation claim. It is a March 13-14 reinitialization-based check against the March 14 public observation mask.",
+        badge=ROLE_THESIS,
     )
 
     if export_mode:
         render_export_note(
             [
                 "Export mode presents the Mindoro validation story as a single sequential brief.",
-                "The March 13 -> March 14 R1 primary validation row stays first, Track A remains comparator-only, and archived March-family material stays on the Mindoro Validation Archive page.",
+                "The March 13-14 B1 primary validation row stays first, while comparator and archive material stay on their own pages.",
             ]
         )
 
     render_status_callout(
         "Main thesis result",
-        "B1 uses the March 13 -> March 14 R1 primary validation row only. It carries the March 13 seed and March 14 target, and it stays distinct from both Track A comparator support and the archive-only March-family rows.",
+        "B1 uses the March 13 public extent to initialize the run and the March 14 public extent as the target mask on the same fixed 1 km grid.",
         "info",
     )
     render_status_callout(
-        "Naming note",
-        "Here, March 13 -> March 14 R1 refers to the Phase 3B validation branch. It is not the same label as the Phase 1 Recipe Code R1 family used elsewhere in Chapter 3.",
-        "info",
-    )
-    render_status_callout(
-        "Shared-imagery note",
-        "The March 13 and March 14 public products share March 12 WorldView-3 imagery provenance, so this row is a reinitialization-based public-validation pair rather than an independent day-to-day validation claim.",
+        "No exact 1 km overlap",
+        "No exact 1 km overlap; this supports coastal-neighborhood usefulness, not exact-grid reproduction.",
         "warning",
     )
     render_status_callout(
+        "Shared-imagery / reinitialization caveat",
+        "The March 13–14 pair shares March 12 WorldView-3 imagery provenance, so it is treated as a bounded reinitialization-based validation check rather than a fully independent day-to-day validation claim.",
+        "warning",
+    )
+    render_status_callout(
+        "B1 score summary",
+        "FSS by window: 1 km 0.0000, 3 km 0.0441, 5 km 0.1371, 10 km 0.2490, mean 0.1075. Forecast cells 5, observed cells 22, nearest distance 1414.21 m, centroid distance 7358.16 m, IoU 0.0, Dice 0.0.",
+        "info",
+    )
+    render_status_callout(
         "Recipe provenance",
-        f"B1 inherits the official {selected_recipe or 'Phase 1 selected'} recipe from the separate focused 2016-2023 Mindoro Phase 1 rerun, which completed the {recipe_scope} comparison and promoted the focused historical winner directly into official B1. Phase 3B itself does not directly ingest drifters, and the stored promoted B1 run remains tied to the existing R1_previous reinit lineage.",
+        f"B1 inherits the official {selected_recipe or 'Phase 1 selected'} recipe from the separate focused 2016-2023 Mindoro Phase 1 lane, which completed the {recipe_scope} comparison and promoted the focused historical winner directly into official B1. Phase 3B itself does not directly ingest drifters, and the stored promoted B1 run remains tied to the existing R1_previous reinit lineage.",
         "info",
     )
 
     mindoro_final_registry = state["mindoro_final_registry"]
-    primary_figures = _mindoro_final_subset(
-        mindoro_final_registry,
-        {"publication/observations", "publication/opendrift_primary"},
-        surface_keys={"thesis_main"},
+    primary_figures = filter_for_page(
+        _mindoro_final_subset(
+            mindoro_final_registry,
+            {"publication/observations", "publication/opendrift_primary"},
+            surface_keys={"thesis_main"},
+        ),
+        "mindoro_validation",
+        advanced=bool(ui_state.get("advanced")),
     )
-    comparator_figures = _mindoro_final_subset(
-        mindoro_final_registry,
-        {"publication/comparator_pygnome"},
-        surface_keys={"comparator_support"},
+    assert_no_archive_leak(primary_figures, "mindoro_validation", advanced=bool(ui_state.get("advanced")))
+    b1_summary = filter_for_page(
+        state["mindoro_b1_summary"].loc[
+            state["mindoro_b1_summary"].get("surface_key", "").astype(str).eq("thesis_main")
+        ].reset_index(drop=True),
+        "mindoro_validation",
+        advanced=bool(ui_state.get("advanced")),
     )
-    b1_summary = state["mindoro_b1_summary"].loc[
-        state["mindoro_b1_summary"].get("surface_key", "").astype(str).eq("thesis_main")
-    ].reset_index(drop=True)
-    b1_fss = state["mindoro_b1_fss"].loc[
-        state["mindoro_b1_fss"].get("surface_key", "").astype(str).eq("thesis_main")
-    ].reset_index(drop=True)
+    b1_fss = filter_for_page(
+        state["mindoro_b1_fss"].loc[
+            state["mindoro_b1_fss"].get("surface_key", "").astype(str).eq("thesis_main")
+        ].reset_index(drop=True),
+        "mindoro_validation",
+        advanced=bool(ui_state.get("advanced")),
+    )
+    assert_no_archive_leak(b1_summary, "mindoro_validation", advanced=bool(ui_state.get("advanced")))
+    assert_no_archive_leak(b1_fss, "mindoro_validation", advanced=bool(ui_state.get("advanced")))
     archive_package = next(
         (package for package in state.get("curated_package_roots", []) if package.get("package_id") == "mindoro_validation_archive"),
         None,
     )
 
     def _primary_package() -> None:
+        render_table(
+            "B1 Draft 22 score card",
+            _draft22_b1_score_table(),
+            download_name="draft22_mindoro_b1_score_card.csv",
+            caption="March 13-14 R1_previous primary validation row only.",
+            height=230,
+            export_mode=export_mode,
+        )
+        render_table(
+            "B1 FSS by neighborhood window",
+            _draft22_b1_fss_table(),
+            download_name="draft22_mindoro_b1_fss.csv",
+            caption="FSS grows with neighborhood scale; no exact 1 km overlap is present.",
+            height=230,
+            export_mode=export_mode,
+        )
         render_figure_gallery(
             primary_figures,
-            title="March 13 -> March 14 R1 primary-validation figures",
-            caption="These figures come from the curated Phase 3B March13-14 final package and should be used first for thesis-facing Mindoro discussion. Click any figure to enlarge it and read the fuller interpretation there.",
+            title="March 13-14 R1_previous primary-validation figures",
+            caption="These stored figures support the B1 primary validation row only.",
             limit=2 if export_mode else (None if ui_state["advanced"] else 5),
-            columns_per_row=1 if export_mode else 2,
-            export_mode=export_mode,
-            overlay_label="Click to enlarge",
-        )
-
-    def _comparator_support() -> None:
-        render_status_callout(
-            "Comparator support",
-            "Track A is attached to B1 as same-case comparator support. PyGNOME is comparator-only and never truth, and archived March 13 -> March 14 R0 comparator outputs were moved to the Mindoro Validation Archive page.",
-            "warning",
-        )
-        render_figure_gallery(
-            comparator_figures,
-            title="Comparator-support publication figures",
-            caption="These figures come from the curated comparator-support subgroup under the final March13-14 package and remain separate from the primary B1 claim. Click any figure to enlarge it.",
-            limit=2 if export_mode else (None if ui_state["advanced"] else 4),
             columns_per_row=1 if export_mode else 2,
             export_mode=export_mode,
             overlay_label="Click to enlarge",
@@ -164,15 +210,15 @@ def render(state: dict, ui_state: dict) -> None:
 
     def _tables_and_notes() -> None:
         render_table(
-            "March 13 -> March 14 R1 summary",
+            "March 13-14 R1_previous stored summary",
             b1_summary,
             download_name="march13_14_r1_primary_summary.csv",
-            caption="Curated R1-only summary table from the final March13-14 package.",
+            caption="Curated primary row from the final March13-14 package.",
             height=220,
             export_mode=export_mode,
         )
         render_table(
-            "March 13 -> March 14 R1 FSS by window",
+            "March 13-14 R1_previous stored FSS by window",
             b1_fss,
             download_name="march13_14_reinit_fss_by_window.csv",
             caption="Curated R1-only FSS table from the primary March13-14 package.",
@@ -184,20 +230,19 @@ def render(state: dict, ui_state: dict) -> None:
     def _archive_note() -> None:
         render_status_callout(
             "Archive note",
-            "The March 13 -> March 14 R0 archived baseline, archived R0-including March13-14 outputs, and preserved March-family legacy rows were moved off this page. Use the Mindoro Validation Archive page for provenance-only review.",
+            "Non-primary Mindoro validation provenance is separated from this B1 page. Use Archive — Mindoro Validation Provenance for audit-only rows.",
             "warning",
         )
         if archive_package:
             render_package_cards(
-                [{**archive_package, "button_label": "Open Mindoro Validation Archive"}],
+                [{**archive_package, "button_label": "Open Mindoro validation archive"}],
                 columns_per_row=1,
                 export_mode=export_mode,
             )
 
     render_section_stack(
         [
-            ("March 13 -> March 14 R1 Main Result", _primary_package),
-            ("Comparator support", _comparator_support),
+            ("March 13-14 R1 Previous Main Result", _primary_package),
             ("R1 Tables And Notes", _tables_and_notes),
             ("Archive Note", _archive_note),
         ],

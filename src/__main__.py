@@ -2507,7 +2507,6 @@ def run_figure_package_publication_phase():
 def main():
     import subprocess
 
-    from src.core.case_context import get_case_context
     from src.exceptions.custom import BENCHMARK_SKIP_EXIT_CODE, PREP_OUTAGE_DECISION_EXIT_CODE
     from src.utils.forcing_outage_policy import FORCING_OUTAGE_SKIP_EXIT_CODE
 
@@ -2575,6 +2574,8 @@ def main():
     if phase == "figure_package_publication":
         run_figure_package_publication_phase()
         return
+
+    from src.core.case_context import PROTOTYPE_CASE_ID_ENV, get_case_context
 
     case = get_case_context()
 

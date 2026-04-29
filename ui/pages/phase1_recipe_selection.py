@@ -21,6 +21,7 @@ import pandas as pd
 import streamlit as st
 
 from src.core.study_box_catalog import ARCHIVE_ONLY_STUDY_BOX_NUMBERS, THESIS_FACING_STUDY_BOX_NUMBERS
+from ui.evidence_contract import ROLE_ADVANCED, ROLE_ARCHIVE, ROLE_THESIS, filter_for_page
 from ui.pages.common import (
     render_export_note,
     render_figure_gallery,
@@ -102,6 +103,62 @@ def _sort_summary_by_rank(summary: pd.DataFrame, ranking: pd.DataFrame) -> pd.Da
     return payload.drop(columns=["_recipe_key", "_rank_sort"]).reset_index(drop=True)
 
 
+def _draft22_ranking_table() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {"Rank": 1, "Recipe": "cmems_gfs", "Mean NCS": "4.5886", "Median NCS": "4.6305", "Status": "Winner / selected for B1"},
+            {"Rank": 2, "Recipe": "cmems_era5", "Mean NCS": "4.6237", "Median NCS": "4.5916", "Status": "Runner-up / not selected"},
+            {"Rank": 3, "Recipe": "hycom_gfs", "Mean NCS": "4.7027", "Median NCS": "4.9263", "Status": "Not selected"},
+            {"Rank": 4, "Recipe": "hycom_era5", "Mean NCS": "4.7561", "Median NCS": "5.0106", "Status": "Not selected"},
+        ]
+    )
+
+
+def _transport_settings_table() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {"Field": "Workflow mode", "Draft 22 value": "phase1_mindoro_focus_pre_spill_2016_2023"},
+            {"Field": "Historical window", "Draft 22 value": "2016-01-01T00:00:00Z to 2023-03-02T23:59:59Z"},
+            {"Field": "Focused validation box", "Draft 22 value": "[118.751, 124.305, 10.62, 16.026]"},
+            {"Field": "Drifter dataset", "Draft 22 value": "NOAA OSMC ERDDAP drifter_6hour_qc"},
+            {"Field": "Segment structure", "Draft 22 value": "72 h segments on a 6 h grid"},
+            {"Field": "Acceptance rules", "Draft 22 value": "drogued only; full duration; continuous coverage; non-overlapping windows; all points inside validation box"},
+            {"Field": "Ranking settings", "Draft 22 value": "direct wind drift factor 0.02; Stokes drift on; horizontal diffusivity 0.0 m2/s; weathering off"},
+        ]
+    )
+
+
+def _study_box_summary_table() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "Box/domain": "Study Box 2 - mindoro_case_domain",
+                "Bounds": "[115.0, 122.0, 6.0, 14.5]",
+                "Role": "Broad official Mindoro spill-case fallback transport and forcing domain",
+                "Default status": ROLE_THESIS,
+            },
+            {
+                "Box/domain": "Study Box 4 - prototype first-code search box",
+                "Bounds": "[108.6465, 121.3655, 6.1865, 20.3515]",
+                "Role": "Historical-origin search box that surfaced earliest 2016 prototype cases",
+                "Default status": ROLE_THESIS,
+            },
+            {
+                "Box/domain": "Study Box 1 - focused Mindoro Phase 1 box",
+                "Bounds": "[118.751, 124.305, 10.62, 16.026]",
+                "Role": "Separate drifter-validation box for active Mindoro provenance lane",
+                "Default status": ROLE_ARCHIVE,
+            },
+            {
+                "Box/domain": "Study Box 3 - scoreable display bounds",
+                "Bounds": "[120.909647, 122.062154, 12.249385, 13.783655]",
+                "Role": "Narrow operational scoring-grid display extent",
+                "Default status": ROLE_ADVANCED,
+            },
+        ]
+    )
+
+
 def render(state: dict, ui_state: dict) -> None:
     export_mode = bool(ui_state.get("export_mode"))
     manifest = state["phase1_focused_manifest"] or {}
@@ -115,8 +172,13 @@ def render(state: dict, ui_state: dict) -> None:
     reference_summary = state["phase1_reference_recipe_summary"]
     publication_registry = state["publication_registry"]
     focused_missing = not manifest and ranking.empty and summary.empty
-    study_box_figures = publication_registry.loc[
-        publication_registry.get("status_key", pd.Series(dtype=str)).astype(str).eq("thesis_study_box_reference")
+    study_box_candidates = filter_for_page(
+        publication_registry,
+        "phase1_recipe_selection",
+        advanced=bool(ui_state.get("advanced")),
+    )
+    study_box_figures = study_box_candidates.loc[
+        study_box_candidates.get("status_key", pd.Series(dtype=str)).astype(str).eq("thesis_study_box_reference")
     ].reset_index(drop=True)
     study_box_overview_figures = study_box_figures.loc[
         study_box_figures.get("study_box_id", pd.Series(dtype=str)).astype(str).eq("thesis_study_boxes_reference")
@@ -159,9 +221,9 @@ def render(state: dict, ui_state: dict) -> None:
     )
 
     render_page_intro(
-        "Phase 1 Recipe Selection",
-        "This page explains how the Mindoro transport recipe was chosen before the main validation step. It keeps the focused Mindoro provenance lane separate from the broader regional reference lane and shows how B1 inherits the selected recipe without directly ingesting drifters inside Phase 3B.",
-        badge="Thesis-facing | workflow / provenance context",
+        "Phase 1 Transport Provenance",
+        "Focused historical drifter segments support transport provenance and recipe selection for official B1. They do not directly validate the mapped oil footprint.",
+        badge=ROLE_THESIS,
     )
 
     if export_mode:
@@ -173,13 +235,13 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     render_status_callout(
-        "What this page establishes",
-        "Historical drifter segments were used to compare candidate recipes before the main Mindoro validation case was discussed.",
+        "Evidence boundary",
+        "Drifter segments support transport-provenance and recipe selection; they are not direct oil-footprint truth.",
         "info",
     )
     render_status_callout(
         "Focused Mindoro result",
-        f"The focused Mindoro provenance lane now evaluates `{recipe_family}`. The focused ranking table places `{historical_winner}` first, and official B1 currently inherits `{selected_recipe}` from that lane.",
+        "The focused Mindoro provenance lane evaluates `cmems_era5`, `cmems_gfs`, `hycom_era5`, and `hycom_gfs`. The historical ranking winner is `cmems_gfs`, and official B1 adopts `cmems_gfs` directly from that focused historical winner.",
         "info",
     )
     selected_recipe_value = f"Selected Mindoro B1 recipe: `{selected_recipe}`."
@@ -219,26 +281,69 @@ def render(state: dict, ui_state: dict) -> None:
 
     render_metric_row(
         [
-            ("Selected Mindoro B1 recipe", selected_recipe or "Not available"),
-            ("Focused recipes tested", str(len(focused_summary)) if not focused_summary.empty else "0"),
-            ("Accepted segments", str(manifest.get("accepted_segment_count", 0))),
-            ("Ranking subset", str(subset_info.get("segment_count", len(subset)) or 0)),
-            ("Study window", f"{str(time_window.get('start_utc', ''))[:10]} to {str(time_window.get('end_utc', ''))[:10]}"),
+            ("Selected Mindoro B1 recipe", "cmems_gfs"),
+            ("Full strict accepted segments", "65"),
+            ("February-April ranking subset", "19"),
+            ("Study window", "2016-01-01 to 2023-03-02"),
         ],
         export_mode=export_mode,
     )
 
+    render_table(
+        "Draft 22 focused recipe ranking",
+        _draft22_ranking_table(),
+        download_name="draft22_phase1_recipe_ranking.csv",
+        caption="Draft 22 ranking values for the focused Mindoro Phase 1 provenance lane.",
+        height=190,
+        export_mode=export_mode,
+    )
+    render_table(
+        "Draft 22 transport-provenance settings",
+        _transport_settings_table(),
+        download_name="draft22_phase1_transport_settings.csv",
+        caption="The active provenance lane is separate from B1 public-observation scoring.",
+        height=250,
+        export_mode=export_mode,
+    )
+    render_table(
+        "Default geography references",
+        _study_box_summary_table().head(2 if not ui_state["advanced"] else 4),
+        download_name="draft22_study_box_roles.csv",
+        caption=(
+            "Default panel mode shows Study Boxes 2 and 4 as thesis-facing geography references. Other provenance and scoring-grid references stay outside the default panel view."
+            if not ui_state["advanced"]
+            else "Advanced mode also shows Study Boxes 1 and 3 as provenance/archive references."
+        ),
+        height=220,
+        export_mode=export_mode,
+    )
+
     if not study_box_overview_figures.empty or not study_box_detail_figures.empty:
+        shared_box_note = (
+            "Study Box 2 is the broader `mindoro_case_domain` overview extent and Study Box 4 is the prototype-origin first-code search box. "
+            "Other provenance and scoring-grid box references remain outside the default thesis-facing geography set."
+        )
+        overview_caption = (
+            "This updated shared publication figure is built from stored config, manifest, provenance metadata, and a local geography context layer only. "
+            "Study Box 2 is `mindoro_case_domain` and Study Box 4 is the prototype-origin first-code search box."
+        )
+        if ui_state["advanced"]:
+            shared_box_note = (
+                "Study Box 2 is the broader `mindoro_case_domain` overview extent and Study Box 4 is the prototype-origin first-code search box. Study Box 1, the focused Phase 1 validation box, and Study Box 3, the scoring-grid display bounds, remain archive-only references for appendix, advanced, and audit use."
+            )
+            overview_caption = (
+                "This updated shared publication figure is built from stored config, manifest, provenance metadata, and a local geography context layer only. Study Box 2 is `mindoro_case_domain` and Study Box 4 is the prototype-origin first-code search box, while Study Boxes 1 and 3 stay preserved as archive-only references."
+            )
         render_status_callout(
             "Shared box reference",
-            "Study Box 2 is the broader `mindoro_case_domain` overview extent and Study Box 4 is the prototype-origin first-code search box. Study Box 1, the focused Phase 1 validation box, and Study Box 3, the scoring-grid display bounds, remain archive-only references for appendix, advanced, and audit use.",
+            shared_box_note,
             "info",
         )
         if not study_box_overview_figures.empty:
             render_figure_gallery(
                 study_box_overview_figures,
                 title="Study boxes used by the thesis (Boxes 2 and 4)",
-                caption="This updated shared publication figure is built from stored config, manifest, provenance metadata, and a local geography context layer only. Study Box 2 is `mindoro_case_domain` and Study Box 4 is the prototype-origin first-code search box, while Study Boxes 1 and 3 stay preserved as archive-only references.",
+                caption=overview_caption,
                 limit=1,
                 columns_per_row=1,
                 export_mode=export_mode,
@@ -361,23 +466,6 @@ def render(state: dict, ui_state: dict) -> None:
             export_mode=export_mode,
         )
 
-    def _legacy_support_lane() -> None:
-        render_status_callout(
-            "Legacy lane role",
-            "The prototype_2016 lane remains a legacy support package. It still shows a full support flow, but it does not replace the current Mindoro-specific Phase 1 provenance story.",
-            "warning",
-        )
-        st.markdown(
-            "\n".join(
-                [
-                    "### Legacy support flow",
-                    "- `prototype_2016` keeps a visible support flow of Phase 1 -> Phase 2 -> Phase 3A -> Phase 4 -> Phase 5.",
-                    "- It is useful for legacy pipeline development context and comparator interpretation.",
-                    "- It is not the main recipe-selection evidence for the current Mindoro B1 claim.",
-                ]
-            )
-        )
-
     def _source_tables() -> None:
         render_table(
             "Diagnostic recipe summary, not winner ranking",
@@ -403,14 +491,15 @@ def render(state: dict, ui_state: dict) -> None:
             export_mode=export_mode,
         )
 
+    sections = [
+        ("Focused provenance lane", _focused_lane),
+        ("How B1 inherits the recipe", _inheritance_story),
+        ("Regional reference lane", _regional_reference),
+        ("Source tables", _source_tables),
+    ]
+
     render_section_stack(
-        [
-            ("Focused provenance lane", _focused_lane),
-            ("How B1 inherits the recipe", _inheritance_story),
-            ("Regional reference lane", _regional_reference),
-            ("Legacy 2016 support note", _legacy_support_lane),
-            ("Source tables", _source_tables),
-        ],
+        sections,
         export_mode=export_mode,
         use_tabs=ui_state["advanced"],
     )

@@ -15,6 +15,7 @@ env/
 *.swo
 *.DS_Store
 Thumbs.db
+desktop.ini
 *~
 
 # Data files (keep structure with .gitkeep)
@@ -125,3 +126,6 @@ output/phase1_production_rerun/*
 !output/phase1_production_rerun/*.json
 !output/phase1_production_rerun/*.md
 !output/phase1_production_rerun/*.yaml
+
+# Windows folder metadata in curated output roots
+output/**/desktop.ini

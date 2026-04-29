@@ -19,7 +19,9 @@ ensure_repo_root_on_path(__file__)
 
 import streamlit as st
 
+from ui.evidence_contract import ROLE_LEGACY
 from ui.pages.common import (
+    render_badge_strip,
     render_export_note,
     render_figure_gallery,
     render_markdown_block,
@@ -29,6 +31,36 @@ from ui.pages.common import (
     render_status_callout,
     render_table,
 )
+
+
+def _draft22_legacy_cases_table():
+    import pandas as pd
+
+    return pd.DataFrame(
+        [
+            {"Support case": "CASE_2016-09-01", "Drifter reference date": "2016-09-01", "Comparator window": "2016-09-02 to 2016-09-04", "Thesis role": "Legacy/prototype support only"},
+            {"Support case": "CASE_2016-09-06", "Drifter reference date": "2016-09-06", "Comparator window": "2016-09-07 to 2016-09-09", "Thesis role": "Legacy/prototype support only"},
+            {"Support case": "CASE_2016-09-17", "Drifter reference date": "2016-09-17", "Comparator window": "2016-09-18 to 2016-09-20", "Thesis role": "Legacy/prototype support only"},
+        ]
+    )
+
+
+def _draft22_legacy_fss_table():
+    import pandas as pd
+
+    return pd.DataFrame(
+        [
+            {"Case": "2016-09-01", "Surface": "deterministic", "1 km": "0.389", "3 km": "0.498", "5 km": "0.546", "10 km": "0.585", "Overall mean": "0.504"},
+            {"Case": "2016-09-01", "Surface": "p50 footprint", "1 km": "0.334", "3 km": "0.433", "5 km": "0.433", "10 km": "0.430", "Overall mean": "0.407"},
+            {"Case": "2016-09-01", "Surface": "p90 footprint", "1 km": "0.371", "3 km": "0.482", "5 km": "0.482", "10 km": "0.481", "Overall mean": "0.454"},
+            {"Case": "2016-09-06", "Surface": "deterministic", "1 km": "0.433", "3 km": "0.492", "5 km": "0.501", "10 km": "0.508", "Overall mean": "0.483"},
+            {"Case": "2016-09-06", "Surface": "p50 footprint", "1 km": "0.425", "3 km": "0.577", "5 km": "0.542", "10 km": "0.520", "Overall mean": "0.516"},
+            {"Case": "2016-09-06", "Surface": "p90 footprint", "1 km": "0.470", "3 km": "0.618", "5 km": "0.589", "10 km": "0.571", "Overall mean": "0.562"},
+            {"Case": "2016-09-17", "Surface": "deterministic", "1 km": "0.667", "3 km": "0.729", "5 km": "0.729", "10 km": "0.729", "Overall mean": "0.714"},
+            {"Case": "2016-09-17", "Surface": "p50 footprint", "1 km": "0.278", "3 km": "0.392", "5 km": "0.360", "10 km": "0.336", "Overall mean": "0.342"},
+            {"Case": "2016-09-17", "Surface": "p90 footprint", "1 km": "0.309", "3 km": "0.430", "5 km": "0.396", "10 km": "0.373", "Overall mean": "0.377"},
+        ]
+    )
 
 
 def _filter_case(df, case_id: str) -> object:
@@ -57,9 +89,9 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     render_page_intro(
-        "Legacy 2016 Support Package",
+        "Archive — Legacy 2016 Support",
         "This page surfaces the authoritative curated prototype_2016 package. It is support-only legacy material and should be read as historical pipeline context rather than as the main Mindoro or DWH validation evidence.",
-        badge="Legacy support | prototype_2016 support-only package",
+        badge=ROLE_LEGACY,
     )
 
     if export_mode:
@@ -70,7 +102,7 @@ def render(state: dict, ui_state: dict) -> None:
             ]
         )
 
-    render_status_callout("Support-only lane", "This page is a legacy support lane. It stays visible for historical context, but it is not the main real-world validation path.", "warning")
+    render_status_callout("ARCHIVE / SUPPORT ONLY — not part of the main Mindoro validation claim.", "ARCHIVE / SUPPORT ONLY — not part of the main Mindoro validation claim.", "warning")
     render_status_callout(
         "Visible support flow",
         "The thesis-facing legacy flow is Phase 1 -> Phase 2 -> Phase 3A -> Phase 4 -> Phase 5. Phase 3A is comparator-only OpenDrift vs deterministic PyGNOME support, Phase 4 is legacy weathering/fate, and Phase 5 is this read-only packaging layer.",
@@ -172,6 +204,7 @@ def render(state: dict, ui_state: dict) -> None:
     scenario_text = ", ".join(scenario_keys) if scenario_keys else "no comparator scenarios"
 
     def _package_overview() -> None:
+        render_badge_strip([ROLE_LEGACY])
         metrics = [
             ("Indexed artifacts", str(len(filtered_registry))),
             ("Phase 3A figures", str(len(phase3a_figures))),
@@ -186,8 +219,25 @@ def render(state: dict, ui_state: dict) -> None:
             collapsed=not ui_state["advanced"] and not export_mode,
             export_mode=export_mode,
         )
+        render_table(
+            "Draft 22 legacy support cases",
+            _draft22_legacy_cases_table(),
+            download_name="draft22_legacy_2016_support_cases.csv",
+            caption="Legacy/prototype support only; not direct public spill validation.",
+            height=160,
+            export_mode=export_mode,
+        )
+        render_table(
+            "Draft 22 legacy mean FSS by support surface",
+            _draft22_legacy_fss_table(),
+            download_name="draft22_legacy_2016_mean_fss.csv",
+            caption="Legacy similarity values are displayed only on this archive/support page.",
+            height=260,
+            export_mode=export_mode,
+        )
 
     def _phase3a_publication() -> None:
+        render_badge_strip([ROLE_LEGACY])
         render_figure_gallery(
             phase3a_figures,
             title="Phase 3A support-comparison figures",
@@ -207,6 +257,7 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     def _phase4_publication() -> None:
+        render_badge_strip([ROLE_LEGACY])
         render_figure_gallery(
             phase4_figures,
             title="Phase 4 legacy-context figures",
@@ -226,6 +277,7 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     def _phase4_comparator() -> None:
+        render_badge_strip([ROLE_LEGACY])
         render_status_callout(
             "Comparator scope",
             f"Budget-only deterministic PyGNOME comparator pilot. Currently packaged scenarios: {scenario_text}. Shoreline comparison is not packaged because matched PyGNOME shoreline outputs are not available.",
@@ -261,6 +313,7 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     def _summaries_and_manifests() -> None:
+        render_badge_strip([ROLE_LEGACY])
         render_table(
             "Legacy final-output registry",
             filtered_registry,

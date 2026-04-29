@@ -470,144 +470,14 @@ def launcher_categories() -> dict[str, dict[str, Any]]:
 
 
 def validate_launcher_matrix() -> list[str]:
-    payload = launcher_matrix_payload()
-    issues: list[str] = []
-    categories = launcher_categories()
-    entries = launcher_entries()
-    entry_map = launcher_entry_map()
-    required_fields = (
-        "entry_id",
-        "label",
-        "category_id",
-        "workflow_mode",
-        "description",
-        "rerun_cost",
-        "safe_default",
-        "thesis_role",
-        "draft_section",
-        "claim_boundary",
-        "run_kind",
-        "recommended_for",
-        "confirms_before_run",
-        "steps",
-    )
+    from src.utils.validate_launcher_matrix import audit_launcher_matrix
 
-    if not categories:
-        issues.append("launcher matrix has no categories")
-    if not entries:
-        issues.append("launcher matrix has no entries")
-
-    ids = [entry.get("entry_id") for entry in entries]
-    duplicate_ids = sorted({entry_id for entry_id in ids if entry_id and ids.count(entry_id) > 1})
-    if duplicate_ids:
-        issues.append(f"duplicate entry IDs found: {', '.join(duplicate_ids)}")
-
-    for entry in entries:
+    report = audit_launcher_matrix(REPO_ROOT)
+    issues = list(report.get("global_issues") or [])
+    for entry in report.get("entries") or []:
         entry_id = str(entry.get("entry_id") or "<missing>")
-        for field_name in required_fields:
-            if field_name not in entry:
-                issues.append(f"{entry_id} is missing field '{field_name}'")
-        if entry.get("category_id") not in categories:
-            issues.append(f"{entry_id} references unknown category '{entry.get('category_id')}'")
-        if entry.get("run_kind") not in ALLOWED_RUN_KINDS:
-            issues.append(f"{entry_id} uses invalid run_kind '{entry.get('run_kind')}'")
-        if entry.get("thesis_role") not in ALLOWED_THESIS_ROLES:
-            issues.append(f"{entry_id} uses invalid thesis_role '{entry.get('thesis_role')}'")
-        if bool(entry.get("safe_default")) and entry.get("run_kind") == "scientific_rerun":
-            issues.append(f"{entry_id} is safe_default=true but still marked scientific_rerun")
-        for step in entry.get("steps") or []:
-            for field_name in ("phase", "service", "description"):
-                if field_name not in step or not str(step.get(field_name, "")).strip():
-                    issues.append(f"{entry_id} has a step missing '{field_name}'")
-            if step.get("service") not in ALLOWED_STEP_SERVICES:
-                issues.append(f"{entry_id} step '{step.get('phase')}' uses unsupported service '{step.get('service')}'")
-        if entry.get("run_kind") in {"read_only", "packaging_only"}:
-            forbidden = [
-                str(step.get("phase"))
-                for step in entry.get("steps") or []
-                if str(step.get("phase")) in READ_ONLY_FORBIDDEN_PHASES
-            ]
-            if forbidden:
-                issues.append(f"{entry_id} is read-only/package-only but includes scientific phase(s): {', '.join(forbidden)}")
-        alias_of = entry.get("alias_of")
-        if alias_of:
-            target = entry_map.get(str(alias_of))
-            if not target:
-                issues.append(f"{entry_id} points to missing alias target '{alias_of}'")
-            elif bool(target.get("menu_hidden")):
-                issues.append(f"{entry_id} alias target '{alias_of}' must remain visible")
-
-    def expect_entry(entry_id: str) -> dict[str, Any]:
-        entry = entry_map.get(entry_id)
-        if not entry:
-            issues.append(f"missing required launcher entry '{entry_id}'")
-            return {}
-        return entry
-
-    drifter_entry = expect_entry("b1_drifter_context_panel")
-    if drifter_entry:
-        if not bool(drifter_entry.get("safe_default")):
-            issues.append("b1_drifter_context_panel must stay safe_default=true")
-        if drifter_entry.get("rerun_cost") != "cheap_read_only":
-            issues.append("b1_drifter_context_panel must stay rerun_cost=cheap_read_only")
-        if drifter_entry.get("run_kind") != "read_only":
-            issues.append("b1_drifter_context_panel must stay run_kind=read_only")
-        if drifter_entry.get("thesis_role") != "read_only_governance":
-            issues.append("b1_drifter_context_panel must stay thesis_role=read_only_governance")
-        if drifter_entry.get("recommended_for") != "panel":
-            issues.append("b1_drifter_context_panel must stay recommended_for=panel")
-        if drifter_entry.get("category_id") != "read_only_packaging_help_utilities":
-            issues.append("b1_drifter_context_panel must stay under read_only_packaging_help_utilities")
-        boundary = str(drifter_entry.get("claim_boundary", "")).lower()
-        if "not the direct" not in boundary and "not direct" not in boundary:
-            issues.append("b1_drifter_context_panel claim boundary must say drifters are not the direct truth mask")
-
-    b1_entry = expect_entry("mindoro_phase3b_primary_public_validation")
-    if b1_entry:
-        boundary = str(b1_entry.get("claim_boundary", "")).lower()
-        for phrase in ("only main-text primary", "shared-imagery", "fully independent day-to-day"):
-            if phrase not in boundary:
-                issues.append(f"mindoro_phase3b_primary_public_validation claim boundary is missing '{phrase}'")
-
-    phase1_entry = expect_entry("phase1_mindoro_focus_provenance")
-    if phase1_entry:
-        boundary = str(phase1_entry.get("claim_boundary", "")).lower()
-        for phrase in ("transport-provenance", "not direct spill-footprint validation"):
-            if phrase not in boundary:
-                issues.append(f"phase1_mindoro_focus_provenance claim boundary is missing '{phrase}'")
-
-    phase1_alias = expect_entry("phase1_mindoro_focus_pre_spill_experiment")
-    if phase1_alias and phase1_alias.get("alias_of") != "phase1_mindoro_focus_provenance":
-        issues.append("phase1_mindoro_focus_pre_spill_experiment must remain an alias of phase1_mindoro_focus_provenance")
-
-    phase1_regional = expect_entry("phase1_regional_reference_rerun")
-    if phase1_regional:
-        boundary = str(phase1_regional.get("claim_boundary", "")).lower()
-        if "does not replace focused mindoro provenance" not in boundary:
-            issues.append("phase1_regional_reference_rerun must say it does not replace focused Mindoro provenance")
-
-    phase1_regional_alias = expect_entry("phase1_production_rerun")
-    if phase1_regional_alias and phase1_regional_alias.get("alias_of") != "phase1_regional_reference_rerun":
-        issues.append("phase1_production_rerun must remain an alias of phase1_regional_reference_rerun")
-
-    dwh_entry = expect_entry("dwh_reportable_bundle")
-    if dwh_entry:
-        boundary = str(dwh_entry.get("claim_boundary", "")).lower()
-        for phrase in ("external transfer validation", "not mindoro recalibration", "comparator-only"):
-            if phrase not in boundary:
-                issues.append(f"dwh_reportable_bundle claim boundary is missing '{phrase}'")
-
-    for entry_id in (
-        "figure_package_publication",
-        "final_validation_package",
-        "phase5_sync",
-        "trajectory_gallery_panel",
-        "b1_drifter_context_panel",
-    ):
-        entry = expect_entry(entry_id)
-        if entry and entry.get("run_kind") not in {"read_only", "packaging_only"}:
-            issues.append(f"{entry_id} must remain read_only or packaging_only")
-
+        for issue in entry.get("issues") or []:
+            issues.append(f"{entry_id}: {issue}")
     return issues
 
 
@@ -624,7 +494,7 @@ def documentation_findings() -> list[str]:
     expected_global_phrases = (
         "panel mode is the defense-safe default",
         "full launcher is the researcher",
-        "only main-text primary mindoro validation",
+        "only main philippine public-observation validation claim",
         "shared-imagery caveat",
         "comparator-only",
         "external transfer validation",
@@ -781,17 +651,17 @@ def page_registry_findings() -> list[str]:
     ):
         if page_id not in page_map:
             findings.append(f"dashboard page '{page_id}' is not registered")
-    if page_map.get("b1_drifter_context", {}).get("label") != "B1 Drifter Provenance":
-        findings.append("B1 drifter provenance page label changed unexpectedly")
-    if page_map.get("mindoro_validation_archive", {}).get("navigation_section") != "Archive":
-        findings.append("mindoro validation archive page must stay under Archive")
+    if page_map.get("b1_drifter_context", {}).get("label") != "B1 Recipe Provenance — Not Truth Mask":
+        findings.append("B1 recipe-provenance advanced page label changed unexpectedly")
+    if page_map.get("mindoro_validation_archive", {}).get("navigation_section") != "Archive / Support Only":
+        findings.append("mindoro validation archive page must stay under Archive / Support Only")
     legacy_section = page_map.get("legacy_2016_support", {}).get("navigation_section")
-    if legacy_section not in {"Archive", "Legacy"}:
-        findings.append("legacy 2016 page must stay separated from the main Study section")
+    if legacy_section != "Archive / Support Only":
+        findings.append("legacy 2016 page must stay separated under Archive / Support Only")
 
     drifter_page_text = read_text(UI_DRIFTER_PAGE_PATH)
     required_phrases = (
-        "B1 Drifter Provenance",
+        "B1 Recipe Provenance — Not Truth Mask",
         "support the selected transport recipe",
         "public-observation validation",
         "not the direct",
@@ -872,6 +742,7 @@ def build_streamlit_runtime_check(mode: dict[str, str], *, timeout_seconds: int 
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=10)
+        run_command(cleanup_command, timeout=30)
 
 
 def run_pipeline_import_check(mode: dict[str, str], modules: Iterable[str]) -> tuple[bool, str, list[str]]:

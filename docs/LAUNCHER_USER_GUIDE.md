@@ -19,23 +19,39 @@
 .\start.ps1 -Help -NoPause
 .\start.ps1 -Explain mindoro_phase3b_primary_public_validation -NoPause
 .\start.ps1 -Entry <entry_id>
+.\start.ps1 -Entry <entry_id> -DryRun -NoPause
 ```
+
+## Shared Controls
+
+- `B`, `BACK`, `0` go back when a previous menu exists.
+- `C`, `CANCEL` cancel the current selection cleanly.
+- `Q`, `QUIT`, `EXIT` leave the launcher cleanly.
+- `H`, `HELP` open launcher help.
+- `L`, `LIST` show the launcher catalog.
+- `P`, `PANEL` jump to the defense-safe panel path.
+- `U`, `UI` open the read-only dashboard where that shortcut is available.
+- `R`, `RESTART` restart the read-only dashboard where that shortcut is available.
+- In a section menu, `X` opens inline inspect mode for visible menu numbers or entry IDs without running anything.
+- Inline inspect mode stays inside the current section, shows a compact preview first, and accepts `M`, `MORE` to expand the most recent inspected entry to the full thesis-facing preview.
+- Typing a hidden alias entry ID resolves to the canonical entry preview before any execution path.
+- Pressing `Enter` at an execution confirmation prompt cancels cleanly with `Cancelled. No workflow was executed.`
 
 ## Preferred Entry IDs
 
-Main evidence:
+Main evidence scientific reruns:
 
 - `phase1_mindoro_focus_provenance`
 - `mindoro_phase3b_primary_public_validation`
 - `dwh_reportable_bundle`
 - `mindoro_reportable_core`
 
-Support/context:
+Support/context reruns:
 
 - `mindoro_phase4_only`
 - `mindoro_appendix_sensitivity_bundle`
 
-Archive/provenance:
+Archive/provenance reruns:
 
 - `phase1_regional_reference_rerun`
 - `mindoro_march13_14_phase1_focus_trial`
@@ -50,6 +66,7 @@ Legacy/archive support:
 
 Read-only governance:
 
+- Read-only dashboard launch is a shortcut, not a launcher entry ID. Use panel option `1` or `U` / `UI`.
 - `b1_drifter_context_panel`
 - `phase1_audit`
 - `phase2_audit`
@@ -59,29 +76,42 @@ Read-only governance:
 - `trajectory_gallery_panel`
 - `figure_package_publication`
 
-## Compatibility Aliases
+## Compatibility Aliases / Hidden Legacy IDs
 
 - `phase1_mindoro_focus_pre_spill_experiment` -> prefer `phase1_mindoro_focus_provenance`
 - `phase1_production_rerun` -> prefer `phase1_regional_reference_rerun`
-- `mindoro_march13_14_noaa_reinit_stress_test` -> compatibility alias only; prefer `mindoro_phase3b_primary_public_validation`
+- `mindoro_march13_14_noaa_reinit_stress_test` -> hidden legacy March 13-14 compatibility bundle; prefer `mindoro_phase3b_primary_public_validation`
 
 ## Runtime Controls
 
 - `FORCING_OUTAGE_POLICY=default|continue_degraded|fail_hard`
 - `FORCING_SOURCE_BUDGET_SECONDS=<seconds>` with default `300`
 - `INPUT_CACHE_POLICY=default|reuse_if_valid|force_refresh`
+- `LAUNCHER_DRY_RUN=1` or `-DryRun` for a no-Docker, no-output-modification command preview
 
 Interactive launcher runs ask once per entry for forcing wait budget and eligible input-cache reuse choices. Prompt-free container runs with `-T` do not ask those questions.
 
-## How The UI Fits
+## Launcher Regression Tests
 
-The Streamlit UI remains outside the launcher matrix. Launch it directly:
+Run the launcher safety checks locally with:
+
+```powershell
+python -m pytest tests/test_start_ps1_interactive_navigation.py tests/test_launcher_menu_docs_consistency.py
+```
+
+The PowerShell subprocess tests skip clearly when `pwsh` is unavailable. They use dry-run or clean-cancel paths plus fake Docker commands on `PATH`, so they do not require Docker, network access, or scientific workflow execution.
+
+## Dashboard Shortcut
+
+The read-only dashboard is a launcher shortcut rather than a catalog entry ID. Open it from panel option `1`, `U` / `UI`, or launch it directly:
 
 ```bash
 docker compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501
 ```
 
-If you want the freshest read-only packaging before opening it, refresh one or more of these first:
+Use `b1_drifter_context_panel` when you want the dashboard to land on the `B1 Drifter Provenance` page from stored outputs only.
+
+If you want the freshest read-only packaging before opening the dashboard, refresh one or more of these first:
 
 ```powershell
 .\start.ps1 -Entry b1_drifter_context_panel
@@ -94,11 +124,12 @@ If you want the freshest read-only packaging before opening it, refresh one or m
 ## Final Guardrails
 
 - Use launcher entry IDs and role groups as the primary workflow vocabulary.
-- `B1` is the only main-text primary Mindoro validation row.
+- `B1` is the only main Philippine public-observation validation claim.
 - March 13-14 keeps the shared-imagery caveat explicit.
 - `Track A` and every PyGNOME branch remain comparator-only support.
 - DWH stays a separate external transfer-validation story with observed masks as truth.
 - Mindoro oil-type and shoreline outputs remain support/context only.
+- Read-only dashboard, packaging, audit, and docs entries do not recompute science.
 - `phase1_production_rerun` stages `output/phase1_production_rerun/phase1_baseline_selection_candidate.yaml` only; it does not auto-overwrite `config/phase1_baseline_selection.yaml`.
 - `prototype_2016` is legacy/archive support only; some internal package names may still contain Phase 4/Phase 5 labels, but those are not primary defended evidence.
 

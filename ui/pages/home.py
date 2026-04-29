@@ -20,6 +20,15 @@ ensure_repo_root_on_path(__file__)
 
 import streamlit as st
 
+from ui.evidence_contract import (
+    ROLE_ARCHIVE,
+    ROLE_COMPARATOR,
+    ROLE_CONTEXT,
+    ROLE_LEGACY,
+    ROLE_THESIS,
+    assert_no_archive_leak,
+    filter_for_page,
+)
 from ui.pages.common import (
     render_badge_strip,
     render_export_note,
@@ -62,7 +71,12 @@ def _int_text(value: Any) -> str:
 
 def render(state: dict, ui_state: dict) -> None:
     export_mode = bool(ui_state.get("export_mode"))
-    recommended = state["home_featured_publication_figures"]
+    recommended = filter_for_page(
+        state["home_featured_publication_figures"],
+        "home",
+        advanced=False,
+    )
+    assert_no_archive_leak(recommended, "home", advanced=False)
     phase1_manifest = state.get("phase1_focused_manifest") or {}
     phase1_ranking = state.get("phase1_focused_recipe_ranking")
     selected_recipe = str(phase1_manifest.get("official_b1_recipe") or "").strip()
@@ -100,11 +114,13 @@ def render(state: dict, ui_state: dict) -> None:
     oil_light = _find_record(state.get("phase4_budget_summary"), scenario_id="lighter_oil")
     oil_medium = _find_record(state.get("phase4_budget_summary"), scenario_id="fixed_base_medium_heavy_proxy")
     oil_heavy = _find_record(state.get("phase4_budget_summary"), scenario_id="heavier_oil")
+    accepted_count = int(phase1_manifest.get("accepted_segment_count") or 65)
+    subset_count = int((phase1_manifest.get("ranking_subset") or {}).get("segment_count") or 19)
 
     render_page_intro(
         "Defense / Panel Review",
-        "This panel-first landing page verifies the stored thesis-facing outputs against the manuscript and keeps non-developer review on the safest path: B1 first, comparator support second, DWH transfer-validation third, and oil-type or archive material only as bounded support.",
-        badge="Panel-first | read-only thesis review",
+        "This dashboard is read-only and displays stored Draft 22 outputs only; it does not rerun science.",
+        badge="Draft 22 | read-only thesis review",
     )
 
     if export_mode:
@@ -115,27 +131,39 @@ def render(state: dict, ui_state: dict) -> None:
             ]
         )
 
-    st.info(
-        "This panel mode verifies the stored thesis-facing outputs against the manuscript. "
-        "It does not rerun expensive scientific simulations by default."
-    )
-    render_badge_strip(["Thesis-facing", "Comparator support", "Support/context only", "Archive only"])
-    st.caption("These badges separate the main thesis claim from comparator, context, and archive lanes.")
+    st.info("This dashboard is read-only and displays stored Draft 22 outputs only; it does not rerun science.")
+    render_badge_strip([ROLE_THESIS, ROLE_COMPARATOR, ROLE_CONTEXT, ROLE_ARCHIVE, ROLE_LEGACY])
+    st.caption("These badges separate the main thesis claim from comparator, support/context, archive, and legacy lanes.")
 
     render_status_callout(
-        "Main thesis claim boundary",
-        "The main Mindoro claim is the March 13 -> March 14 B1 R1_previous validation row only. "
-        "Track A, DWH, oil-type context, and archived March-family outputs remain outside that main claim boundary.",
+        "Only Mindoro B1 is the main Philippine validation claim.",
+        "Only Mindoro B1 is the main Philippine public-observation validation claim; Track A, DWH, oil-type/shoreline outputs, and legacy/archive outputs have separate support roles.",
         tone="success",
+    )
+    render_status_callout(
+        "Probability-footprint semantics",
+        "prob_presence is the cellwise ensemble fraction; mask_p50 is the majority-member likely footprint and preferred probabilistic extension; mask_p90 is the high-confidence core / conservative support product. Probability classes are 0-10%, 10-25%, 25-50%, 50-75%, 75-90%, and >=90%.",
+        tone="info",
     )
 
     st.subheader("Quick panel summary")
     render_metric_row(
         [
-            ("B1 mean FSS", _float_text((b1_row or {}).get("mean_fss"), 4)),
-            ("B1 nearest distance (m)", _float_text((b1_row or {}).get("nearest_distance_to_obs_m"), 2)),
+            ("Phase 1 selected recipe", f"{selected_recipe} | {accepted_count} accepted | {subset_count} ranked"),
+            ("Mindoro B1 mean FSS", f"{_float_text((b1_row or {}).get('mean_fss'), 4)} | no exact 1 km overlap"),
             ("Track A PyGNOME mean FSS", _float_text((track_a_pygnome or {}).get("mean_fss"), 4)),
-            ("DWH C1 corridor FSS", _float_text((dwh_c1 or {}).get("mean_fss"), 4)),
+            (
+                "DWH corridor C1 / C2 p50 / C2 p90 / C3",
+                " / ".join(
+                    [
+                        _float_text((dwh_c1 or {}).get("mean_fss"), 4),
+                        _float_text((dwh_c2_p50 or {}).get("mean_fss"), 4),
+                        _float_text((dwh_c2_p90 or {}).get("mean_fss"), 4),
+                        _float_text((dwh_c3 or {}).get("mean_fss"), 4),
+                    ]
+                ),
+            ),
+            ("Phase 4 status", "SUPPORT / CONTEXT ONLY; no matched Mindoro Phase 4 PyGNOME fate-and-shoreline package"),
         ],
         export_mode=export_mode,
     )
@@ -144,8 +172,18 @@ def render(state: dict, ui_state: dict) -> None:
     render_study_structure_cards(
         [
             {
+                "title": "Phase 1 transport provenance",
+                "classification": ROLE_THESIS,
+                "body": (
+                    f"Focused Mindoro Phase 1 selected `{selected_recipe}` from {accepted_count} strict accepted segments "
+                    f"and {subset_count} February-April ranked segments. Drifters support recipe selection, not direct oil-footprint truth."
+                ),
+                "note": "The official B1 recipe is adopted from the focused historical winner.",
+                "page_label": "Phase 1 Transport Provenance",
+            },
+            {
                 "title": "Mindoro B1 summary",
-                "classification": "Thesis-facing",
+                "classification": ROLE_THESIS,
                 "body": (
                     "Main Mindoro validation row: mean FSS {mean_fss}, FSS rises from {fss_1} at 1 km to {fss_10} at 10 km, "
                     "with {forecast_cells} forecast cells against {obs_cells} observed cells."
@@ -160,19 +198,8 @@ def render(state: dict, ui_state: dict) -> None:
                 "page_label": "Mindoro B1 Primary Validation",
             },
             {
-                "title": "B1 drifter provenance/context",
-                "classification": "Provenance context",
-                "body": (
-                    "Historical accepted drifter segments from the focused Phase 1 lane selected the "
-                    f"`{selected_recipe}` transport recipe inherited by B1. "
-                    "This page keeps the recipe-provenance chain visible without turning drifters into the March 13 -> March 14 truth mask."
-                ),
-                "note": "Supports recipe provenance only; public-observation masks remain B1 truth.",
-                "page_label": "B1 Drifter Provenance",
-            },
-            {
                 "title": "Track A comparator-only note",
-                "classification": "Comparator support",
+                "classification": ROLE_COMPARATOR,
                 "body": (
                     "OpenDrift Track A reuses the same March 14 target with mean FSS {od_fss}; "
                     "PyGNOME stays comparator-only with mean FSS {py_fss} and nearest distance {py_dist} m."
@@ -182,11 +209,11 @@ def render(state: dict, ui_state: dict) -> None:
                     py_dist=_float_text((track_a_pygnome or {}).get("nearest_distance_to_obs_m"), 2),
                 ),
                 "note": "PyGNOME is not observational truth here.",
-                "page_label": "Mindoro Cross-Model Comparator",
+                "page_label": "Mindoro Track A Comparator Support",
             },
             {
                 "title": "DWH external-transfer note",
-                "classification": "Thesis-facing",
+                "classification": ROLE_THESIS,
                 "body": (
                     "DWH is a separate transfer-validation lane: C1 corridor mean FSS {c1}, "
                     "C2 p50 {c2p50}, C2 p90 {c2p90}, and C3 PyGNOME comparator {c3}."
@@ -197,11 +224,11 @@ def render(state: dict, ui_state: dict) -> None:
                     c3=_float_text((dwh_c3 or {}).get("mean_fss"), 4),
                 ),
                 "note": "DWH is external transfer validation, not Mindoro recalibration.",
-                "page_label": "DWH Phase 3C Transfer Validation",
+                "page_label": "DWH External Transfer Validation",
             },
             {
                 "title": "Oil-type support-only note",
-                "classification": "Support/context only",
+                "classification": ROLE_CONTEXT,
                 "body": (
                     "Stored support scenarios show final beached percentages of {light}, {medium}, and {heavy}, "
                     "with first shoreline arrival at {arrival} h for all three."
@@ -212,7 +239,7 @@ def render(state: dict, ui_state: dict) -> None:
                     arrival=_float_text((oil_light or {}).get("first_shoreline_arrival_h"), 0),
                 ),
                 "note": "Oil-type and shoreline outputs are support/context only.",
-                "page_label": "Phase 4 Oil-Type and Shoreline Context",
+                "page_label": "Mindoro Oil-Type and Shoreline Context",
             },
         ],
         columns_per_row=1 if export_mode else 2,
@@ -236,24 +263,13 @@ def render(state: dict, ui_state: dict) -> None:
     phase1_quick_link = {
         "package_id": "phase1_recipe_selection",
         "label": "Phase 1 focused provenance package",
-        "page_label": "Phase 1 Recipe Selection",
+        "page_label": "Phase 1 Transport Provenance",
         "relative_path": "output/phase1_mindoro_focus_pre_spill_2016_2023",
         "description": "Focused historical drifter provenance lane used to select the official Mindoro B1 recipe before Phase 3B is discussed.",
-        "secondary_note": "Thesis-facing",
+        "secondary_note": ROLE_THESIS,
         "artifact_count": int(len(state.get("phase1_focused_recipe_summary", []))),
         "button_label": "Open page",
     }
-    b1_drifter_context_quick_link = {
-        "package_id": "b1_drifter_provenance",
-        "label": "B1 drifter provenance/context",
-        "page_label": "B1 Drifter Provenance",
-        "relative_path": "output/phase1_mindoro_focus_pre_spill_2016_2023",
-        "description": "Panel-safe view of the historical focused Phase 1 drifter records behind the selected B1 transport recipe. This is provenance context only, not the March 13 -> March 14 truth mask.",
-        "secondary_note": "Provenance context",
-        "artifact_count": int(len(state.get("phase1_focused_accepted_segments", []))),
-        "button_label": "Open page",
-    }
-
     def _story_package(package_id: str, lane_label: str) -> dict[str, Any] | None:
         package = package_lookup.get(package_id)
         if not package:
@@ -267,7 +283,7 @@ def render(state: dict, ui_state: dict) -> None:
             "page_label": "Artifacts / Logs / Registries",
             "relative_path": "docs/PAPER_OUTPUT_REGISTRY.md",
             "description": "Plain-language manuscript-to-output map for tables, figures, and support-only packages.",
-            "secondary_note": "Read-only",
+            "secondary_note": "Read-only reference",
             "button_label": "Open reference page",
         },
         {
@@ -322,16 +338,15 @@ def render(state: dict, ui_state: dict) -> None:
 
     primary_quick_links = [
         phase1_quick_link,
-        b1_drifter_context_quick_link,
-        _story_package("mindoro_b1_final", "Thesis-facing"),
-        _story_package("mindoro_comparator", "Comparator support"),
-        _story_package("dwh_phase3c_final", "Thesis-facing"),
-        _story_package("phase4_context_status", "Support/context only"),
+        _story_package("mindoro_b1_final", ROLE_THESIS),
+        _story_package("mindoro_comparator", ROLE_COMPARATOR),
+        _story_package("dwh_phase3c_final", ROLE_THESIS),
+        _story_package("phase4_context_status", ROLE_CONTEXT),
     ]
     primary_quick_links = [package for package in primary_quick_links if package]
     secondary_quick_links = [
-        _story_package("mindoro_validation_archive", "Archive only"),
-        _story_package("legacy_2016_final", "Legacy support"),
+        _story_package("mindoro_validation_archive", ROLE_ARCHIVE),
+        _story_package("legacy_2016_final", ROLE_LEGACY),
     ]
     secondary_quick_links = [package for package in secondary_quick_links if package]
 
@@ -343,23 +358,23 @@ def render(state: dict, ui_state: dict) -> None:
         export_mode=export_mode,
     )
 
-    st.subheader("Secondary lanes")
+    st.subheader("Archive / Support only")
     st.caption("Archive and legacy outputs stay available for audit, but they are not the first panel-facing evidence chain.")
     render_study_structure_cards(
         [
             {
-                "title": "Mindoro Validation Archive",
-                "classification": "Archive only",
-                "body": "Archived March13-14 R0 baseline, older R0-including March13-14 outputs, and preserved March-family legacy rows are centralized here for provenance, audit, and reproducibility.",
+                "title": "Archive — Mindoro Validation Provenance",
+                "classification": ROLE_ARCHIVE,
+                "body": "Archived Mindoro rows are centralized here for provenance, audit, and reproducibility.",
                 "note": "Not thesis-facing evidence; main paper uses March 13 -> March 14 R1 only.",
-                "page_label": "Mindoro Validation Archive",
+                "page_label": "Archive — Mindoro Validation Provenance",
             },
             {
-                "title": "Legacy 2016 Support",
-                "classification": "Legacy support",
+                "title": "Archive — Legacy 2016 Support",
+                "classification": ROLE_LEGACY,
                 "body": "The 2016 package preserves the legacy support flow and includes support-only comparator context outside the main Mindoro and DWH thesis claims.",
                 "note": "Support-only; not main validation evidence.",
-                "page_label": "Legacy 2016 Support Package",
+                "page_label": "Archive — Legacy 2016 Support",
             },
         ],
         columns_per_row=1 if export_mode else 2,
