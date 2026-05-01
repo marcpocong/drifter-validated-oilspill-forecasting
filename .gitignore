@@ -54,6 +54,10 @@ output/final_reproducibility_package/*
 !output/final_reproducibility_package/*.csv
 !output/final_reproducibility_package/*.json
 !output/final_reproducibility_package/*.md
+!output/ci_guardrail_hotfix/
+output/ci_guardrail_hotfix/*
+!output/ci_guardrail_hotfix/*.json
+!output/ci_guardrail_hotfix/*.md
 !output/trajectory_gallery/
 output/trajectory_gallery/*
 !output/trajectory_gallery/*.csv

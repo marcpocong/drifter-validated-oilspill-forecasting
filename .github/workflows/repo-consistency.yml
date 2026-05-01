@@ -25,7 +25,7 @@ jobs:
 
       - name: Run repo guardrail tests
         run: >
-          python -m pytest
+          python -m pytest -q
           tests/test_final_paper_consistency_guardrails.py
           tests/test_no_draft_version_labels.py
           tests/test_validate_launcher_matrix.py
@@ -33,10 +33,18 @@ jobs:
           tests/test_defense_claim_boundaries.py
 
       - name: Run lightweight validators
-        shell: pwsh
         run: |
           python scripts/validate_final_paper_guardrails.py
           python scripts/validate_archive_registry.py
           python scripts/validate_paper_to_output_registry.py
           python scripts/validate_data_sources_registry.py
-          ./start.ps1 -ValidateMatrix -NoPause
+          python -m src.utils.validate_launcher_matrix --no-write
+
+      - name: Validate launcher through PowerShell when available
+        shell: bash
+        run: |
+          if command -v pwsh >/dev/null 2>&1; then
+            pwsh -NoLogo -NoProfile -File ./start.ps1 -ValidateMatrix -NoPause
+          else
+            echo "pwsh is unavailable on this runner; Python launcher matrix validation already passed."
+          fi

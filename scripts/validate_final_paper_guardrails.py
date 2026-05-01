@@ -80,6 +80,67 @@ CLAIM_BOUNDARY_PHRASES = {
     "secondary 2016 support only": ("secondary 2016", "support only", "not public-spill validation"),
 }
 
+FINAL_ALIGNMENT_SNIPPETS = {
+    "focused Phase 1 design": (
+        "- Workflow mode: `phase1_mindoro_focus_pre_spill_2016_2023`",
+        "- Historical window: `2016-01-01` to `2023-03-02`",
+        "- Focused box: `[118.751, 124.305, 10.620, 16.026]`",
+        "- Full strict accepted segments: `65`",
+        "- February-April ranked subset: `19`",
+        "- Selected recipe: `cmems_gfs`",
+        "| `cmems_gfs` | `4.5886` | `4.6305` |",
+        "| `cmems_era5` | `4.6237` | `4.5916` |",
+        "| `hycom_gfs` | `4.7027` | `4.9263` |",
+        "| `hycom_era5` | `4.7561` | `5.0106` |",
+    ),
+    "Mindoro B1 primary validation": (
+        "- March 13 public NOAA/NESDIS observation extent is the seed; March 14 public NOAA/NESDIS observation extent is the target.",
+        "- March 13 and March 14 are independent day-specific public-observation products.",
+        "Mindoro B1 is the March 13-14 primary public-observation validation row.",
+        "It is interpreted as coastal-neighborhood usefulness, not exact 1 km overlap.",
+        "| FSS 1 km | `0.0000` |",
+        "| FSS 3 km | `0.0441` |",
+        "| FSS 5 km | `0.1371` |",
+        "| FSS 10 km | `0.2490` |",
+        "| Mean FSS | `0.1075` |",
+        "| Forecast cells | `5` |",
+        "| Observed cells | `22` |",
+        "| Nearest distance | `1414.21 m` |",
+        "| Centroid distance | `7358.16 m` |",
+        "| IoU | `0.0` |",
+        "| Dice | `0.0` |",
+    ),
+    "Mindoro same-case comparator": (
+        "| OpenDrift promoted p50 branch | `5` | `1414.21 m` | `0.0000 / 0.0441 / 0.1371 / 0.2490` | `0.1075` |",
+        "| PyGNOME deterministic comparator | `6` | `6082.76 m` | `0.0000 / 0.0000 / 0.0000 / 0.0244` | `0.0061` |",
+        "PyGNOME remains comparator-only in this package. It is never observation truth.",
+    ),
+    "DWH external transfer": (
+        "- Case ID: `CASE_DWH_RETRO_2010_72H`",
+        "- Forcing stack: `HYCOM GOFS 3.1 currents + ERA5 winds + CMEMS wave/Stokes`",
+        "- Interpretation: external transfer validation only, not Mindoro recalibration.",
+        "| Deterministic | `0.5568` |",
+        "| Ensemble p50 | `0.5389` |",
+        "| Ensemble p90 | `0.4966` |",
+        "| PyGNOME comparator | `0.3612` |",
+    ),
+    "probability semantics": (
+        "- `mask_p50` means `P >= 0.50`; it is the preferred probabilistic footprint.",
+        "- `mask_p90` means `P >= 0.90`; it is a conservative support/comparison product only.",
+        "- Do not label `mask_p90` as a broad envelope.",
+    ),
+    "oil-type support": (
+        "These values are support/context only, not primary validation.",
+        "| Light oil | `0.02%` | `4 h` | `11` | pass |",
+        "| Fixed-base medium-heavy proxy | `0.61%` | `4 h` | `10` | flagged |",
+        "| Heavier oil | `0.63%` | `4 h` | `11` | pass |",
+    ),
+    "secondary 2016 support": (
+        "The 2016 material provides direct drifter-track and legacy OpenDrift-PyGNOME FSS support only.",
+        "It is not public-spill validation and is not a replacement for Mindoro B1 or DWH.",
+    ),
+}
+
 
 def _forbidden_label_pattern() -> re.Pattern[str]:
     word = "".join(("Dra", "ft"))
@@ -245,6 +306,20 @@ def claim_boundary_issues(root: Path = REPO_ROOT) -> list[str]:
     return issues
 
 
+def final_alignment_fact_issues(root: Path = REPO_ROOT) -> list[str]:
+    alignment_path = root / "docs" / "FINAL_PAPER_ALIGNMENT.md"
+    if not alignment_path.exists():
+        return ["docs/FINAL_PAPER_ALIGNMENT.md is missing"]
+
+    text = alignment_path.read_text(encoding="utf-8", errors="replace")
+    issues: list[str] = []
+    for label, snippets in FINAL_ALIGNMENT_SNIPPETS.items():
+        missing = [snippet for snippet in snippets if snippet not in text]
+        if missing:
+            issues.append(f"docs/FINAL_PAPER_ALIGNMENT.md is missing final-paper fact group `{label}`")
+    return issues
+
+
 def probability_semantics_issues(root: Path = REPO_ROOT) -> list[str]:
     scan_roots = [root / "src", root / "ui", root / "docs", root / "config"]
     scan_files = [root / "README.md", root / "PANEL_QUICK_START.md"]
@@ -361,6 +436,7 @@ def run_all_guardrails(root: Path = REPO_ROOT) -> dict[str, list[str]]:
         "launcher_matrix_schema": launcher_matrix_schema_issues(root),
         "launcher_roles": launcher_role_issues(root),
         "claim_boundaries": claim_boundary_issues(root),
+        "final_alignment_facts": final_alignment_fact_issues(root),
         "probability_semantics": probability_semantics_issues(root),
         "archive_registry": archive_registry_issues(root),
         "paper_to_output_registry": paper_to_output_registry_issues(),
@@ -382,7 +458,7 @@ def main() -> int:
         return 1
 
     print("Final-paper guardrail validation: PASS")
-    print("Checked tracked text labels, launcher routing, claim boundaries, registries, and p90 semantics.")
+    print("Checked tracked text labels, launcher routing, claim boundaries, exact alignment facts, registries, and p90 semantics.")
     return 0
 
 

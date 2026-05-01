@@ -1,0 +1,74 @@
+{
+  "report_name": "ci_guardrail_hotfix_report",
+  "git_head_at_audit_start": "93f4df094296e23a3fb8e19a88ae1a3f304d86ea",
+  "generated_utc": "2026-05-01T14:43:44Z",
+  "scope": "repo-consistency CI guardrails only",
+  "no_expensive_science_rerun": true,
+  "root_cause_found": "The repo-consistency workflow used a pwsh shell for lightweight validators, so environments without pwsh could fail before the Python launcher-matrix fallback ran. The workflow now runs Python validators in the default shell and invokes start.ps1 through pwsh only when pwsh is available.",
+  "local_limitations": [
+    "python -m pytest tests -q fails during collection because the active local Python environment lacks heavy science dependencies.",
+    "pwsh ./start.ps1 -ValidateMatrix -NoPause cannot run locally because pwsh is unavailable."
+  ],
+  "files_changed": [
+    ".github/workflows/repo-consistency.yml",
+    ".gitignore",
+    "scripts/validate_final_paper_guardrails.py",
+    "tests/test_final_paper_consistency_guardrails.py",
+    "output/ci_guardrail_hotfix/ci_guardrail_hotfix_report.md",
+    "output/ci_guardrail_hotfix/ci_guardrail_hotfix_report.json"
+  ],
+  "validation_commands": [
+    {
+      "command": "python -m pytest tests -q",
+      "status": "fail",
+      "note": "Collection fails on missing heavy science dependencies in the active local Python environment."
+    },
+    {
+      "command": "python -m pytest -q tests/test_final_paper_consistency_guardrails.py tests/test_no_draft_version_labels.py tests/test_validate_launcher_matrix.py tests/test_launcher_matrix_metadata.py tests/test_defense_claim_boundaries.py",
+      "status": "pass",
+      "note": "34 cheap guardrail tests passed."
+    },
+    {
+      "command": "python scripts/validate_final_paper_guardrails.py",
+      "status": "pass",
+      "note": "Final-paper guardrails passed, including exact alignment fact checks."
+    },
+    {
+      "command": "python scripts/validate_archive_registry.py",
+      "status": "pass",
+      "note": "Archive registry passed."
+    },
+    {
+      "command": "python scripts/validate_paper_to_output_registry.py",
+      "status": "pass",
+      "note": "51 entries checked; 0 errors; 0 warnings."
+    },
+    {
+      "command": "python scripts/validate_data_sources_registry.py",
+      "status": "pass",
+      "note": "Data-source registry passed."
+    },
+    {
+      "command": "pwsh ./start.ps1 -ValidateMatrix -NoPause",
+      "status": "local_limitation",
+      "note": "pwsh is unavailable locally."
+    },
+    {
+      "command": "python -m src.utils.validate_launcher_matrix --no-write",
+      "status": "pass",
+      "note": "27 launcher entries passed without writing reports."
+    },
+    {
+      "command": "runtime-constructed forbidden-label scan",
+      "status": "pass",
+      "note": "No tracked-file hits; scan did not persist or print the literal label."
+    }
+  ],
+  "claim_boundaries_preserved": [
+    "PyGNOME remains comparator-only and never observation truth.",
+    "DWH remains external transfer validation only, not Mindoro recalibration.",
+    "Mindoro B1 March 13-14 remains the only main Philippine public-observation validation claim.",
+    "p50 remains P >= 0.50 and the preferred probabilistic footprint.",
+    "p90 remains P >= 0.90 and conservative support/comparison only."
+  ]
+}

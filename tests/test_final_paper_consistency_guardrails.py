@@ -34,6 +34,12 @@ def test_claim_boundaries():
     assert not issues, _format_issues(issues)
 
 
+def test_final_alignment_facts():
+    issues = guardrails.final_alignment_fact_issues()
+
+    assert not issues, _format_issues(issues)
+
+
 def test_probability_semantics():
     issues = guardrails.probability_semantics_issues()
 
