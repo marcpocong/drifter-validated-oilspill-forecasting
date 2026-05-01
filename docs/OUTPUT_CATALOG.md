@@ -311,16 +311,16 @@ Interpretation:
 - this remains the thesis-facing summary/table bundle
 - use this package for the frozen validation narrative, summary tables, and case registry rather than for broad figure browsing
 - use `output/figure_package_publication/` for the curated thesis-facing figure surface and `output/Phase 3B March13-14 Final Output Archive R0 Legacy/` plus the `Mindoro Validation Archive` page for archive-only visuals and provenance figures
-- for Mindoro, thesis-facing reporting now uses only the March 13 -> March 14 R1 primary validation row plus Track A comparator support
+- for Mindoro, thesis-facing reporting now uses only the Primary Mindoro March 13-14 validation case (B1 alias) plus the Mindoro same-case OpenDrift-PyGNOME comparator (Track A alias)
 - the March 13 -> March 14 R0 archived baseline and the preserved March-family legacy rows remain repo-preserved archive-only materials rather than thesis-facing package rows
 - repo support layers reuse it rather than replacing it
 
-## Curated B1 Final Output Export
+## Curated Primary Mindoro March 13-14 Final Output Export
 
 ### `output/Phase 3B March13-14 Final Output/`
 
 Purpose:
-Read-only curated export of the promoted B1 family for thesis-facing delivery under `Phase 3B Observation-Based Spatial Validation Using Public Mindoro Spill Extents`.
+Read-only curated export of the promoted Primary Mindoro March 13-14 validation case (B1 alias) and same-case comparator support for thesis-facing delivery under `Phase 3B Observation-Based Spatial Validation Using Public Mindoro Spill Extents`.
 
 Expected files:
 

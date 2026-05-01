@@ -12,8 +12,8 @@
 
 1. Focused Mindoro Phase 1 provenance
 2. Phase 2 standardized forecast products
-3. Mindoro `B1` primary public-observation validation
-4. Mindoro `Track A` comparator-only support
+3. Primary Mindoro March 13-14 validation case (`B1` internal alias)
+4. Mindoro same-case OpenDrift-PyGNOME comparator (`Track A` internal alias)
 5. DWH external transfer validation
 6. Mindoro oil-type and shoreline support/context
 7. `prototype_2016` legacy/archive support
@@ -66,14 +66,14 @@ Shared menu controls:
 | List only main thesis/reportable entries | `.\start.ps1 -ListRole primary_evidence -NoPause` |
 | List archive/provenance entries | `.\start.ps1 -ListRole archive_provenance -NoPause` |
 | Open dashboard only | panel option `1` or `U` / `UI`; the dashboard launch is a shortcut, not a separate launcher entry ID. Direct container form: `docker compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501` |
-| Inspect drifter provenance behind `B1` | panel option `7`, or `.\start.ps1 -Entry b1_drifter_context_panel` |
+| Inspect drifter provenance behind `B1` for the Primary Mindoro March 13-14 case | panel option `7`, or `.\start.ps1 -Entry b1_drifter_context_panel` |
 | Inspect data sources and provenance | panel option `8`, open [DATA_SOURCES.md](DATA_SOURCES.md), inspect [config/data_sources.yaml](../config/data_sources.yaml), or use the dashboard `Data Sources & Provenance` reference page |
 | Verify manuscript numbers | panel option `2` |
 | Rebuild publication figures from stored outputs only | panel option `3`, or `.\start.ps1 -Entry figure_package_publication` |
 | Preview a launcher entry without Docker execution | `.\start.ps1 -Entry <entry_id> -DryRun -NoPause` |
 | Export a run plan without Docker execution | `.\start.ps1 -Explain <entry_id> -ExportPlan -NoPause` |
 | Run focused Phase 1 provenance rerun intentionally | `.\start.ps1 -Entry phase1_mindoro_focus_provenance` |
-| Run `B1` rerun intentionally | `.\start.ps1 -Entry mindoro_phase3b_primary_public_validation` |
+| Run the Primary Mindoro March 13-14 validation rerun intentionally (`B1` alias) | `.\start.ps1 -Entry mindoro_phase3b_primary_public_validation` |
 | Run DWH rerun intentionally | `.\start.ps1 -Entry dwh_reportable_bundle` |
 | Run Mindoro oil-type / shoreline support intentionally | `.\start.ps1 -Entry mindoro_phase4_only` |
 | Open legacy/archive support intentionally | `.\start.ps1 -Entry prototype_legacy_final_figures` or `.\start.ps1 -Entry prototype_legacy_bundle` |
@@ -112,6 +112,8 @@ These labels should match the live `Show-PanelMenu` output exactly.
 | Read-only dashboard / packaging / audits / docs | `b1_drifter_context_panel`, `phase1_audit`, `phase2_audit`, `final_validation_package`, `phase5_sync`, `trajectory_gallery`, `trajectory_gallery_panel`, `figure_package_publication` | Stored-output-only or packaging-only actions. Dashboard launch itself is a shortcut, not a catalog entry ID. |
 
 Data-source provenance is a read-only documentation/UI layer, not a launcher rerun entry. Use `docs/DATA_SOURCES.md`, `config/data_sources.yaml`, or the dashboard reference page.
+
+Compatibility note: legacy/archive support only entries remain visible for audit and reproducibility, but they do not become main evidence.
 
 ## Launcher Entry Map
 
@@ -171,7 +173,7 @@ Focused Mindoro Phase 1 provenance:
 docker compose exec -T -e WORKFLOW_MODE=phase1_mindoro_focus_pre_spill_2016_2023 -e PIPELINE_PHASE=phase1_production_rerun pipeline python -m src
 ```
 
-Mindoro `B1` primary public validation:
+Primary Mindoro March 13-14 public-observation validation (`B1` alias):
 
 ```bash
 docker compose exec -T -e WORKFLOW_MODE=mindoro_retro_2023 -e PIPELINE_PHASE=phase3b_extended_public pipeline python -m src
@@ -190,13 +192,13 @@ docker compose exec -T -e WORKFLOW_MODE=dwh_retro_2010 -e PIPELINE_PHASE=phase3c
 
 ## Guardrails
 
-- `B1` is the only main Philippine public-observation validation claim.
-- `B1` supports coastal-neighborhood usefulness, not exact 1 km overlap or universal operational accuracy.
-- The March 13-14 `B1` pair keeps the observation-independence note explicit.
-- `Track A` and every PyGNOME branch remain comparator-only support.
+- The Primary Mindoro March 13-14 validation case is the only main Philippine public-observation validation claim.
+- The primary case supports coastal-neighborhood usefulness, not exact 1 km overlap or universal operational accuracy.
+- The March 13-14 primary pair keeps the observation-independence note explicit.
+- The Mindoro same-case OpenDrift-PyGNOME comparator (`Track A` alias) and every PyGNOME branch remain comparator-only support.
 - PyGNOME is never observational truth.
 - DWH is external transfer validation, not Mindoro recalibration.
 - Mindoro oil-type and shoreline outputs remain support/context only.
 - Read-only dashboard, packaging, audit, and docs entries do not recompute science.
-- `prototype_2016` is legacy/archive support only; some internal package names may still contain Phase 4/Phase 5 labels, but those are not primary defended evidence.
+- `prototype_2016` is secondary 2016 drifter-track and legacy FSS support only; some internal package names may still contain Phase 4/Phase 5 labels, but those are not primary defended evidence.
 - `output/phase1_production_rerun/phase1_baseline_selection_candidate.yaml` remains a staged-only candidate for the broader regional/reference lane; any promotion into `config/phase1_baseline_selection.yaml` stays explicit and manual, and this does not affect the finalized focused Mindoro `B1` `cmems_gfs` provenance.

@@ -10,8 +10,8 @@ Thesis-facing evidence is limited to the final manuscript lanes:
 
 1. Focused Mindoro Phase 1 transport provenance.
 2. Phase 2 standardized deterministic and 50-member forecast products.
-3. Mindoro B1 March 13-14 primary public-observation validation.
-4. Mindoro same-case OpenDrift-PyGNOME comparator support.
+3. Primary Mindoro March 13-14 validation case (B1 internal alias).
+4. Mindoro same-case OpenDrift-PyGNOME comparator (Track A internal alias).
 5. DWH external transfer validation.
 6. Mindoro oil-type and shoreline support/context.
 7. Secondary 2016 drifter-track and legacy FSS support.
@@ -65,7 +65,7 @@ The dashboard follows the same split. Panel-friendly navigation shows the final-
 - Do not treat PyGNOME as observation truth; it remains comparator-only.
 - Do not use DWH as Mindoro recalibration; it remains external transfer validation.
 - Do not describe oil-type or shoreline outputs as primary validation.
-- Do not use old March 3-6 base-case rows as a replacement for B1.
+- Do not use old March 3-6 base-case rows as a replacement for the Primary Mindoro March 13-14 validation case.
 - Do not relabel `mask_p90` as a broad envelope; it is conservative support/comparison only.
 
 ## Validation

@@ -41,8 +41,8 @@ Evidence order:
 
 1. Focused Mindoro Phase 1 transport provenance.
 2. Phase 2 standardized deterministic and 50-member forecast products.
-3. Mindoro B1 March 13-14 primary public-observation validation.
-4. Mindoro same-case OpenDrift-PyGNOME comparator support.
+3. Primary Mindoro March 13-14 validation case (B1 internal alias).
+4. Mindoro same-case OpenDrift-PyGNOME comparator (Track A internal alias).
 5. DWH external transfer validation.
 6. Mindoro oil-type and shoreline support/context.
 7. Secondary 2016 drifter-track and legacy FSS support.
@@ -52,12 +52,12 @@ No uploaded manuscript file is required to inspect, validate, or run the repo. T
 
 ## Scientific Guardrails
 
-- Mindoro B1 is the only main Philippine public-observation validation claim.
-- B1 supports coastal-neighborhood usefulness, not exact 1 km overlap or universal operational accuracy.
+- The Primary Mindoro March 13-14 validation case is the only main Philippine public-observation validation claim; `B1` is an internal alias.
+- The primary case supports coastal-neighborhood usefulness, not exact 1 km overlap or universal operational accuracy.
 - PyGNOME is comparator-only and never observation truth.
 - DWH is external transfer validation only, not Mindoro recalibration.
 - Mindoro oil-type and shoreline outputs are support/context only.
-- Secondary 2016 outputs are legacy support only, not public-spill validation.
+- Secondary 2016 drifter-track and legacy FSS outputs are support only, not public-spill validation.
 - `mask_p50` is the preferred probabilistic footprint; `mask_p90` is a conservative support/comparison product only.
 
 ## What Is Archived And Why
@@ -69,7 +69,7 @@ See [docs/ARCHIVE_GOVERNANCE.md](docs/ARCHIVE_GOVERNANCE.md) and [config/archive
 ## Data Sources And Provenance
 
 External observation, drifter, forcing, shoreline, oil-property, and model/tool sources are documented in [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md). The machine-readable source registry is [config/data_sources.yaml](config/data_sources.yaml).
-In the dashboard, the default navigation begins with `Overview / Final Manuscript Alignment`, then `Data Sources & Provenance`, and then the focused Mindoro, B1, comparator, DWH, support/context, secondary support, archive/provenance, and governance pages.
+In the dashboard, the default navigation begins with `Overview / Final Manuscript Alignment`, then `Data Sources & Provenance`, and then the focused Mindoro provenance, Primary Mindoro March 13-14 validation case, same-case comparator, DWH external transfer validation, oil-type/shoreline support, secondary 2016 support, archive/provenance, and governance pages.
 
 ## Panel Documentation
 
@@ -84,7 +84,7 @@ In the dashboard, the default navigation begins with `Overview / Final Manuscrip
 ## Read-Only Output Surfaces
 
 - [output/phase1_mindoro_focus_pre_spill_2016_2023](output/phase1_mindoro_focus_pre_spill_2016_2023): focused Mindoro Phase 1 provenance artifacts.
-- [output/Phase 3B March13-14 Final Output](output/Phase%203B%20March13-14%20Final%20Output): curated B1 and Track A export layer for panel review. Raw `output/CASE_MINDORO_RETRO_2023` paths are rerun/staging provenance and are not the reviewer first-open folder in the submitted package.
+- [output/Phase 3B March13-14 Final Output](output/Phase%203B%20March13-14%20Final%20Output): curated Primary Mindoro March 13-14 validation case (B1 alias) and Mindoro same-case OpenDrift-PyGNOME comparator (Track A alias) export layer for panel review. Raw `output/CASE_MINDORO_RETRO_2023` paths are rerun/staging provenance and are not the reviewer first-open folder in the submitted package.
 - [output/Phase 3C DWH Final Output](output/Phase%203C%20DWH%20Final%20Output): curated DWH transfer-validation export layer.
 - Raw `output/CASE_DWH_RETRO_2010_72H` paths are rerun/staging provenance and are not the reviewer first-open folder in the submitted package.
 - [output/phase4/CASE_MINDORO_RETRO_2023](output/phase4/CASE_MINDORO_RETRO_2023): Mindoro oil-type and shoreline support/context outputs.

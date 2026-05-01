@@ -102,7 +102,7 @@ Read-only governance:
 
 - `phase1_mindoro_focus_pre_spill_experiment` -> prefer `phase1_mindoro_focus_provenance`
 - `phase1_production_rerun` -> prefer `phase1_regional_reference_rerun`
-- `mindoro_march13_14_noaa_reinit_stress_test` -> hidden legacy ID that resolves to `mindoro_phase3b_primary_public_validation`; it does not run the Track A/PyGNOME comparator lane
+- `mindoro_march13_14_noaa_reinit_stress_test` -> hidden legacy ID that resolves to `mindoro_phase3b_primary_public_validation`; it does not run the Mindoro same-case OpenDrift-PyGNOME comparator (`Track A`) lane
 
 Use `.\start.ps1 -Explain <entry_id> -NoPause` before running any hidden ID. The preview prints label, manuscript section, thesis role, claim boundary, run kind, rerun cost, `safe_default`, role flags, expected outputs, and requested/canonical IDs.
 
@@ -134,7 +134,7 @@ The read-only dashboard is a launcher shortcut rather than a catalog entry ID. O
 docker compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501
 ```
 
-Use `b1_drifter_context_panel` when you want the dashboard to land on the `B1 Drifter Provenance` page from stored outputs only.
+Use `b1_drifter_context_panel` when you want the dashboard to land on the Primary Mindoro recipe-provenance page (`B1` alias) from stored outputs only.
 
 If you want the freshest read-only packaging before opening the dashboard, refresh one or more of these first:
 
@@ -150,16 +150,16 @@ If you want the freshest read-only packaging before opening the dashboard, refre
 
 - Use launcher entry IDs and role groups as the primary workflow vocabulary.
 - `.\start.ps1 -List -NoPause` is grouped by role, so archive and legacy work stays accessible without becoming default thesis-facing evidence.
-- `B1` is the only main Philippine public-observation validation claim.
-- `B1` supports coastal-neighborhood usefulness, not exact 1 km overlap or universal operational accuracy.
+- The Primary Mindoro March 13-14 validation case is the only main Philippine public-observation validation claim; `B1` is an internal alias.
+- The primary case supports coastal-neighborhood usefulness, not exact 1 km overlap or universal operational accuracy.
 - March 13-14 keeps the observation-independence note explicit.
-- `Track A` and every PyGNOME branch remain comparator-only support.
+- The Mindoro same-case OpenDrift-PyGNOME comparator (`Track A` alias) and every PyGNOME branch remain comparator-only support.
 - PyGNOME is never observational truth.
 - DWH is external transfer validation, not Mindoro recalibration.
 - Mindoro oil-type and shoreline outputs remain support/context only.
 - Read-only dashboard, packaging, audit, and docs entries do not recompute science.
 - `phase1_production_rerun` stages `output/phase1_production_rerun/phase1_baseline_selection_candidate.yaml` only; it does not auto-overwrite `config/phase1_baseline_selection.yaml`.
-- `prototype_2016` is legacy/archive support only; some internal package names may still contain Phase 4/Phase 5 labels, but those are not primary defended evidence.
+- `prototype_2016` is secondary 2016 drifter-track and legacy FSS support only; some internal package names may still contain Phase 4/Phase 5 labels, but those are not primary defended evidence.
 
 ## Where To Look Next
 

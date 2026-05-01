@@ -69,8 +69,8 @@ Panel-friendly mode is the default. It should show the final-paper evidence orde
 1. Overview / Final Manuscript Alignment
 2. Data Sources & Provenance
 3. Focused Mindoro Phase 1 Provenance
-4. Mindoro B1 Public-Observation Validation
-5. Mindoro Track A Comparator Support
+4. Primary Mindoro March 13-14 Validation Case (B1)
+5. Mindoro Same-Case OpenDrift-PyGNOME Comparator (Track A)
 6. DWH External Transfer Validation
 7. Mindoro Oil-Type and Shoreline Support/Context
 8. Secondary 2016 Support
@@ -91,10 +91,10 @@ Advanced pages are audit surfaces only. They should not look like primary valida
 Keep these claims stable across page text, labels, captions, and export views:
 
 - Focused Mindoro Phase 1 is transport provenance / recipe selection, not oil-footprint truth.
-- Mindoro B1 is the only main Philippine public-observation validation claim.
-- B1 supports coastal-neighborhood usefulness, not exact 1 km overlap.
-- The March 13-14 B1 case keeps the observation-independence / reinitialization note visible.
-- Mindoro Track A and PyGNOME are comparator-only support.
+- The Primary Mindoro March 13-14 validation case is the only main Philippine public-observation validation claim; `B1` is an internal alias.
+- The primary case supports coastal-neighborhood usefulness, not exact 1 km overlap.
+- The March 13-14 primary case keeps the observation-independence / reinitialization note visible.
+- The Mindoro same-case OpenDrift-PyGNOME comparator and PyGNOME are comparator-only support; `Track A` is an internal alias.
 - DWH is external transfer validation only; it does not recalibrate Mindoro.
 - Mindoro oil-type and shoreline outputs are support/context only.
 - Secondary 2016 outputs are drifter-track and legacy FSS support only; they are not public-spill validation.
@@ -102,7 +102,7 @@ Keep these claims stable across page text, labels, captions, and export views:
 - UI/publication packages are presentation and governance surfaces over stored outputs only.
 Dashboard pages organize stored outputs only and do not create new scientific results.
 
-Legacy/internal folder names may contain Phase 3B, Phase 3C, or Phase 4, but panel-facing labels should use B1, Track A, DWH external transfer validation, and Mindoro oil-type/shoreline support/context.
+Legacy/internal folder names may contain Phase 3B, Phase 3C, or Phase 4, but panel-facing labels should use Primary Mindoro March 13-14 validation case, Mindoro same-case OpenDrift-PyGNOME comparator, DWH external transfer validation, and Mindoro oil-type/shoreline support/context.
 
 ## Read-Only Rules
 

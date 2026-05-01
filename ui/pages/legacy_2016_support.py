@@ -93,8 +93,8 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     render_modern_hero(
-        "Secondary 2016 Support",
-        "This page surfaces the authoritative curated prototype_2016 package as secondary drifter-track and legacy FSS support. It is not public-spill validation and does not replace Mindoro B1 or DWH.",
+        "Secondary 2016 Drifter-Track And Legacy FSS Support",
+        "This page surfaces the authoritative curated prototype_2016 package as secondary drifter-track and legacy FSS support. It is not public-spill validation and does not replace the Primary Mindoro March 13-14 validation case or DWH.",
         badge=ROLE_SECONDARY,
         eyebrow="Secondary support lane",
         meta=["2016 drifter-track support", "Legacy FSS support", "Read-only artifacts"],
@@ -110,28 +110,28 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     render_key_takeaway(
-        "Secondary 2016 material is support only.",
-        "These prototype cases preserve workflow provenance and comparator context, but they do not replace B1 or the DWH external-transfer validation.",
+        "Secondary 2016 drifter-track and legacy FSS material is support only.",
+        "These prototype cases preserve direct drifter-track benchmark support and legacy comparator context, but they do not replace the Primary Mindoro March 13-14 case or the DWH external-transfer validation.",
         tone="legacy",
         badge=ROLE_SECONDARY,
     )
     render_status_callout(
         "Secondary support boundary",
-        "Secondary 2016 outputs support drifter-track and legacy OpenDrift-PyGNOME FSS context only. They are not public-spill validation and do not replace Mindoro B1 or DWH.",
+        "Secondary 2016 outputs support drifter-track and legacy OpenDrift-PyGNOME FSS context only. They are not public-spill validation and do not replace the Primary Mindoro March 13-14 validation case or DWH.",
         "legacy",
     )
     render_comparator_banner()
     render_feature_grid(
         [
             {
-                "title": "Three prototype cases",
-                "body": "2016-09-01, 2016-09-06, and 2016-09-17 remain grouped as a preserved legacy support package.",
+                "title": "Direct drifter-track benchmark",
+                "body": "2016-09-01, 2016-09-06, and 2016-09-17 remain grouped as secondary observed-drifter-track support.",
                 "badge": ROLE_SECONDARY,
                 "tone": "legacy",
             },
             {
-                "title": "Comparator scope",
-                "body": "OpenDrift versus deterministic PyGNOME material is comparator support only, not observation truth.",
+                "title": "Legacy FSS support",
+                "body": "OpenDrift versus deterministic PyGNOME FSS material is legacy comparator support only, not observation truth.",
                 "badge": ROLE_SECONDARY,
                 "tone": "legacy",
             },
@@ -154,7 +154,7 @@ def render(state: dict, ui_state: dict) -> None:
     )
     render_status_callout(
         "Guardrail",
-        "There is no thesis-facing B1 or DWH validation claim in prototype_2016, and this lane does not replace the final regional Phase 1 study.",
+        "There is no thesis-facing Primary Mindoro or DWH validation claim in prototype_2016, and this lane does not replace the final regional Phase 1 study.",
         "warning",
     )
     if not export_mode and not ui_state["advanced"]:
@@ -264,7 +264,7 @@ def render(state: dict, ui_state: dict) -> None:
             export_mode=export_mode,
         )
         render_table(
-            "Legacy support cases",
+            "Table 4.11 - Secondary 2016 direct drifter-track benchmark summary",
             _legacy_cases_table(),
             download_name="legacy_2016_support_cases.csv",
             caption="Legacy/prototype support only; not direct public spill validation.",
@@ -272,7 +272,7 @@ def render(state: dict, ui_state: dict) -> None:
             export_mode=export_mode,
         )
         render_table(
-            "Legacy mean FSS by support surface",
+            "Table 4.12 - Legacy 2016 OpenDrift-versus-PyGNOME mean FSS by case, support surface, and neighborhood window",
             _legacy_fss_table(),
             download_name="legacy_2016_mean_fss.csv",
             caption="Legacy similarity values are displayed only on this archive/support page.",
@@ -378,14 +378,14 @@ def render(state: dict, ui_state: dict) -> None:
         render_markdown_block("Phase 5 packaging summary", state["legacy_2016_packaging_summary"], collapsed=True, export_mode=export_mode)
 
     render_section_header(
-        "Legacy Details",
-        "The grouped package views below remain secondary support surfaces, with raw registries and case-level rows kept behind the story summary.",
+        "Secondary 2016 Details",
+        "Direct drifter-track benchmark support and legacy FSS comparator surfaces remain separated, with raw registries and case-level rows kept behind the story summary.",
         badge=ROLE_SECONDARY,
     )
     render_section_stack(
         [
             ("Package overview", _package_overview),
-            ("Phase 3A support comparison", _phase3a_publication),
+            ("Direct drifter-track benchmark support", _phase3a_publication),
             ("Phase 4 legacy context", _phase4_publication),
             ("Phase 4 comparator pilot", _phase4_comparator),
             ("Tables and notes", _summaries_and_manifests),

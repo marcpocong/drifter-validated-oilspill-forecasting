@@ -134,7 +134,7 @@ def _inline_font_face_css() -> str:
 def _render_sidebar_branding(branding: dict) -> None:
     title = APP_TITLE if branding.get("has_logo") else "Drifter-Validated Oil Spill Forecasting"
     subtitle = (
-        "Panel mode follows the final paper story: provenance, B1, comparator support, DWH, then context and secondary lanes."
+        "Panel mode follows the final paper story: provenance, Primary Mindoro March 13-14, same-case comparator, DWH, then context and secondary lanes."
         if branding.get("has_logo")
         else SIDEBAR_SUBTITLE
     )
@@ -237,7 +237,7 @@ def _render_sidebar_controls(state: dict, branding: dict) -> dict:
     with st.sidebar:
         _render_sidebar_branding(branding)
         st.markdown(
-            "<div class='sidebar-note'>Dashboard pages organize stored outputs only and do not create new scientific results.</div>",
+            "<div class='sidebar-note'>Curated outputs only. This UI never reruns science. Dashboard pages organize stored outputs only and do not create new scientific results.</div>",
             unsafe_allow_html=True,
         )
         st.markdown("<div class='sidebar-section-label sidebar-section-label--control'>Viewing Mode</div>", unsafe_allow_html=True)

@@ -39,8 +39,8 @@ Archive governance is documented in [ARCHIVE_GOVERNANCE.md](ARCHIVE_GOVERNANCE.m
 
 1. Focused Mindoro Phase 1 transport provenance
 2. Phase 2 standardized deterministic and 50-member forecast products
-3. Mindoro `B1` March 13-14 primary public-observation validation
-4. Mindoro same-case OpenDrift-PyGNOME comparator support
+3. Primary Mindoro March 13-14 validation case (`B1` internal alias)
+4. Mindoro same-case OpenDrift-PyGNOME comparator (`Track A` internal alias)
 5. DWH external transfer validation
 6. Mindoro oil-type and shoreline support/context
 7. Secondary 2016 drifter-track and legacy FSS support
@@ -50,10 +50,10 @@ Panel mode is built to respect that order instead of flattening the repo into on
 
 ## 4. Key Claim Boundaries
 
-- `B1` is the only main Philippine public-observation validation claim.
-- `B1` supports coastal-neighborhood usefulness, not exact 1 km overlap or universal operational accuracy.
+- The Primary Mindoro March 13-14 validation case is the only main Philippine public-observation validation claim; `B1` is an internal alias.
+- The primary case supports coastal-neighborhood usefulness, not exact 1 km overlap or universal operational accuracy.
 - March 13-14 keeps the observation-independence note explicit.
-- `Track A` is comparator-only support.
+- The Mindoro same-case OpenDrift-PyGNOME comparator is comparator-only support; `Track A` is an internal alias.
 - PyGNOME is comparator-only and never the observational scoring reference.
 - DWH is external transfer validation only, not Mindoro recalibration.
 - Mindoro oil-type and shoreline outputs are support/context only.
@@ -75,7 +75,7 @@ Panel mode is built to respect that order instead of flattening the repo into on
 - `hycom_gfs` mean / median NCS: `4.7027 / 4.9263`
 - `hycom_era5` mean / median NCS: `4.7561 / 5.0106`
 
-### Mindoro `B1`
+### Primary Mindoro March 13-14 Validation Case (`B1` Alias)
 
 - FSS `1 / 3 / 5 / 10 km`: `0.0000 / 0.0441 / 0.1371 / 0.2490`
 - Mean FSS: `0.1075`
@@ -86,7 +86,7 @@ Panel mode is built to respect that order instead of flattening the repo into on
 - `IoU = 0.0`; `Dice = 0.0`
 - Interpretation: supports coastal-neighborhood usefulness, not exact 1 km overlap
 
-### Mindoro `Track A`
+### Mindoro Same-Case OpenDrift-PyGNOME Comparator (`Track A` Alias)
 
 - OpenDrift `R1_previous`: forecast cells `5`; nearest distance `1414.21 m`; mean FSS `0.1075`
 - PyGNOME deterministic comparator-only support: forecast cells `6`; nearest distance `6082.76 m`; FSS `0.0000 / 0.0000 / 0.0000 / 0.0244`; mean FSS `0.0061`
@@ -166,7 +166,7 @@ Dashboard:
 docker compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501
 ```
 
-The default dashboard page order is `Overview / Final Manuscript Alignment`, `Data Sources & Provenance`, `Focused Mindoro Phase 1 Provenance`, `Mindoro B1 Public-Observation Validation`, `Mindoro Track A Comparator Support`, `DWH External Transfer Validation`, `Mindoro Oil-Type and Shoreline Support/Context`, `Secondary 2016 Support`, `Archive/Provenance and Legacy Support`, and `Reproducibility / Governance / Audit`.
+The default dashboard page order is `Overview / Final Manuscript Alignment`, `Data Sources & Provenance`, `Focused Mindoro Phase 1 Provenance`, `Primary Mindoro March 13-14 Validation Case (B1)`, `Mindoro Same-Case OpenDrift-PyGNOME Comparator (Track A)`, `DWH External Transfer Validation`, `Mindoro Oil-Type and Shoreline Support/Context`, `Secondary 2016 Drifter-Track And Legacy FSS Support`, `Archive/Provenance and Legacy Support`, and `Reproducibility / Governance / Audit`.
 Dashboard pages organize stored outputs only and do not create new scientific results.
 
 Data sources and provenance:
@@ -175,7 +175,7 @@ Data sources and provenance:
 docs\DATA_SOURCES.md
 ```
 
-## 8. Inspecting Drifter Provenance Behind `B1`
+## 8. Inspecting Drifter Provenance Behind The Primary Mindoro Case (`B1` Alias)
 
 Panel members can use panel option `7` or:
 
@@ -196,9 +196,9 @@ Panel members can use panel option `8` to view `docs/DATA_SOURCES.md`.
 
 That registry is read-only. It never downloads inputs, reruns workflows, rewrites scientific outputs, or changes the claim boundary.
 
-## 10. Why `B1` Is The Main Mindoro Row
+## 10. Why The Primary Mindoro March 13-14 Case Is The Main Mindoro Row
 
-`B1` is the promoted March 13-14 `R1_previous` row carried into the main validation argument.
+The Primary Mindoro March 13-14 validation case is the promoted `R1_previous` row carried into the main validation argument; `B1` remains the internal alias.
 
 - It is the only main-text primary Mindoro validation row.
 - It supports coastal-neighborhood usefulness, not exact 1 km overlap.

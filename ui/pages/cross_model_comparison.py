@@ -105,8 +105,8 @@ def render(state: dict, ui_state: dict) -> None:
     )
 
     render_modern_hero(
-        "Mindoro Track A Comparator Support",
-        "Track A is same-case OpenDrift-PyGNOME comparator support for the March 13-14 Mindoro case. It is not a second validation row.",
+        "Mindoro Same-Case OpenDrift-PyGNOME Comparator",
+        "The Mindoro same-case OpenDrift-PyGNOME comparator is support for the March 13-14 Mindoro case; Track A is the internal alias and it is not a second validation row.",
         badge=ROLE_COMPARATOR,
         eyebrow="Same-case comparator lane",
         meta=["Comparator support only", "March 14 target", "PyGNOME is not truth"],
@@ -118,19 +118,19 @@ def render(state: dict, ui_state: dict) -> None:
         render_export_note(
             [
                 "Export mode keeps the comparator page concise so the PDF reads as cross-model context rather than a second validation claim.",
-                "The figures and tables below remain comparator-only and should be read alongside the main B1 page, not instead of it.",
+                "The figures and tables below remain comparator-only and should be read alongside the Primary Mindoro March 13-14 page, not instead of it.",
             ]
         )
 
     render_key_takeaway(
-        "Track A contextualizes B1; it is not another validation row.",
-        "OpenDrift R1_previous remains the B1-facing result, while deterministic PyGNOME is shown only as same-case comparator support.",
+        "The same-case comparator contextualizes the Primary Mindoro result; it is not another validation row.",
+        "OpenDrift R1_previous remains the B1-alias primary result, while deterministic PyGNOME is shown only as same-case comparator support.",
         tone="comparator",
         badge=ROLE_COMPARATOR,
     )
     render_caveat_ribbon(
         "Same-case comparator only",
-        "Same-case comparator only; the March 14 public mask remains the external reference. PyGNOME is comparator-only and is not observational truth. Track A does not replace the main B1 public-observation validation claim.",
+        "Same-case comparator only; the March 14 public mask remains the external reference. PyGNOME is comparator-only and is not observational truth. Track A is the internal alias and does not replace the Primary Mindoro March 13-14 validation claim.",
     )
 
     render_section_header("Main Comparison", "Two stored model rows are shown side by side with their evidence boundary intact.")
@@ -141,7 +141,7 @@ def render(state: dict, ui_state: dict) -> None:
                 {
                     "title": "OpenDrift R1_previous",
                     "badge": ROLE_COMPARATOR,
-                    "body": "B1-attached OpenDrift row on the same March 14 target.",
+                    "body": "Primary Mindoro OpenDrift row (B1 alias) on the same March 14 target.",
                     "note": "Mean FSS 0.1075; nearest distance 1414.21 m.",
                 }
             ],
@@ -178,10 +178,10 @@ def render(state: dict, ui_state: dict) -> None:
 
     render_section_header("Details", "Stored comparator values, curated figures, and filtered summary tables remain read-only.")
     render_table(
-        "Track A comparator values",
+        "Table 4.8 - Mindoro same-case OpenDrift-PyGNOME comparator detail",
         _track_a_table(),
         download_name="mindoro_track_a_comparator_values.csv",
-        caption="OpenDrift R1_previous is compared with deterministic PyGNOME as support only.",
+        caption="OpenDrift R1_previous is compared with deterministic PyGNOME as support only; Track A is the internal alias.",
         height=180,
         export_mode=export_mode,
     )
@@ -240,8 +240,8 @@ def render(state: dict, ui_state: dict) -> None:
         )
         archive_card = {
             **archive_package,
-            "description": "Archived Mindoro validation provenance is kept for audit and reproducibility only, outside the Track A comparator page.",
-            "secondary_note": "Archive-only; not Track A evidence.",
+            "description": "Archived Mindoro validation provenance is kept for audit and reproducibility only, outside the Mindoro same-case comparator page.",
+            "secondary_note": "Archive-only; not same-case comparator evidence.",
             "button_label": "Open Mindoro validation archive",
         }
         render_package_cards(

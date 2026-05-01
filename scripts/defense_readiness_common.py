@@ -650,13 +650,13 @@ def page_registry_findings() -> list[str]:
     ):
         if page_id not in page_map:
             findings.append(f"dashboard page '{page_id}' is not registered")
-    if page_map.get("b1_drifter_context", {}).get("label") != "B1 Recipe Provenance — Not Truth Mask":
+    if page_map.get("b1_drifter_context", {}).get("label") != "B1 Recipe Provenance - Not Truth Mask":
         findings.append("B1 recipe-provenance advanced page label changed unexpectedly")
-    if page_map.get("mindoro_validation_archive", {}).get("navigation_section") != "Archive / Support Only":
-        findings.append("mindoro validation archive page must stay under Archive / Support Only")
+    if page_map.get("mindoro_validation_archive", {}).get("navigation_section") != "Archive / Provenance":
+        findings.append("mindoro validation archive page must stay under Archive / Provenance")
     legacy_section = page_map.get("legacy_2016_support", {}).get("navigation_section")
-    if legacy_section != "Archive / Support Only":
-        findings.append("legacy 2016 page must stay separated under Archive / Support Only")
+    if legacy_section != "Final Paper Evidence":
+        findings.append("legacy 2016 page must stay in the final paper evidence order as secondary support")
 
     drifter_page_text = read_text(UI_DRIFTER_PAGE_PATH)
     required_phrases = (

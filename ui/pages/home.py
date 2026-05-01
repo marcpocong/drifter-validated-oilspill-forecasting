@@ -147,22 +147,22 @@ def render(state: dict, ui_state: dict) -> None:
                 "body": "Focused Phase 1 selects the transport recipe; drifters are not oil-footprint truth.",
             },
             {
-                "title": "Phase 2 forecast products",
+                "title": "Standardized forecast products",
                 "badge": ROLE_THESIS,
                 "body": "Standardized deterministic and 50-member forecast products are stored as outputs, not recomputed here.",
             },
             {
-                "title": "Mindoro B1 validation",
+                "title": "Primary Mindoro March 13-14 validation case",
                 "badge": ROLE_THESIS,
-                "body": "The only main Philippine public-observation validation claim.",
+                "body": "The only main Philippine public-observation validation claim; B1 is the internal alias.",
             },
             {
-                "title": "Track A comparator",
+                "title": "Mindoro same-case OpenDrift-PyGNOME comparator",
                 "badge": ROLE_COMPARATOR,
-                "body": "Same-case OpenDrift vs PyGNOME support; not a second validation row.",
+                "body": "Same-case OpenDrift vs PyGNOME support; Track A is the internal alias, not a second validation row.",
             },
             {
-                "title": "DWH transfer validation",
+                "title": "DWH external transfer validation",
                 "badge": ROLE_EXTERNAL_TRANSFER,
                 "body": "Separate external transfer validation; not Mindoro recalibration.",
             },
@@ -196,20 +196,20 @@ def render(state: dict, ui_state: dict) -> None:
             {
                 "title": "What is the main Philippine validation claim?",
                 "badge": ROLE_THESIS,
-                "body": "Mindoro B1 is the only main Philippine public-observation validation claim.",
-                "note": "Everything else has a bounded support role.",
+                "body": "The Primary Mindoro March 13-14 validation case is the only main Philippine public-observation validation claim.",
+                "note": "B1 is the internal alias; everything else has a bounded support role.",
             },
             {
-                "title": "What does B1 prove and not prove?",
+                "title": "What does the primary Mindoro case prove?",
                 "badge": ROLE_THESIS,
-                "body": "B1 supports coastal-neighborhood usefulness and does not prove exact 1 km grid-cell reproduction.",
+                "body": "The primary case supports coastal-neighborhood usefulness and does not prove exact 1 km grid-cell reproduction.",
                 "note": "March 13 and March 14 are independent NOAA-published day-specific public-observation products; interpretation remains neighborhood-scale rather than exact 1 km overlap.",
             },
             {
-                "title": "What is Track A?",
+                "title": "What is the same-case comparator?",
                 "badge": ROLE_COMPARATOR,
-                "body": "Track A is same-case OpenDrift versus PyGNOME comparator support on the March 14 target.",
-                "note": "PyGNOME is never observational truth here.",
+                "body": "The Mindoro same-case OpenDrift versus PyGNOME comparator is support on the March 14 target.",
+                "note": "Track A is the internal alias; PyGNOME is never observational truth here.",
             },
             {
                 "title": "What does DWH add?",
@@ -234,12 +234,12 @@ def render(state: dict, ui_state: dict) -> None:
                 "note": f"{accepted_count} accepted strict segments; {subset_count} February-April ranked segments",
             },
             {
-                "label": "B1 mean FSS",
+                "label": "Primary Mindoro mean FSS (B1)",
                 "value": _float_text((b1_row or {}).get("mean_fss"), 4),
                 "note": "No exact 1 km overlap",
             },
             {
-                "label": "Track A PyGNOME mean FSS",
+                "label": "Same-case PyGNOME comparator mean FSS (Track A)",
                 "value": _float_text((track_a_pygnome or {}).get("mean_fss"), 4),
                 "note": "Comparator-only support",
             },
@@ -269,9 +269,9 @@ def render(state: dict, ui_state: dict) -> None:
         "Main claim boundary",
         "\n".join(
             [
-                "- Only Mindoro B1 is the main Philippine validation claim.",
-                "- B1 supports coastal-neighborhood usefulness, not exact 1 km overlap.",
-                "- Track A, DWH, oil-type/shoreline, secondary 2016, and archive outputs have separate roles.",
+                "- Only the Primary Mindoro March 13-14 validation case is the main Philippine validation claim.",
+                "- The primary case supports coastal-neighborhood usefulness, not exact 1 km overlap.",
+                "- The same-case comparator, DWH, oil-type/shoreline, secondary 2016, and archive outputs have separate roles.",
             ]
         ),
         tone="thesis",
@@ -318,7 +318,7 @@ def render(state: dict, ui_state: dict) -> None:
         "label": "Phase 1 focused provenance package",
         "page_label": "Focused Mindoro Phase 1 Provenance",
         "relative_path": "output/phase1_mindoro_focus_pre_spill_2016_2023",
-        "description": "Focused historical drifter provenance lane used to select the official Mindoro B1 recipe before the B1 validation result is discussed.",
+        "description": "Focused historical drifter provenance lane used to select the official Primary Mindoro March 13-14 recipe before the validation result is discussed.",
         "secondary_note": ROLE_THESIS,
         "artifact_count": int(len(state.get("phase1_focused_recipe_summary", []))),
         "button_label": "Open page",
@@ -417,7 +417,7 @@ def render(state: dict, ui_state: dict) -> None:
             {
                 "title": "Legacy/debug routes",
                 "classification": ROLE_LEGACY,
-                "body": "Legacy and debug routes remain inspectable without replacing the main Mindoro B1 or DWH evidence.",
+                "body": "Legacy and debug routes remain inspectable without replacing the Primary Mindoro March 13-14 or DWH evidence.",
                 "note": "Legacy/debug only; not main validation evidence.",
                 "page_label": "Archive/Provenance and Legacy Support",
             },
@@ -439,7 +439,7 @@ def render(state: dict, ui_state: dict) -> None:
         render_figure_gallery(
             recommended,
             title="Featured thesis-facing figures",
-            caption="The featured strip stays panel-first: provenance context, B1 primary validation, comparator support, and DWH transfer-validation. Archive and legacy figures remain on their own pages.",
+            caption="The featured strip stays panel-first: provenance context, Primary Mindoro March 13-14 validation, same-case comparator support, and DWH transfer validation. Archive and legacy figures remain on their own pages.",
             limit=2 if export_mode else None,
             columns_per_row=1 if export_mode else 2,
             export_mode=export_mode,

@@ -89,7 +89,7 @@ The full test suite may require the scientific runtime stack, including packages
 - Docker and the model runtime are required for intentional scientific reruns.
 - PyGNOME is comparator-only and never observation truth.
 - DWH is external transfer validation only, not Mindoro recalibration.
-- Mindoro B1 supports coastal-neighborhood usefulness, not exact 1 km overlap and not universal operational accuracy.
+- The Primary Mindoro March 13-14 validation case (B1 alias) supports coastal-neighborhood usefulness, not exact 1 km overlap and not universal operational accuracy.
 - `mask_p90` is a conservative support/comparison product only.
 
 ## Submission Manifest

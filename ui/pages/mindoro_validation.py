@@ -1,4 +1,4 @@
-"""Mindoro B1 primary-validation page."""
+"""Primary Mindoro March 13-14 validation page."""
 
 from __future__ import annotations
 
@@ -115,8 +115,8 @@ def render(state: dict, ui_state: dict) -> None:
     recipe_scope = f"{len(recipe_family)}-recipe" if recipe_family else "focused"
 
     render_modern_hero(
-        "Mindoro B1 Public-Observation Validation",
-        "Mindoro B1 is the only main Philippine public-observation validation claim: a March 13-14 reinitialization-based check against the March 14 public observation mask.",
+        "Primary Mindoro March 13-14 Validation Case",
+        "The Primary Mindoro March 13-14 validation case is the only main Philippine public-observation validation claim; B1 is the internal alias for the stored March 13-14 row.",
         badge=ROLE_THESIS,
         eyebrow="Primary thesis-facing Mindoro validation",
         meta=["March 13 -> March 14", "Fixed 1 km grid", "Public observation mask"],
@@ -127,7 +127,7 @@ def render(state: dict, ui_state: dict) -> None:
         render_export_note(
             [
                 "Export mode presents the Mindoro validation story as a single sequential brief.",
-                "The March 13-14 B1 primary validation row stays first, while comparator and archive material stay on their own pages.",
+                "The Primary Mindoro March 13-14 validation case stays first, while comparator and archive material stay on their own pages.",
             ]
         )
 
@@ -169,22 +169,22 @@ def render(state: dict, ui_state: dict) -> None:
     )
 
     render_key_takeaway(
-        "B1 is the only main Philippine public-observation validation claim.",
-        "The stored B1 row supports coastal-neighborhood usefulness at broader FSS windows, while exact 1 km overlap remains absent.",
+        "Primary Mindoro March 13-14 is the only main Philippine public-observation validation claim.",
+        "The stored primary row (B1 alias) supports coastal-neighborhood usefulness at broader FSS windows, while exact 1 km overlap remains absent.",
         tone="thesis",
         badge=ROLE_THESIS,
     )
     render_section_header(
         "Main Result",
-        "The primary board and metrics below are the panel-facing B1 result. Values are stored and not recomputed by the dashboard.",
+        "The primary board and metrics below are the panel-facing Primary Mindoro March 13-14 result. Values are stored and not recomputed by the dashboard.",
         badge=ROLE_THESIS,
     )
     result_left, result_right = st.columns([1.35, 1])
     with result_left:
         render_figure_gallery(
             primary_figures,
-            title="Primary B1 result board",
-            caption="Stored March 13-14 R1_previous primary-validation board and observation context. Archive rows stay off this surface.",
+            title="Primary Mindoro March 13-14 result board",
+            caption="Stored March 13-14 R1_previous primary-validation board and observation context. Archive rows stay off this surface; B1 remains the internal alias.",
             limit=1,
             columns_per_row=1,
             export_mode=export_mode,
@@ -208,21 +208,21 @@ def render(state: dict, ui_state: dict) -> None:
                 {
                     "title": "Recipe provenance",
                     "badge": ROLE_THESIS,
-                    "body": f"B1 inherits the official {selected_recipe or 'Phase 1 selected'} recipe from the separate focused 2016-2023 Mindoro Phase 1 lane.",
-                    "note": f"The {recipe_scope} comparison promoted the focused historical winner into official B1.",
+                    "body": f"The Primary Mindoro March 13-14 validation case inherits the official {selected_recipe or 'Phase 1 selected'} recipe from the separate focused 2016-2023 Mindoro Phase 1 lane.",
+                    "note": f"The {recipe_scope} comparison promoted the focused historical winner into the official B1-alias primary row.",
                 }
             ],
             columns_per_row=1,
             export_mode=export_mode,
         )
     render_caveat_ribbon(
-        "B1 caveat",
-        "No exact 1 km overlap; this supports coastal-neighborhood usefulness, not exact-grid reproduction. No exact 1 km overlap is present; B1 supports coastal-neighborhood usefulness only. March 13 and March 14 are independent NOAA-published day-specific public-observation products.",
+        "Primary validation caveat",
+        "No exact 1 km overlap; this supports coastal-neighborhood usefulness, not exact-grid reproduction. No exact 1 km overlap is present; the B1-alias primary row supports coastal-neighborhood usefulness only. March 13 and March 14 are independent NOAA-published day-specific public-observation products.",
     )
 
     def _primary_package() -> None:
         render_table(
-            "Mindoro B1 score card",
+            "Primary Mindoro March 13-14 score card (B1 alias)",
             _b1_score_table(),
             download_name="mindoro_b1_score_card.csv",
             caption="March 13-14 R1_previous primary validation row only.",
@@ -230,7 +230,7 @@ def render(state: dict, ui_state: dict) -> None:
             export_mode=export_mode,
         )
         render_table(
-            "Mindoro B1 FSS by neighborhood window",
+            "Primary Mindoro March 13-14 FSS by neighborhood window",
             _b1_fss_table(),
             download_name="mindoro_b1_fss.csv",
             caption="FSS grows with neighborhood scale; no exact 1 km overlap is present.",
@@ -240,7 +240,7 @@ def render(state: dict, ui_state: dict) -> None:
         render_figure_gallery(
             primary_figures,
             title="March 13-14 R1_previous primary-validation figures",
-            caption="These stored figures support the B1 primary validation row only.",
+            caption="These stored figures support the Primary Mindoro March 13-14 validation case only.",
             limit=2 if export_mode else (None if ui_state["advanced"] else 5),
             columns_per_row=1 if export_mode else 2,
             export_mode=export_mode,
@@ -265,19 +265,19 @@ def render(state: dict, ui_state: dict) -> None:
             export_mode=export_mode,
         )
         if ui_state["advanced"]:
-            render_markdown_block("Mindoro B1 stored export note", state["mindoro_final_readme"], collapsed=True, export_mode=export_mode)
+            render_markdown_block("Primary Mindoro stored export note (B1 alias)", state["mindoro_final_readme"], collapsed=True, export_mode=export_mode)
 
     def _archive_note() -> None:
         render_status_callout(
             "Archive note",
-            "Non-primary Mindoro validation provenance is separated from this B1 page. Use Archive/Provenance and Legacy Support for audit-only rows.",
+            "Non-primary Mindoro validation provenance is separated from this Primary Mindoro March 13-14 page. Use Archive/Provenance and Legacy Support for audit-only rows.",
             "warning",
         )
         if archive_package:
             archive_card = {
                 **archive_package,
-                "description": "Archived Mindoro validation provenance is kept for audit and reproducibility only, outside the B1 primary validation page.",
-                "secondary_note": "Archive-only; not B1 evidence.",
+                "description": "Archived Mindoro validation provenance is kept for audit and reproducibility only, outside the Primary Mindoro March 13-14 validation page.",
+                "secondary_note": "Archive-only; not Primary Mindoro evidence.",
                 "button_label": "Open Mindoro validation archive",
             }
             render_package_cards(
@@ -288,8 +288,8 @@ def render(state: dict, ui_state: dict) -> None:
 
     render_section_stack(
         [
-            ("March 13-14 R1 Previous Main Result", _primary_package),
-            ("R1 Tables And Notes", _tables_and_notes),
+            ("Primary Mindoro March 13-14 Main Result", _primary_package),
+            ("Primary Tables And Notes", _tables_and_notes),
             ("Archive Note", _archive_note),
         ],
         export_mode=export_mode,

@@ -86,7 +86,7 @@ def render(state: dict, ui_state: dict) -> None:
         "DWH is a separate external transfer validation story using public daily observation masks on its own fixed 1 km scoring grid.",
         badge=ROLE_EXTERNAL_TRANSFER,
         eyebrow="External transfer validation",
-        meta=["DWH only", "Public daily observation masks", "Not Mindoro recalibration"],
+        meta=["DWH external transfer only", "Public daily observation masks", "PyGNOME comparator-only"],
         tone="thesis",
     )
 
@@ -143,7 +143,7 @@ def render(state: dict, ui_state: dict) -> None:
         [
             ("C1 deterministic", "0.5568", "OpenDrift deterministic control"),
             ("C2 p50", "0.5389", "Preferred ensemble footprint"),
-            ("C2 p90", "0.4966", "Support product, not broader envelope"),
+            ("C2 p90", "0.4966", "Conservative support product, not a broad envelope"),
             ("C3 PyGNOME", "0.3612", "Comparator-only"),
         ],
         export_mode=export_mode,
@@ -189,7 +189,7 @@ def render(state: dict, ui_state: dict) -> None:
     def _truth_context() -> None:
         render_status_callout("Observation context", "These figures show the public observation-derived daily masks and the event-corridor union used as truth before any model comparison is discussed.", "info")
         render_table(
-            "DWH daily and event-corridor mean FSS",
+            "Table 4.9 - Deepwater Horizon daily and event-corridor mean FSS summary",
             _dwh_mean_fss_table(),
             download_name="dwh_mean_fss.csv",
             caption="p50 is the preferred probabilistic footprint; p90 is support/comparison only; PyGNOME is comparator-only.",
@@ -197,7 +197,7 @@ def render(state: dict, ui_state: dict) -> None:
             export_mode=export_mode,
         )
         render_table(
-            "DWH event-corridor geometry diagnostics",
+            "Table 4.10 - Deepwater Horizon event-corridor geometry diagnostics",
             _dwh_corridor_table(),
             download_name="dwh_corridor_geometry.csv",
             caption="Corridor summary values for C1, C2 p50, C2 p90, and C3.",

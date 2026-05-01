@@ -20,7 +20,7 @@ Access notes: the Mindoro and DWH services are public external ArcGIS/ERMA produ
 
 | Source | Provider | Product / layer | Role | Evidence boundary | Repo verification |
 | --- | --- | --- | --- | --- | --- |
-| NOAA OSMC / Global Drifter Program `drifter_6hour_qc` | NOAA AOML / Global Drifter Program via NOAA OSMC ERDDAP | `drifter_6hour_qc` | Historical transport validation and recipe provenance | Drifters support focused Mindoro Phase 1 transport provenance, accepted-segment filtering, and recipe selection. They are not oil-footprint public observations and do not replace Mindoro B1 or DWH validation. | `config/phase1_mindoro_focus_pre_spill_2016_2023.yaml`; `config/recipes.yaml`; `output/phase1_mindoro_focus_pre_spill_2016_2023/` |
+| NOAA OSMC / Global Drifter Program `drifter_6hour_qc` | NOAA AOML / Global Drifter Program via NOAA OSMC ERDDAP | `drifter_6hour_qc` | Historical transport validation and recipe provenance | Drifters support focused Mindoro Phase 1 transport provenance, accepted-segment filtering, and recipe selection. They are not oil-footprint public observations and do not replace the Primary Mindoro March 13-14 validation case or DWH validation. | `config/phase1_mindoro_focus_pre_spill_2016_2023.yaml`; `config/recipes.yaml`; `output/phase1_mindoro_focus_pre_spill_2016_2023/` |
 
 Focused Phase 1 used the 2016-01-01 to 2023-03-02 historical window, focused box `[118.751, 124.305, 10.620, 16.026]`, 65 strict accepted segments, and 19 February-April ranked subset segments. The selected recipe is `cmems_gfs`.
 
@@ -30,8 +30,8 @@ Focused Phase 1 used the 2016-01-01 to 2023-03-02 historical window, focused box
 | --- | --- | --- | --- | --- | --- |
 | CMEMS currents | Copernicus Marine Service | `GLOBAL_ANALYSISFORECAST_PHY_001_024` and `GLOBAL_MULTIYEAR_PHY_001_030` families where confirmed | Ocean-current forcing input | Phase 1 recipe family and Mindoro `cmems_gfs` current forcing where manifests confirm. Forcing is not a validation target. | `config/recipes.yaml`; focused Phase 1 manifest; final reproducibility manifest index; curated DWH package manifest |
 | GFS winds | NOAA / NCEP, with UCAR GDEX fallback where configured | NCEI GFS analysis files and UCAR GDEX `d084001` secondary source | Wind forcing input | Phase 1 and selected Mindoro `cmems_gfs` wind forcing. DWH uses ERA5 winds in the confirmed stack. | `config/recipes.yaml`; focused Phase 1 manifest; final reproducibility manifest index |
-| HYCOM GOFS currents | HYCOM Consortium / GOFS | GOFS 3.1 reanalysis `GLBv0.08 expt_53.X` and candidate families | Ocean-current forcing input | Phase 1 candidate family and confirmed DWH current stack. HYCOM is not promoted into the Mindoro B1 selected recipe. | `config/case_dwh_retro_2010_72h.yaml`; curated Phase 3C package manifest and run manifests |
-| ERA5 winds | ECMWF / Copernicus Climate Data Store | `reanalysis-era5-single-levels` | Wind forcing input | Phase 1 candidate family, DWH wind stack, and support/context runs where manifests confirm. Mindoro B1 selected `cmems_gfs` uses GFS wind. | `config/recipes.yaml`; curated Phase 3C package manifest; Phase 4 run manifest |
+| HYCOM GOFS currents | HYCOM Consortium / GOFS | GOFS 3.1 reanalysis `GLBv0.08 expt_53.X` and candidate families | Ocean-current forcing input | Phase 1 candidate family and confirmed DWH current stack. HYCOM is not promoted into the Primary Mindoro March 13-14 selected recipe. | `config/case_dwh_retro_2010_72h.yaml`; curated Phase 3C package manifest and run manifests |
+| ERA5 winds | ECMWF / Copernicus Climate Data Store | `reanalysis-era5-single-levels` | Wind forcing input | Phase 1 candidate family, DWH wind stack, and support/context runs where manifests confirm. The Primary Mindoro March 13-14 selected `cmems_gfs` recipe uses GFS wind. | `config/recipes.yaml`; curated Phase 3C package manifest; Phase 4 run manifest |
 | CMEMS wave/Stokes | Copernicus Marine Service | `GLOBAL_ANALYSISFORECAST_WAV_001_027` and `GLOBAL_MULTIYEAR_WAV_001_032` families where confirmed | Wave/Stokes forcing input | Required/fixed wave and Stokes forcing where manifests confirm. These fields are not validation targets and do not define observation references. | `config/recipes.yaml`; `config/ensemble.yaml`; final reproducibility manifest index; curated Phase 3C package manifest |
 
 Access notes: Copernicus Marine and CDS access can require user credentials. No credentials, tokens, or account-specific secrets are stored in this repository. The registry does not assert exact per-run API request endpoints unless the repo already stores them in configs or manifests.
@@ -61,9 +61,9 @@ Oil-type and shoreline outputs remain support/context: light oil, fixed-base med
 - PyGNOME is comparator-only and is never promoted into the main paper claim.
 - DWH is external transfer validation only and is not Mindoro recalibration.
 - Mindoro oil-type and shoreline outputs are support/context only, not primary validation.
-- Secondary 2016 drifter-track and legacy FSS outputs are support only; they are not public-spill validation and do not replace Mindoro B1 or DWH.
+- Secondary 2016 drifter-track and legacy FSS outputs are support only; they are not public-spill validation and do not replace the Primary Mindoro March 13-14 validation case or DWH.
 - `mask_p50` means `prob_presence >= 0.50` and is the preferred probabilistic footprint. `mask_p90` means `prob_presence >= 0.90` and is conservative support/comparison only; it is not a broad envelope.
-- The repo does not claim exact-grid success for Mindoro B1: the final-paper interpretation is coastal-neighborhood usefulness.
+- The repo does not claim exact-grid success for the Primary Mindoro March 13-14 validation case: the final-paper interpretation is coastal-neighborhood usefulness.
 - The repo does not assert exact API endpoints for sources where only package/config/manifests, not endpoint records, are stored.
 
 ## How To Verify From Repo

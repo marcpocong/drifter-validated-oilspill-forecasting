@@ -6,7 +6,7 @@
 - If Docker is part of the live demo, start it before opening the panel menu.
 - Keep the launcher on the defense-safe path unless a panel member explicitly asks for a rerun preview.
 - Panel mode and read-only entries do not rerun science.
-- Remember the claim boundary order: Phase 1 provenance -> B1 primary validation -> Track A comparator support -> DWH transfer validation -> Phase 4 support/context -> legacy/archive support.
+- Remember the claim boundary order: focused Phase 1 provenance -> Primary Mindoro March 13-14 validation case (B1 alias) -> Mindoro same-case OpenDrift-PyGNOME comparator (Track A alias) -> DWH external transfer validation -> Mindoro oil-type/shoreline support/context -> secondary 2016 support -> governance/archive.
 
 ## What To Open First
 
@@ -57,13 +57,13 @@ If the panel asks about drifters:
 
 > The drifters are transport-provenance evidence for the recipe, not the direct B1 truth mask.
 
-If the panel asks about B1:
+If the panel asks about the Primary Mindoro March 13-14 validation case:
 
-> B1 is the only main Philippine public-observation validation claim and supports coastal-neighborhood usefulness, not exact 1 km overlap or universal operational accuracy.
+> The Primary Mindoro March 13-14 validation case is the only main Philippine public-observation validation claim; B1 is the internal alias. It supports coastal-neighborhood usefulness, not exact 1 km overlap or universal operational accuracy.
 
 If the panel asks about PyGNOME:
 
-> PyGNOME is same-case comparator support only.
+> PyGNOME is same-case comparator support only in the Mindoro same-case OpenDrift-PyGNOME comparator and remains comparator-only in DWH and legacy support.
 
 If the panel asks about DWH:
 

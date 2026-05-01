@@ -33,7 +33,7 @@ Panel-safe options:
 4. Refresh final validation package from stored outputs
 5. Refresh final reproducibility package / command documentation
 6. Show paper-to-output registry
-7. View B1 drifter provenance/context
+7. View B1 drifter provenance/context (launcher alias for the Primary Mindoro March 13-14 provenance support page)
 8. View data sources and provenance registry
 
 Suggested review path:
@@ -46,11 +46,11 @@ Suggested review path:
 
 ## 3. Keep The Evidence Boundaries
 
-- Mindoro B1 supports coastal-neighborhood usefulness, not exact 1 km overlap.
-- Mindoro Track A and PyGNOME are comparator-only.
+- The Primary Mindoro March 13-14 validation case (B1 alias) supports coastal-neighborhood usefulness, not exact 1 km overlap.
+- The Mindoro same-case OpenDrift-PyGNOME comparator (Track A alias) and PyGNOME are comparator-only.
 - DWH is external transfer validation only.
 - Mindoro oil-type and shoreline outputs are support/context only.
-- Secondary 2016 outputs are legacy support only.
+- Secondary 2016 drifter-track and legacy FSS outputs are support only.
 
 ## 4. When A Rerun Is Needed
 
