@@ -21,6 +21,9 @@ MARKDOWN_OUTPUT_PATH = OUTPUT_DIR / "panel_results_match_check.md"
 MANIFEST_OUTPUT_PATH = OUTPUT_DIR / "panel_review_manifest.json"
 OPTIONAL_WORKBOOK_OUTPUT_PATH = OUTPUT_DIR / "panel_results_match_check.xlsx"
 
+OPTIONAL_MISSING_MARKERS = ("optional_missing:", "missing_optional:")
+TEXT_COMPARISON_MODES = {"text", "string"}
+
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -45,6 +48,10 @@ def _normalize_text(value: Any) -> str:
     return str(value if value is not None else "").strip()
 
 
+def _normalize_key(value: Any) -> str:
+    return _normalize_text(value).lower()
+
+
 def _to_number(value: Any, comparison_mode: str) -> int | float:
     text = _normalize_text(value)
     if comparison_mode == "integer":
@@ -52,12 +59,37 @@ def _to_number(value: Any, comparison_mode: str) -> int | float:
     return float(text)
 
 
-def _resolve_source_path(candidates: list[str]) -> Path | None:
-    for candidate in candidates:
-        path = REPO_ROOT / candidate
-        if path.exists():
-            return path
-    return None
+def _coerce_expected_value(value: Any, comparison_mode: str) -> Any:
+    if comparison_mode in TEXT_COMPARISON_MODES:
+        return _normalize_text(value)
+    return _to_number(value, comparison_mode)
+
+
+def _parse_source_candidate(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return {
+            "path": _normalize_text(value.get("path")),
+            "optional_missing": bool(value.get("optional_missing")),
+            "reason": _normalize_text(value.get("reason")),
+        }
+
+    text = _normalize_text(value)
+    lowered = text.lower()
+    for marker in OPTIONAL_MISSING_MARKERS:
+        if lowered.startswith(marker):
+            remainder = text.split(":", 1)[1].strip()
+            path_text, separator, reason = remainder.partition(" - ")
+            return {
+                "path": path_text.strip(),
+                "optional_missing": True,
+                "reason": reason.strip() if separator else "",
+            }
+
+    return {"path": text, "optional_missing": False, "reason": ""}
+
+
+def _source_candidates(values: list[Any]) -> list[dict[str, Any]]:
+    return [candidate for candidate in (_parse_source_candidate(value) for value in values) if candidate["path"]]
 
 
 def _match_row(rows: list[dict[str, str]], match: dict[str, Any]) -> dict[str, str] | None:
@@ -67,7 +99,51 @@ def _match_row(rows: list[dict[str, str]], match: dict[str, Any]) -> dict[str, s
     return None
 
 
-def _compare(expected_value: int | float, actual_value: int | float, tolerance: float, comparison_mode: str) -> tuple[bool, float]:
+def _match_rows(rows: list[dict[str, str]], match: dict[str, Any]) -> list[dict[str, str]]:
+    return [
+        row
+        for row in rows
+        if all(_normalize_text(row.get(key)) == _normalize_text(value) for key, value in (match or {}).items())
+    ]
+
+
+def _apply_value_map(raw_value: Any, lookup: dict[str, Any]) -> Any:
+    value_map = lookup.get("value_map")
+    if not isinstance(value_map, dict):
+        return raw_value
+
+    raw_text = _normalize_text(raw_value)
+    if raw_text in value_map:
+        return value_map[raw_text]
+
+    lowered_map = {_normalize_key(key): mapped for key, mapped in value_map.items()}
+    return lowered_map.get(_normalize_key(raw_text), raw_value)
+
+
+def _aggregate_values(rows: list[dict[str, str]], value_column: str, aggregation: str) -> float:
+    values = []
+    for row in rows:
+        raw_value = _normalize_text(row.get(value_column))
+        if raw_value:
+            values.append(float(raw_value))
+
+    if not values:
+        raise ValueError("no numeric values available for aggregation")
+
+    normalized = aggregation.strip().lower()
+    if normalized in {"mean", "average"}:
+        return sum(values) / len(values)
+    if normalized == "sum":
+        return sum(values)
+    if normalized == "count":
+        return float(len(values))
+    raise ValueError(f"unsupported aggregation: {aggregation}")
+
+
+def _compare(expected_value: Any, actual_value: Any, tolerance: float, comparison_mode: str) -> tuple[bool, float]:
+    if comparison_mode in TEXT_COMPARISON_MODES:
+        passed = _normalize_key(actual_value) == _normalize_key(expected_value)
+        return passed, 0.0 if passed else 1.0
     if comparison_mode == "integer":
         difference = abs(int(actual_value) - int(expected_value))
         return difference == 0, float(difference)
@@ -84,6 +160,8 @@ def _json_default(value: Any) -> Any:
 def _display_value(value: Any, comparison_mode: str, units: str) -> str:
     if value in ("", None):
         return ""
+    if comparison_mode in TEXT_COMPARISON_MODES:
+        return str(value)
     if comparison_mode == "integer":
         return str(int(value))
     if units in {"m", "hours"}:
@@ -94,12 +172,13 @@ def _display_value(value: Any, comparison_mode: str, units: str) -> str:
 
 
 def _build_result(entry: dict[str, Any]) -> dict[str, Any]:
-    candidates = [str(value) for value in (entry.get("source_output_path_candidates") or []) if str(value).strip()]
+    candidate_specs = _source_candidates(list(entry.get("source_output_path_candidates") or []))
+    candidates = [str(spec["path"]) for spec in candidate_specs]
     lookup = dict(entry.get("source_lookup") or {})
     match = dict(lookup.get("match") or {})
     value_column = str(lookup.get("value_column") or "").strip()
     comparison_mode = str(entry.get("comparison_mode") or "float").strip().lower()
-    expected_value = _to_number(entry.get("expected_value"), comparison_mode)
+    expected_value = _coerce_expected_value(entry.get("expected_value"), comparison_mode)
     tolerance = float(entry.get("tolerance", 0))
 
     result: dict[str, Any] = {
@@ -124,16 +203,51 @@ def _build_result(entry: dict[str, Any]) -> dict[str, Any]:
         "notes": entry.get("notes", ""),
     }
 
-    existing_candidate_paths = [REPO_ROOT / candidate for candidate in candidates if (REPO_ROOT / candidate).exists()]
-    if not existing_candidate_paths:
+    existing_candidate_specs = [
+        {**spec, "resolved_path": REPO_ROOT / spec["path"]}
+        for spec in candidate_specs
+        if (REPO_ROOT / spec["path"]).exists()
+    ]
+    if not existing_candidate_specs:
+        optional_notes = [
+            f"{spec['path']} ({spec['reason'] or 'optional/provenance fallback'})"
+            for spec in candidate_specs
+            if spec["optional_missing"]
+        ]
         result["status"] = "MISSING_SOURCE"
-        result["notes"] = f"{result['notes']} Missing source file. Tried: {', '.join(candidates)}".strip()
+        optional_text = f" Optional fallback candidates: {'; '.join(optional_notes)}." if optional_notes else ""
+        result["notes"] = f"{result['notes']} Missing source file. Tried: {', '.join(candidates)}.{optional_text}".strip()
         return result
 
     lookup_errors: list[str] = []
-    for source_path in existing_candidate_paths:
+    for source_spec in existing_candidate_specs:
+        source_path = source_spec["resolved_path"]
         result["source_path"] = str(source_path.relative_to(REPO_ROOT))
         rows = _read_csv_rows(source_path)
+
+        aggregation = _normalize_text(lookup.get("aggregation"))
+        if aggregation:
+            matched_rows = _match_rows(rows, match)
+            if not matched_rows:
+                lookup_errors.append(
+                    f"{source_path.relative_to(REPO_ROOT)}: no rows matched selector {json.dumps(match, sort_keys=True)}"
+                )
+                continue
+            if not all(value_column in row for row in matched_rows):
+                lookup_errors.append(f"{source_path.relative_to(REPO_ROOT)}: missing column '{value_column}'")
+                continue
+            try:
+                actual_value = _aggregate_values(matched_rows, value_column, aggregation)
+            except ValueError as exc:
+                lookup_errors.append(f"{source_path.relative_to(REPO_ROOT)}: {exc}")
+                continue
+            passed, difference = _compare(expected_value, actual_value, tolerance, comparison_mode)
+            result["actual_value"] = actual_value
+            result["display_actual_value"] = _display_value(actual_value, comparison_mode, str(entry.get("units", "")))
+            result["absolute_difference"] = difference
+            result["status"] = "PASS" if passed else "FAIL"
+            return result
+
         matched_row = _match_row(rows, match)
         if matched_row is None:
             lookup_errors.append(
@@ -145,12 +259,16 @@ def _build_result(entry: dict[str, Any]) -> dict[str, Any]:
             lookup_errors.append(f"{source_path.relative_to(REPO_ROOT)}: missing column '{value_column}'")
             continue
 
-        raw_actual = matched_row.get(value_column, "")
+        raw_actual = _apply_value_map(matched_row.get(value_column, ""), lookup)
         if _normalize_text(raw_actual) == "":
             lookup_errors.append(f"{source_path.relative_to(REPO_ROOT)}: source value is blank")
             continue
 
-        actual_value = _to_number(raw_actual, comparison_mode)
+        actual_value = (
+            _normalize_text(raw_actual)
+            if comparison_mode in TEXT_COMPARISON_MODES
+            else _to_number(raw_actual, comparison_mode)
+        )
         passed, difference = _compare(expected_value, actual_value, tolerance, comparison_mode)
         result["actual_value"] = actual_value
         result["display_actual_value"] = _display_value(actual_value, comparison_mode, str(entry.get("units", "")))

@@ -375,7 +375,7 @@ $graphics.FillRectangle($panelFillBrush, $scoreX, $bottomY + 18, $scoreWidth, $b
 $graphics.DrawRectangle($boxPen, $scoreX, $bottomY + 18, $scoreWidth, $boxHeight)
 
 $graphics.DrawString("Legend", $headerFont, $darkBrush, [single]($legendX + 18), [single]($bottomY + 28))
-$graphics.DrawString("Table 4.9 values shown", $headerFont, $darkBrush, [single]($scoreX + 18), [single]($bottomY + 28))
+$graphics.DrawString("Table 4.8 values shown", $headerFont, $darkBrush, [single]($scoreX + 18), [single]($bottomY + 28))
 
 Draw-LegendItem -Graphics $graphics -X ($legendX + 24) -Y ($bottomY + 88) -Kind "obs" -Label "March 14 independent public target observation" -Font $bodyFont
 Draw-LegendItem -Graphics $graphics -X ($legendX + 24) -Y ($bottomY + 154) -Kind "opendrift" -Label "OpenDrift R1_previous footprint (mask_p50)" -Font $bodyFont
@@ -402,7 +402,7 @@ Copy-Item -LiteralPath $primaryPngPath -Destination $secondaryPngPath -Force
 $noteTextManifest = "Comparator support only; March 13 is the public seed observation, March 14 is the public target observation, and PyGNOME is not the observational scoring reference."
 $manifest = [ordered]@{
     figure_label = "Figure 4.5"
-    title = "Mindoro Track A same-case OpenDrift-PyGNOME spatial comparator board"
+    title = "Mindoro same-case OpenDrift-PyGNOME spatial comparator board"
     export_method = "cleaned thesis export from stored March 13 -> March 14 crossmodel publication board"
     source_file_paths_used = [ordered]@{
         source_board_png = (Get-RepoRelativePath -AbsolutePath $sourceBoardPath -Root $repoRootPath)

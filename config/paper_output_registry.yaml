@@ -88,15 +88,16 @@ paper_output_registry:
     notes:
       - "March 13 is shown in blue and March 14 is shown in gray/black."
 
-  - manuscript_item: "Table 4.9"
+  - manuscript_item: "Table 4.8"
     item_type: "table"
     thesis_facing: true
-    interpretation_role: "Mindoro Track A comparator support"
-    plain_language_statement: "This table is reproduced from the stored Track A OpenDrift-vs-PyGNOME comparator scorecards."
+    interpretation_role: "Mindoro same-case OpenDrift-PyGNOME comparator detail"
+    plain_language_statement: "This table is reproduced from the stored Mindoro same-case OpenDrift-vs-PyGNOME comparator scorecards."
     stored_source_paths:
-      - "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit_pygnome_comparison/march13_14_reinit_crossmodel_summary.csv"
-      - "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit_pygnome_comparison/march13_14_reinit_crossmodel_model_ranking.csv"
       - "output/Phase 3B March13-14 Final Output/summary/comparator_pygnome/march13_14_reinit_crossmodel_summary.csv"
+      - "output/Phase 3B March13-14 Final Output/summary/comparator_pygnome/march13_14_reinit_crossmodel_model_ranking.csv"
+      - "optional_missing: output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit_pygnome_comparison/march13_14_reinit_crossmodel_summary.csv - raw canonical Mindoro comparator path is staging/provenance; curated Phase 3B final output is reviewer-facing first"
+      - "optional_missing: output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit_pygnome_comparison/march13_14_reinit_crossmodel_model_ranking.csv - raw canonical Mindoro comparator path is staging/provenance; curated Phase 3B final output is reviewer-facing first"
     packaging_role: "read_only_packaging"
     notes:
       - "This output is comparator support only."
@@ -131,31 +132,34 @@ paper_output_registry:
       - "No dedicated Track A bar-chart PNG was found in the current canonical stored package."
       - "Use the ranking CSV as the authoritative machine-readable source."
 
-  - manuscript_item: "Table 4.10"
+  - manuscript_item: "Table 4.9"
     item_type: "table"
     thesis_facing: true
     interpretation_role: "DWH daily and corridor FSS results"
     plain_language_statement: "This table is reproduced from the stored DWH deterministic, ensemble, and comparator FSS summaries."
     stored_source_paths:
-      - "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_run/phase3c_fss_by_date_window.csv"
-      - "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_ensemble_comparison/phase3c_ensemble_fss_by_date_window.csv"
-      - "output/CASE_DWH_RETRO_2010_72H/phase3c_dwh_pygnome_comparator/phase3c_dwh_pygnome_fss_by_date_window.csv"
       - "output/Phase 3C DWH Final Output/summary/comparison/phase3c_main_scorecard.csv"
+      - "optional_missing: output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_run/phase3c_fss_by_date_window.csv - raw canonical DWH path is staging/provenance; curated Phase 3C final output is reviewer-facing first"
+      - "optional_missing: output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_ensemble_comparison/phase3c_ensemble_fss_by_date_window.csv - raw canonical DWH path is staging/provenance; curated Phase 3C final output is reviewer-facing first"
+      - "optional_missing: output/CASE_DWH_RETRO_2010_72H/phase3c_dwh_pygnome_comparator/phase3c_dwh_pygnome_fss_by_date_window.csv - raw canonical DWH path is staging/provenance; curated Phase 3C final output is reviewer-facing first"
     packaging_role: "read_only_packaging"
     notes:
       - "This output is read-only packaging over stored DWH scorecards."
       - "DWH is external transfer validation, not Mindoro recalibration."
 
-  - manuscript_item: "Table 4.11"
+  - manuscript_item: "Table 4.10"
     item_type: "table"
     thesis_facing: true
     interpretation_role: "DWH corridor geometry diagnostics"
     plain_language_statement: "This table is reproduced from the stored DWH corridor-overlap and geometry diagnostics."
     stored_source_paths:
-      - "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_run/phase3c_eventcorridor_summary.csv"
-      - "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_ensemble_comparison/phase3c_ensemble_eventcorridor_summary.csv"
-      - "output/CASE_DWH_RETRO_2010_72H/phase3c_dwh_pygnome_comparator/phase3c_dwh_pygnome_eventcorridor_summary.csv"
-      - "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_run/phase3c_diagnostics.csv"
+      - "output/Phase 3C DWH Final Output/summary/deterministic/phase3c_eventcorridor_summary.csv"
+      - "output/Phase 3C DWH Final Output/summary/ensemble/phase3c_ensemble_eventcorridor_summary.csv"
+      - "output/Phase 3C DWH Final Output/summary/comparator_pygnome/phase3c_dwh_pygnome_eventcorridor_summary.csv"
+      - "optional_missing: output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_run/phase3c_eventcorridor_summary.csv - raw canonical DWH path is staging/provenance; curated Phase 3C final output is reviewer-facing first"
+      - "optional_missing: output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_ensemble_comparison/phase3c_ensemble_eventcorridor_summary.csv - raw canonical DWH path is staging/provenance; curated Phase 3C final output is reviewer-facing first"
+      - "optional_missing: output/CASE_DWH_RETRO_2010_72H/phase3c_dwh_pygnome_comparator/phase3c_dwh_pygnome_eventcorridor_summary.csv - raw canonical DWH PyGNOME path is staging/provenance; curated Phase 3C final output is reviewer-facing first"
+      - "optional_missing: output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_run/phase3c_diagnostics.csv - raw canonical DWH diagnostics path is staging/provenance; curated Phase 3C final output is reviewer-facing first"
     packaging_role: "read_only_packaging"
     notes:
       - "This output is read-only packaging over stored DWH corridor diagnostics."
@@ -199,7 +203,7 @@ paper_output_registry:
       - "This output is comparator support only."
       - "This output is not observational truth."
 
-  - manuscript_item: "Table F2"
+  - manuscript_item: "Appendix F / Table F.2"
     item_type: "support_table"
     thesis_facing: false
     interpretation_role: "Mindoro oil-type and shoreline context"
