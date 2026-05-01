@@ -34,43 +34,40 @@ from ui.pages.common import (
 )
 
 
-CATEGORY_ORDER = [
-    "observation_truth",
-    "transport_validation",
-    "ocean_current_forcing",
-    "wind_forcing",
-    "wave_forcing",
-    "shoreline_geography",
-    "oil_property",
-    "model_tool",
-    "support_reference",
+ROLE_ORDER = [
+    "observation validation mask",
+    "transport validation",
+    "forcing input",
+    "shoreline support",
+    "oil-property support",
+    "model/tool provenance",
+    "ui/review tool",
 ]
 
-CATEGORY_LABELS = {
-    "observation_truth": "Observation Truth",
-    "transport_validation": "Transport Validation",
-    "ocean_current_forcing": "Ocean Current Forcing",
-    "wind_forcing": "Wind Forcing",
-    "wave_forcing": "Wave / Stokes Forcing",
-    "shoreline_geography": "Shoreline Geography",
-    "oil_property": "Oil Property",
-    "model_tool": "Model / Tool Provenance",
-    "support_reference": "Support Reference",
+ROLE_LABELS = {
+    "observation validation mask": "Observation Validation Mask",
+    "transport validation": "Transport Validation",
+    "forcing input": "Forcing Input",
+    "shoreline support": "Shoreline Support",
+    "oil-property support": "Oil-Property Support",
+    "model/tool provenance": "Model / Tool Provenance",
+    "ui/review tool": "UI / Review Tool",
 }
 
 DISPLAY_COLUMNS = {
+    "source_id": "Source ID",
     "label": "Source",
     "provider": "Provider",
-    "category": "Category",
-    "product_or_layer_id": "Product / layer ID",
-    "used_in_workflows": "Used for",
-    "evidence_role": "Evidence role",
-    "manuscript_role": "Workflow lane",
-    "time_coverage_used": "Time period used",
-    "manifest_or_inventory_paths": "Repo manifests / outputs",
-    "official_or_item_link": "Official link or item link",
-    "caveats": "Caveats / access notes",
-    "status": "Status",
+    "product_or_layer": "Product / layer",
+    "role": "Role",
+    "evidence_boundary": "Evidence boundary",
+    "workflow_lanes": "Workflow lanes",
+    "time_period_used": "Time period used",
+    "repo_manifests": "Repo manifests",
+    "official_link_if_known": "Official link if known",
+    "access_caveats": "Access caveats",
+    "secrets_required": "Secrets required",
+    "stored_in_repo": "Stored in repo",
 }
 
 
@@ -85,33 +82,51 @@ def _flatten(value: Any) -> str:
 
 
 def _registry_records(registry: dict[str, Any]) -> list[dict[str, str]]:
-    source_map = registry.get("sources") if isinstance(registry.get("sources"), dict) else registry
-    if not isinstance(source_map, dict):
+    if isinstance(registry.get("sources"), dict):
+        source_items = list(registry["sources"].items())
+    elif isinstance(registry.get("sources"), list):
+        source_items = [
+            (str(item.get("source_id") or index), item)
+            for index, item in enumerate(registry["sources"])
+            if isinstance(item, dict)
+        ]
+    elif isinstance(registry, dict):
+        source_items = list(registry.items())
+    else:
         return []
 
     records: list[dict[str, str]] = []
-    for key, payload in source_map.items():
+    for key, payload in source_items:
         if not isinstance(payload, dict):
             continue
+        source_id = _flatten(payload.get("source_id")) or _flatten(payload.get("id")) or str(key)
+        product_or_layer = _flatten(payload.get("product_or_layer")) or _flatten(payload.get("product_or_layer_id"))
+        role = _flatten(payload.get("role")) or _flatten(payload.get("category"))
+        evidence_boundary = _flatten(payload.get("evidence_boundary")) or _flatten(payload.get("evidence_role"))
+        workflow_lanes = _flatten(payload.get("workflow_lanes")) or _flatten(payload.get("used_in_workflows"))
+        time_period_used = _flatten(payload.get("time_period_used")) or _flatten(payload.get("time_coverage_used"))
+        repo_manifests = _flatten(payload.get("repo_manifests")) or _flatten(payload.get("manifest_or_inventory_paths"))
+        access_caveats = _flatten(payload.get("access_caveats")) or _flatten(payload.get("caveats"))
+        official_link_if_known = _flatten(payload.get("official_link_if_known"))
         official_url = _flatten(payload.get("official_url"))
         item_url = _flatten(payload.get("access_endpoint_or_item_url"))
-        official_or_item_link = official_url or item_url
+        official_or_item_link = official_link_if_known or official_url or item_url
         if official_url and item_url and item_url != official_url:
             official_or_item_link = f"{official_url}; {item_url}"
         record = {
-            "id": _flatten(payload.get("id")) or str(key),
+            "source_id": source_id,
             "label": _flatten(payload.get("label")) or str(key),
             "provider": _flatten(payload.get("provider")),
-            "category": _flatten(payload.get("category")),
-            "product_or_layer_id": _flatten(payload.get("product_or_layer_id")),
-            "used_in_workflows": _flatten(payload.get("used_in_workflows")),
-            "evidence_role": _flatten(payload.get("evidence_role")),
-            "manuscript_role": _flatten(payload.get("manuscript_role")),
-            "time_coverage_used": _flatten(payload.get("time_coverage_used")),
-            "manifest_or_inventory_paths": _flatten(payload.get("manifest_or_inventory_paths")),
-            "official_or_item_link": official_or_item_link,
-            "caveats": _flatten(payload.get("caveats")),
-            "status": _flatten(payload.get("status")),
+            "product_or_layer": product_or_layer,
+            "role": role,
+            "evidence_boundary": evidence_boundary,
+            "workflow_lanes": workflow_lanes,
+            "time_period_used": time_period_used,
+            "repo_manifests": repo_manifests,
+            "official_link_if_known": official_or_item_link,
+            "access_caveats": access_caveats,
+            "secrets_required": _flatten(payload.get("secrets_required")),
+            "stored_in_repo": _flatten(payload.get("stored_in_repo")),
         }
         records.append(record)
     return records
@@ -122,15 +137,15 @@ def _registry_frame(registry: dict[str, Any]) -> pd.DataFrame:
     if not records:
         return pd.DataFrame(columns=list(DISPLAY_COLUMNS.values()))
     df = pd.DataFrame(records)
-    df["category_sort"] = df["category"].map({category: index for index, category in enumerate(CATEGORY_ORDER)}).fillna(999)
-    df = df.sort_values(["category_sort", "label"]).drop(columns=["category_sort"])
+    df["role_sort"] = df["role"].map({role: index for index, role in enumerate(ROLE_ORDER)}).fillna(999)
+    df = df.sort_values(["role_sort", "label"]).drop(columns=["role_sort"])
     return df.rename(columns=DISPLAY_COLUMNS)
 
 
-def _filter_frame(df: pd.DataFrame, *, search_text: str, categories: list[str]) -> pd.DataFrame:
+def _filter_frame(df: pd.DataFrame, *, search_text: str, roles: list[str]) -> pd.DataFrame:
     filtered = df.copy()
-    if categories and "Category" in filtered.columns:
-        filtered = filtered[filtered["Category"].isin(categories)]
+    if roles and "Role" in filtered.columns:
+        filtered = filtered[filtered["Role"].isin(roles)]
     search = search_text.strip().lower()
     if search:
         haystack = filtered.astype(str).agg(" ".join, axis=1).str.lower()
@@ -139,13 +154,13 @@ def _filter_frame(df: pd.DataFrame, *, search_text: str, categories: list[str]) 
 
 
 def _category_sequence(df: pd.DataFrame) -> list[str]:
-    present = [category for category in CATEGORY_ORDER if category in set(df.get("Category", pd.Series(dtype=str)).astype(str))]
-    extras = sorted(set(df.get("Category", pd.Series(dtype=str)).astype(str)) - set(present))
+    present = [role for role in ROLE_ORDER if role in set(df.get("Role", pd.Series(dtype=str)).astype(str))]
+    extras = sorted(set(df.get("Role", pd.Series(dtype=str)).astype(str)) - set(present))
     return present + extras
 
 
-def _category_count(category_counts: dict[str, int], *categories: str) -> int:
-    return sum(int(category_counts.get(category, 0)) for category in categories)
+def _category_count(role_counts: dict[str, int], *roles: str) -> int:
+    return sum(int(role_counts.get(role, 0)) for role in roles)
 
 
 def render(state: dict, ui_state: dict) -> None:
@@ -168,7 +183,7 @@ def render(state: dict, ui_state: dict) -> None:
     )
     render_status_callout(
         "How to read this page",
-        "Observation truth != model comparator. Drifter provenance != oil-footprint truth. Forcing data != validation target.",
+        "Observation reference != model comparator. Drifter provenance != oil-footprint validation. Forcing data != validation target.",
         tone="info",
     )
 
@@ -182,7 +197,7 @@ def render(state: dict, ui_state: dict) -> None:
         )
         return
 
-    category_counts = df["Category"].value_counts().to_dict() if "Category" in df.columns else {}
+    role_counts = df["Role"].value_counts().to_dict() if "Role" in df.columns else {}
     manifest_count = int(
         df.astype(str)
         .agg(" ".join, axis=1)
@@ -192,9 +207,9 @@ def render(state: dict, ui_state: dict) -> None:
     render_metric_row(
         [
             ("Registered sources", str(len(df))),
-            ("Observation entries", str(category_counts.get("observation_truth", 0))),
-            ("Forcing entries", str(sum(category_counts.get(category, 0) for category in ["ocean_current_forcing", "wind_forcing", "wave_forcing"]))),
-            ("Tool/support entries", str(sum(category_counts.get(category, 0) for category in ["shoreline_geography", "oil_property", "model_tool", "support_reference"]))),
+            ("Observation entries", str(role_counts.get("observation validation mask", 0))),
+            ("Forcing entries", str(role_counts.get("forcing input", 0))),
+            ("Tool/support entries", str(sum(role_counts.get(role, 0) for role in ["shoreline support", "oil-property support", "model/tool provenance", "ui/review tool"]))),
         ],
         export_mode=export_mode,
     )
@@ -209,28 +224,28 @@ def render(state: dict, ui_state: dict) -> None:
                 "title": "Drifters",
                 "body": "Transport-provenance inputs and drifter validation sources.",
                 "badge": "Reference page",
-                "note": f"{_category_count(category_counts, 'transport_validation')} registered source(s)",
+                "note": f"{_category_count(role_counts, 'transport validation')} registered source(s)",
                 "tone": "advanced",
             },
             {
                 "title": "Forcing",
                 "body": "Ocean-current, wind, and wave/Stokes products used by stored model runs.",
                 "badge": "Reference page",
-                "note": f"{_category_count(category_counts, 'ocean_current_forcing', 'wind_forcing', 'wave_forcing')} registered source(s)",
+                "note": f"{_category_count(role_counts, 'forcing input')} registered source(s)",
                 "tone": "advanced",
             },
             {
                 "title": "Public masks",
-                "body": "Observation-derived masks used as external validation context, not model comparators.",
+                "body": "Public-observation masks used as validation references, not model comparators.",
                 "badge": "Reference page",
-                "note": f"{_category_count(category_counts, 'observation_truth')} registered source(s)",
+                "note": f"{_category_count(role_counts, 'observation validation mask')} registered source(s)",
                 "tone": "advanced",
             },
             {
                 "title": "Shoreline / grids",
                 "body": "Shoreline, geography, grid, and support layers used by stored outputs.",
                 "badge": "Reference page",
-                "note": f"{_category_count(category_counts, 'shoreline_geography', 'support_reference')} registered source(s)",
+                "note": f"{_category_count(role_counts, 'shoreline support')} registered source(s)",
                 "tone": "advanced",
             },
             {
@@ -246,7 +261,7 @@ def render(state: dict, ui_state: dict) -> None:
     )
 
     search_text = ""
-    selected_categories: list[str] = []
+    selected_roles: list[str] = []
     if not export_mode:
         columns = st.columns([2, 1])
         with columns[0]:
@@ -257,15 +272,15 @@ def render(state: dict, ui_state: dict) -> None:
                 key="data_sources_search",
             )
         with columns[1]:
-            category_options = _category_sequence(df)
-            selected_categories = st.multiselect(
-                "Category",
-                options=category_options,
-                format_func=lambda value: CATEGORY_LABELS.get(value, value.replace("_", " ").title()),
+            role_options = _category_sequence(df)
+            selected_roles = st.multiselect(
+                "Role",
+                options=role_options,
+                format_func=lambda value: ROLE_LABELS.get(value, value.replace("_", " ").title()),
                 key="data_sources_category_filter",
             )
 
-    filtered = _filter_frame(df, search_text=search_text, categories=selected_categories)
+    filtered = _filter_frame(df, search_text=search_text, roles=selected_roles)
     render_section_header(
         "Registry Details",
         "Use filters for review; grouped tables below preserve exact source names, links, caveats, and workflow roles.",
@@ -274,22 +289,22 @@ def render(state: dict, ui_state: dict) -> None:
         "All registered sources",
         filtered,
         download_name="data_sources_registry.csv",
-        caption="Machine-readable source: config/data_sources.yaml. Rows with missing exact links are marked for verification rather than guessed.",
+        caption="Machine-readable source: config/data_sources.yaml. Missing exact links are stated rather than guessed.",
         height=360,
         max_rows=None,
         export_mode=export_mode,
     )
 
     for category in _category_sequence(filtered):
-        category_df = filtered[filtered["Category"].astype(str).eq(category)].reset_index(drop=True)
+        category_df = filtered[filtered["Role"].astype(str).eq(category)].reset_index(drop=True)
         if category_df.empty:
             continue
-        label = CATEGORY_LABELS.get(category, category.replace("_", " ").title())
+        label = ROLE_LABELS.get(category, category.replace("_", " ").title())
         render_table(
             label,
             category_df,
             download_name=f"data_sources_{category}.csv",
-            caption="Grouped provenance view. Evidence role and caveats carry the thesis claim boundary for this source family.",
+            caption="Grouped provenance view. Evidence boundary and caveats carry the thesis claim boundary for this source family.",
             height=260,
             max_rows=None,
             export_mode=export_mode,
