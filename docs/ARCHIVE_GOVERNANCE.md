@@ -37,9 +37,11 @@ The archive does not change the final paper claim. It does not promote old March
 Use the launcher role groups rather than raw workflow modes:
 
 ```powershell
+.\start.ps1 -List -NoPause
 .\start.ps1 -ListRole archive_provenance -NoPause
 .\start.ps1 -ListRole legacy_support -NoPause
 .\start.ps1 -Explain phase1_regional_reference_rerun -NoPause
+.\start.ps1 -Explain phase1_production_rerun -NoPause
 .\start.ps1 -Explain mindoro_march13_14_phase1_focus_trial -NoPause
 ```
 
@@ -50,7 +52,9 @@ pwsh ./start.ps1 -ListRole archive_provenance -NoPause
 pwsh ./start.ps1 -ListRole legacy_support -NoPause
 ```
 
-Hidden aliases and hidden experimental entries remain resolvable by explicit ID for audit or compatibility, but they are not panel defaults and are not part of the main thesis evidence group.
+The unfiltered launcher list is grouped by thesis role. Archive/provenance, legacy, support, read-only, hidden-alias, and hidden-experimental routes stay inspectable, but they do not flatten into the main thesis evidence group.
+
+Hidden aliases and hidden experimental entries remain resolvable by explicit ID for audit or compatibility, but they are not panel defaults and are not part of the main thesis evidence group. `-Explain <hidden_id>` prints both the requested ID and the canonical entry ID before any run confirmation.
 
 ## Governance Rules
 

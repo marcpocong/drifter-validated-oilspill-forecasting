@@ -13,6 +13,17 @@ Panel reviewers should start with either:
 
 Panel mode opens the defense-safe launcher path. It reads stored outputs, opens review surfaces, checks package consistency, and rebuilds presentation packages from existing artifacts only.
 
+The full launcher stays available for intentional researcher or audit work, but it is grouped by role instead of presenting archive, support, legacy, and main evidence as one flat list:
+
+```powershell
+.\start.ps1 -List -NoPause
+.\start.ps1 -ListRole primary_evidence -NoPause
+.\start.ps1 -ListRole archive_provenance -NoPause
+.\start.ps1 -Explain mindoro_phase3b_primary_public_validation -NoPause
+```
+
+`-Explain` prints the label, manuscript section, thesis role, claim boundary, run kind, rerun cost, `safe_default`, role flags, expected outputs, and requested/canonical entry IDs for aliases before anything can run.
+
 Expensive scientific reruns require an explicit full-launcher entry selection, such as:
 
 ```powershell

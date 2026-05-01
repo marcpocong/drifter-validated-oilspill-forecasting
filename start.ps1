@@ -487,6 +487,16 @@ function Format-RunKindLabel {
     }
 }
 
+function Format-LauncherBool {
+    param([bool]$Value)
+
+    if ($Value) {
+        return "yes"
+    }
+
+    return "no"
+}
+
 function Test-LauncherEntryReadOnlyLike {
     param([Parameter(Mandatory = $true)]$LauncherEntry)
 
@@ -530,6 +540,53 @@ function Get-LauncherEntryOutputWarning {
         "archive_rerun" { return "May rerun archive, appendix, or provenance workflows and write new support artifacts under output/ without changing the thesis claim boundary." }
         default { return "May rerun scientific phases and write new workflow artifacts under output/. Continue only when you intentionally want that rerun." }
     }
+}
+
+function Get-LauncherEntryRoleFlags {
+    param([Parameter(Mandatory = $true)]$LauncherEntry)
+
+    $role = ([string]$LauncherEntry.thesis_role).ToLowerInvariant()
+    $runKind = ([string]$LauncherEntry.run_kind).ToLowerInvariant()
+    $rerunCost = ([string]$LauncherEntry.rerun_cost).ToLowerInvariant()
+    $stepText = (@($LauncherEntry.steps) | ForEach-Object {
+        "{0} {1} {2}" -f [string]$_.service, [string]$_.phase, [string]$_.description
+    }) -join " "
+    $stepText = $stepText.ToLowerInvariant()
+    return [ordered]@{
+        "read-only/package" = (Test-LauncherEntryReadOnlyLike -LauncherEntry $LauncherEntry)
+        "archive/legacy" = (
+            $role -in @("archive_provenance", "legacy_support") -or
+            -not [string]::IsNullOrWhiteSpace([string]$LauncherEntry.archive_status) -or
+            [bool]$LauncherEntry.experimental_only
+        )
+        "support/context" = (
+            $role -in @("support_context", "comparator_support", "legacy_support") -or
+            $runKind -in @("comparator_rerun", "archive_rerun") -or
+            $stepText.Contains("appendix") -or
+            $stepText.Contains("sensitivity") -or
+            $stepText.Contains("phase4_oiltype_and_shoreline") -or
+            $stepText.Contains("prototype")
+        )
+        "comparator-related" = (
+            $role -eq "comparator_support" -or
+            $runKind -eq "comparator_rerun" -or
+            $stepText.Contains("pygnome") -or
+            $stepText.Contains("comparator")
+        )
+        "expensive rerun" = (
+            $rerunCost -eq "expensive" -and
+            -not (Test-LauncherEntryReadOnlyLike -LauncherEntry $LauncherEntry)
+        )
+    }
+}
+
+function Format-LauncherEntryRoleFlags {
+    param([Parameter(Mandatory = $true)]$LauncherEntry)
+
+    $flags = Get-LauncherEntryRoleFlags -LauncherEntry $LauncherEntry
+    return (($flags.GetEnumerator() | ForEach-Object {
+        "{0}={1}" -f $_.Key, (Format-LauncherBool -Value ([bool]$_.Value))
+    }) -join " | ")
 }
 
 function New-LauncherChoiceResult {
@@ -676,6 +733,7 @@ function Write-LauncherEntrySummary {
     Write-Host ("     id={0}" -f $LauncherEntry.entry_id) -ForegroundColor DarkGray
     Write-Host ("     category={0} | thesis role={1}" -f (Get-LauncherCategoryLabel -CategoryId ([string]$LauncherEntry.category_id)), (Format-ThesisRoleLabel -Role ([string]$LauncherEntry.thesis_role))) -ForegroundColor Yellow
     Write-Host ("     manuscript section={0}" -f (Get-LauncherEntryManuscriptSection -LauncherEntry $LauncherEntry)) -ForegroundColor Yellow
+    Write-Host ("     role flags={0}" -f (Format-LauncherEntryRoleFlags -LauncherEntry $LauncherEntry)) -ForegroundColor DarkGray
 
     $safetyTag = if ([bool]$LauncherEntry.safe_default) { "safe-default" } else { "explicit-confirm" }
     $tags = @(
@@ -982,9 +1040,12 @@ function Write-LauncherEntryPreviewContent {
     if ($null -eq $startupEnv) {
         $startupEnv = Get-LauncherEnvPreview -LauncherEntry $LauncherEntry
     }
+    $requestedEntryDisplay = if ([string]::IsNullOrWhiteSpace($RequestedEntryId)) { [string]$LauncherEntry.entry_id } else { [string]$RequestedEntryId }
     Write-Host ("Entry ID: {0}" -f [string]$LauncherEntry.entry_id) -ForegroundColor Yellow
+    Write-Host ("Requested entry ID: {0}" -f $requestedEntryDisplay) -ForegroundColor White
     if (-not [string]::IsNullOrWhiteSpace($RequestedEntryId) -and ([string]$RequestedEntryId -ne [string]$LauncherEntry.entry_id)) {
         Write-Host ("Requested alias: {0}" -f [string]$RequestedEntryId) -ForegroundColor DarkGray
+        Write-Host "Alias resolution: requested ID resolves to the canonical entry metadata shown below." -ForegroundColor DarkGray
     }
     Write-Host ("Canonical entry ID: {0}" -f [string]$LauncherEntry.entry_id) -ForegroundColor White
     Write-Host ("Label: {0}" -f [string]$LauncherEntry.label) -ForegroundColor White
@@ -994,6 +1055,8 @@ function Write-LauncherEntryPreviewContent {
     Write-Host ("Claim boundary: {0}" -f [string]$LauncherEntry.claim_boundary) -ForegroundColor White
     Write-Host ("Run kind: {0}" -f (Format-RunKindLabel -RunKind ([string]$LauncherEntry.run_kind))) -ForegroundColor White
     Write-Host ("Rerun cost: {0}" -f [string]$LauncherEntry.rerun_cost) -ForegroundColor White
+    Write-Host ("Safe default: {0}" -f ([string]([bool]$LauncherEntry.safe_default)).ToLowerInvariant()) -ForegroundColor White
+    Write-Host ("Role flags: {0}" -f (Format-LauncherEntryRoleFlags -LauncherEntry $LauncherEntry)) -ForegroundColor White
     Write-Host ("Services and phases: {0}" -f (Get-LauncherEntryShortStepSummary -LauncherEntry $LauncherEntry)) -ForegroundColor White
     $safetyText = Get-LauncherEntrySafetyText -LauncherEntry $LauncherEntry
     Write-Host ("Safety / recommended for: {0} / {1}" -f $safetyText, [string]$LauncherEntry.recommended_for) -ForegroundColor White
@@ -1034,9 +1097,12 @@ function Write-LauncherEntryCompactPreview {
     Write-Host ""
     Write-Host "Inspect preview:" -ForegroundColor Cyan
     Write-Host ("  Entry ID: {0}" -f [string]$LauncherEntry.entry_id) -ForegroundColor Yellow
+    $requestedEntryDisplay = if ([string]::IsNullOrWhiteSpace($RequestedEntryId)) { [string]$LauncherEntry.entry_id } else { [string]$RequestedEntryId }
+    Write-Host ("  Requested entry ID: {0}" -f $requestedEntryDisplay) -ForegroundColor White
     if (-not [string]::IsNullOrWhiteSpace($RequestedEntryId) -and ([string]$RequestedEntryId -ne [string]$LauncherEntry.entry_id)) {
         Write-Host ("  Requested alias: {0}" -f [string]$RequestedEntryId) -ForegroundColor DarkGray
     }
+    Write-Host ("  Canonical entry ID: {0}" -f [string]$LauncherEntry.entry_id) -ForegroundColor White
     Write-Host ("  Label: {0}" -f [string]$LauncherEntry.label) -ForegroundColor White
     Write-Host ("  Category: {0}" -f (Get-LauncherCategoryLabel -CategoryId ([string]$LauncherEntry.category_id))) -ForegroundColor White
     Write-Host ("  Thesis role: {0}" -f (Format-ThesisRoleLabel -Role ([string]$LauncherEntry.thesis_role))) -ForegroundColor White
@@ -1044,6 +1110,8 @@ function Write-LauncherEntryCompactPreview {
     Write-Host ("  Claim boundary: {0}" -f [string]$LauncherEntry.claim_boundary) -ForegroundColor White
     Write-Host ("  Run kind: {0}" -f (Format-RunKindLabel -RunKind ([string]$LauncherEntry.run_kind))) -ForegroundColor White
     Write-Host ("  Rerun cost: {0}" -f [string]$LauncherEntry.rerun_cost) -ForegroundColor White
+    Write-Host ("  Safe default: {0}" -f ([string]([bool]$LauncherEntry.safe_default)).ToLowerInvariant()) -ForegroundColor White
+    Write-Host ("  Role flags: {0}" -f (Format-LauncherEntryRoleFlags -LauncherEntry $LauncherEntry)) -ForegroundColor White
     Write-Host ("  Safety / confirmation: {0}" -f (Get-LauncherEntrySafetyText -LauncherEntry $LauncherEntry)) -ForegroundColor White
     Write-Host ("  Recommended for: {0}" -f [string]$LauncherEntry.recommended_for) -ForegroundColor White
     Write-Host ("  Step summary: {0}" -f (Get-LauncherEntryShortStepSummary -LauncherEntry $LauncherEntry)) -ForegroundColor DarkGray
@@ -1083,6 +1151,15 @@ function Confirm-LauncherEntryRun {
     }
 
     Show-LauncherEntryPreview -LauncherEntry $LauncherEntry -RequestedEntryId $RequestedEntryId
+    Write-Host ""
+    if (Test-LauncherEntryReadOnlyLike -LauncherEntry $LauncherEntry) {
+        Write-Host "Read-only/package confirmation: no scientific rerun should occur." -ForegroundColor Green
+    } elseif ([string]$LauncherEntry.rerun_cost -eq "expensive") {
+        Write-Host "WARNING: this is an expensive rerun and may recompute science or archive/comparator outputs." -ForegroundColor Yellow
+    } else {
+        Write-Host "WARNING: this entry may recompute support, archive, comparator, or scientific outputs." -ForegroundColor Yellow
+    }
+    Write-Host "Use -DryRun first when you only want to inspect commands." -ForegroundColor DarkGray
     Write-Host ""
 
     $confirmationPrompt = if (Test-LauncherEntryReadOnlyLike -LauncherEntry $LauncherEntry) {
@@ -2117,6 +2194,7 @@ function New-LauncherRunPlan {
         run_kind = [string]$LauncherEntry.run_kind
         rerun_cost = [string]$LauncherEntry.rerun_cost
         safe_default = [bool]$LauncherEntry.safe_default
+        role_flags = Format-LauncherEntryRoleFlags -LauncherEntry $LauncherEntry
         requires_explicit_confirmation = [bool](Test-LauncherEntryNeedsPreview -LauncherEntry $LauncherEntry)
         services_and_phases = Get-LauncherEntryShortStepSummary -LauncherEntry $LauncherEntry
         startup_environment = $StartupEnv
@@ -2184,6 +2262,7 @@ function Export-LauncherRunPlan {
         ('- Rerun cost: `{0}`' -f $plan.rerun_cost),
         ('- Services and phases: `{0}`' -f $plan.services_and_phases),
         ('- Safe default: `{0}`' -f ([string]$plan.safe_default).ToLowerInvariant()),
+        ("- Role flags: {0}" -f $plan.role_flags),
         ('- Requires explicit confirmation: `{0}`' -f ([string]$plan.requires_explicit_confirmation).ToLowerInvariant()),
         ("- Startup prompts: {0}" -f $plan.startup_prompts),
         ("- May write outputs: {0}" -f $plan.may_write_outputs),
@@ -2810,6 +2889,7 @@ function Show-LauncherList {
     Write-Host ("Read-only UI: {0} exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501" -f $compose) -ForegroundColor Yellow
     Write-Host ""
     Write-Host "Use user-facing entry IDs and thesis-role groupings here. Raw phase names are not the primary startup commands." -ForegroundColor White
+    Write-Host "The unfiltered list is grouped by thesis role, so archive, legacy, support, and read-only routes do not flatten into main evidence." -ForegroundColor White
     Write-Host "Shared controls: B/BACK/0=back, C/CANCEL=cancel, Q/QUIT/EXIT=exit, H/HELP=help, L/LIST=list, S/SEARCH=search, P/PANEL=panel, U/UI=dashboard, R/RESTART=dashboard restart when available." -ForegroundColor White
     Write-Host ""
 
@@ -2820,6 +2900,23 @@ function Show-LauncherList {
                 Sort-Object menu_order, entry_id
         )
         Write-Host ("Filtered thesis role: {0}" -f (Format-ThesisRoleLabel -Role $normalizedRole)) -ForegroundColor Cyan
+        switch ($normalizedRole) {
+            "primary_evidence" {
+                Write-Host "Only current thesis/reportable main-evidence launcher entries are shown here. They still require explicit confirmation before execution." -ForegroundColor Green
+            }
+            "archive_provenance" {
+                Write-Host "Archive/provenance entries remain accessible for audit and compatibility, including hidden aliases, but they are not default thesis-facing evidence." -ForegroundColor Yellow
+            }
+            "legacy_support" {
+                Write-Host "Legacy entries remain accessible as support/debug routes only; they are not replacements for Mindoro B1 or DWH." -ForegroundColor Yellow
+            }
+            "read_only_governance" {
+                Write-Host "Read-only and packaging entries use stored outputs. No scientific rerun should occur." -ForegroundColor Green
+            }
+            default {
+                Write-Host "This role filter preserves the entry claim boundaries shown below." -ForegroundColor Yellow
+            }
+        }
         Write-Host ""
         if (-not $matchingEntries) {
             Write-Host "No launcher entries currently match that thesis role." -ForegroundColor DarkYellow
@@ -2843,7 +2940,8 @@ function Show-LauncherList {
         $hiddenEntries = Get-HiddenLauncherEntries
         if ($hiddenEntries) {
             Write-Host "Hidden compatibility / experimental IDs" -ForegroundColor Cyan
-            Write-Host "   These remain valid for older scripts or deliberate experiments, but they stay out of the default launcher menu." -ForegroundColor DarkGray
+            Write-Host "   These remain valid for older scripts, explicit audit, or deliberate experiments, but they stay out of the default launcher menu." -ForegroundColor DarkGray
+            Write-Host "   Use .\start.ps1 -Explain <hidden_id> -NoPause to see the requested ID and canonical entry ID before running anything." -ForegroundColor DarkGray
             foreach ($entry in $hiddenEntries) {
                 Write-LauncherEntrySummary -LauncherEntry $entry -IncludeHiddenMarker
                 Write-Host ""
@@ -2876,8 +2974,10 @@ function Show-Help {
     Write-Host "  .\start.ps1" -ForegroundColor Green
     Write-Host "  .\start.ps1 -List -NoPause" -ForegroundColor Green
     Write-Host "  .\start.ps1 -ListRole primary_evidence -NoPause" -ForegroundColor Green
+    Write-Host "  .\start.ps1 -ListRole archive_provenance -NoPause" -ForegroundColor Green
     Write-Host "  .\start.ps1 -ValidateMatrix -NoPause" -ForegroundColor Green
     Write-Host "  .\start.ps1 -Explain mindoro_phase3b_primary_public_validation -NoPause" -ForegroundColor Green
+    Write-Host "  .\start.ps1 -Explain phase1_production_rerun -NoPause  # hidden alias resolves to canonical ID" -ForegroundColor Green
     Write-Host "  .\start.ps1 -Explain mindoro_phase3b_primary_public_validation -ExportPlan -NoPause" -ForegroundColor Green
     Write-Host "  .\start.ps1 -Entry <entry_id>" -ForegroundColor Green
     Write-Host "  .\start.ps1 -Entry <entry_id> -DryRun -NoPause" -ForegroundColor Green
@@ -2910,6 +3010,7 @@ function Show-Help {
     Write-Host "  phase1_mindoro_focus_pre_spill_experiment" -ForegroundColor Gray
     Write-Host "  phase1_production_rerun" -ForegroundColor Gray
     Write-Host "  mindoro_march13_14_noaa_reinit_stress_test" -ForegroundColor Gray
+    Write-Host "  Explain/dry-run output shows both the requested ID and canonical entry ID before any execution." -ForegroundColor Gray
     Write-Host ""
     Write-Host "Read-only / packaging-safe examples:" -ForegroundColor Yellow
     Write-Host "  .\start.ps1 -Entry b1_drifter_context_panel" -ForegroundColor Green
@@ -2943,6 +3044,7 @@ function Show-Help {
     Write-Host "Guardrails:" -ForegroundColor Yellow
     Write-Host "  - Panel mode is the defense-safe default. The full launcher is for researcher/audit use." -ForegroundColor White
     Write-Host "  - Panel mode and read-only entries do not rerun science." -ForegroundColor White
+    Write-Host "  - Explain previews print label, manuscript section, thesis role, claim boundary, run kind, rerun cost, safe_default, role flags, and expected outputs." -ForegroundColor White
     Write-Host "  - Use launcher entry IDs and role groups as the user-facing startup vocabulary. Raw phase names are secondary implementation details." -ForegroundColor White
     Write-Host "  - B1 is the only main Philippine public-observation validation claim, using independent March 13 and March 14 NOAA public-observation products." -ForegroundColor White
     Write-Host "  - Track A and every PyGNOME branch remain comparator-only support, never observational truth." -ForegroundColor White

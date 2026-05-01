@@ -21,10 +21,10 @@ That opens the panel-safe launcher path instead of the full research launcher.
 1. Open the read-only dashboard
 2. Verify stored manuscript numbers against stored scorecards
 3. Rebuild publication figures from stored outputs only
-4. Inspect the focused Phase 1 drifter provenance behind `B1`
-5. Refresh the final validation package from stored outputs only
-6. Refresh the reproducibility / docs package from stored outputs only
-7. Open the paper-to-output registry
+4. Refresh the final validation package from stored outputs only
+5. Refresh the reproducibility / docs package from stored outputs only
+6. Open the paper-to-output registry
+7. Inspect the focused Phase 1 drifter provenance behind `B1`
 8. Open the data sources and provenance registry
 
 None of those steps are meant to rerun expensive science or change thesis claims.
@@ -132,9 +132,13 @@ Main panel-safe entry points:
 .\panel.ps1
 .\start.ps1 -Panel
 .\start.ps1 -List -NoPause
+.\start.ps1 -ListRole primary_evidence -NoPause
+.\start.ps1 -ListRole archive_provenance -NoPause
 .\start.ps1 -Help -NoPause
 .\start.ps1 -Explain mindoro_phase3b_primary_public_validation -ExportPlan -NoPause
 ```
+
+`-List` shows role-grouped launcher entries instead of flattening archive, legacy, support, and main evidence together. `-Explain` is safe: it prints the label, manuscript section, thesis role, claim boundary, run kind, rerun cost, `safe_default`, role flags, expected outputs, and alias requested/canonical IDs before any execution path.
 
 macOS with Homebrew:
 
@@ -218,4 +222,4 @@ These belong to the full launcher and are not the default defense path:
 .\start.ps1 -Entry mindoro_appendix_sensitivity_bundle
 ```
 
-Use them only when you intentionally want researcher or audit reruns.
+Use them only when you intentionally want researcher or audit reruns. Expensive rerun entries ask for confirmation and warn that science or archive/comparator outputs may be recomputed; read-only and packaging entries state that no scientific rerun should occur.

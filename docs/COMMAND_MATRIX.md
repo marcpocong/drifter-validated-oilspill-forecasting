@@ -32,12 +32,15 @@ Safe inspection helpers:
 ```powershell
 .\start.ps1 -List -NoPause
 .\start.ps1 -ListRole primary_evidence -NoPause
+.\start.ps1 -ListRole archive_provenance -NoPause
 .\start.ps1 -ValidateMatrix -NoPause
 .\start.ps1 -Help -NoPause
 .\start.ps1 -Explain mindoro_phase3b_primary_public_validation -NoPause
 .\start.ps1 -Explain mindoro_phase3b_primary_public_validation -ExportPlan -NoPause
 .\start.ps1 -Entry mindoro_phase3b_primary_public_validation -DryRun -NoPause
 ```
+
+`-List` is grouped by thesis role so archive, legacy, support, and read-only entries do not flatten into main evidence. `-Explain` prints label, manuscript section, thesis role, claim boundary, run kind, rerun cost, `safe_default`, role flags, expected outputs, and alias requested/canonical IDs before any execution path.
 
 Shared menu controls:
 
@@ -59,6 +62,8 @@ Shared menu controls:
 | --- | --- |
 | Defense / panel inspection | `.\panel.ps1` |
 | Audit launcher entries without Docker or science | `.\start.ps1 -ValidateMatrix -NoPause` or `python -m src.utils.validate_launcher_matrix` |
+| List only main thesis/reportable entries | `.\start.ps1 -ListRole primary_evidence -NoPause` |
+| List archive/provenance entries | `.\start.ps1 -ListRole archive_provenance -NoPause` |
 | Open dashboard only | panel option `1` or `U` / `UI`; the dashboard launch is a shortcut, not a separate launcher entry ID. Direct container form: `docker compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501` |
 | Inspect drifter provenance behind `B1` | panel option `7`, or `.\start.ps1 -Entry b1_drifter_context_panel` |
 | Inspect data sources and provenance | panel option `8`, open [DATA_SOURCES.md](DATA_SOURCES.md), inspect [config/data_sources.yaml](../config/data_sources.yaml), or use the dashboard `Data Sources & Provenance` reference page |
@@ -140,6 +145,8 @@ Data-source provenance is a read-only documentation/UI layer, not a launcher rer
 | `phase1_mindoro_focus_pre_spill_experiment` | `phase1_mindoro_focus_provenance` | Same focused Mindoro provenance workflow. |
 | `phase1_production_rerun` | `phase1_regional_reference_rerun` | Same broader regional reference/governance workflow. |
 | `mindoro_march13_14_noaa_reinit_stress_test` | `mindoro_phase3b_primary_public_validation` | Hidden legacy ID for older scripts only; it resolves to the canonical `B1` entry and does not run the Track A/PyGNOME comparator lane. |
+
+Use `.\start.ps1 -Explain <hidden_id> -NoPause` to see requested and canonical IDs before any run confirmation.
 
 ## Exact Prompt-Free Read-Only Commands
 

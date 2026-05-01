@@ -25,6 +25,17 @@ pwsh ./start.ps1 -Panel
 
 Panel mode is read-only and packaging-safe. It can open the dashboard, verify stored paper numbers, rebuild publication figures from stored outputs, refresh review packages, and show provenance registries.
 
+Panel-safe options:
+
+1. Open read-only dashboard
+2. Verify paper numbers against stored scorecards
+3. Rebuild publication figures from stored outputs
+4. Refresh final validation package from stored outputs
+5. Refresh final reproducibility package / command documentation
+6. Show paper-to-output registry
+7. View B1 drifter provenance/context
+8. View data sources and provenance registry
+
 Suggested review path:
 
 1. Open the read-only dashboard.
@@ -48,7 +59,10 @@ Expensive science does not run from the default panel path. Choose the full laun
 ```powershell
 .\start.ps1
 .\start.ps1 -List -NoPause
+.\start.ps1 -ListRole primary_evidence -NoPause
+.\start.ps1 -ListRole archive_provenance -NoPause
+.\start.ps1 -Explain mindoro_phase3b_primary_public_validation -NoPause
 .\start.ps1 -Entry mindoro_phase3b_primary_public_validation -DryRun -NoPause
 ```
 
-Use dry runs and exported plans before running any full scientific entry.
+Use dry runs and exported plans before running any full scientific entry. Explain and dry-run previews show the requested ID, canonical ID, claim boundary, run kind, rerun cost, `safe_default`, and role flags before any run confirmation.

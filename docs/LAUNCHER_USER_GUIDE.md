@@ -17,6 +17,7 @@
 .\start.ps1
 .\start.ps1 -List -NoPause
 .\start.ps1 -ListRole primary_evidence -NoPause
+.\start.ps1 -ListRole archive_provenance -NoPause
 .\start.ps1 -Help -NoPause
 .\start.ps1 -Explain mindoro_phase3b_primary_public_validation -NoPause
 .\start.ps1 -Explain mindoro_phase3b_primary_public_validation -ExportPlan -NoPause
@@ -54,7 +55,7 @@ Linux uses the same `pwsh ./start.ps1 ...` command shape after PowerShell 7 is i
 - In a section menu, `X` opens inline inspect mode for visible menu numbers or entry IDs without running anything.
 - Inline inspect mode stays inside the current section, shows a compact preview first, and accepts `M`, `MORE` to expand the most recent inspected entry to the full thesis-facing preview.
 - After inspect/search preview, `E`, `EXPORT` writes `output/launcher_plans/<entry_id>.md` and `.json` without running science.
-- Typing a hidden alias entry ID resolves to the canonical entry preview before any execution path.
+- Typing a hidden alias entry ID resolves to the canonical entry preview before any execution path; explain/dry-run output shows both requested and canonical entry IDs.
 - Pressing `Enter` at an execution confirmation prompt cancels cleanly with `Cancelled. No workflow was executed.`
 
 ## Preferred Entry IDs
@@ -103,6 +104,8 @@ Read-only governance:
 - `phase1_production_rerun` -> prefer `phase1_regional_reference_rerun`
 - `mindoro_march13_14_noaa_reinit_stress_test` -> hidden legacy ID that resolves to `mindoro_phase3b_primary_public_validation`; it does not run the Track A/PyGNOME comparator lane
 
+Use `.\start.ps1 -Explain <entry_id> -NoPause` before running any hidden ID. The preview prints label, manuscript section, thesis role, claim boundary, run kind, rerun cost, `safe_default`, role flags, expected outputs, and requested/canonical IDs.
+
 ## Runtime Controls
 
 - `FORCING_OUTAGE_POLICY=default|continue_degraded|fail_hard`
@@ -146,6 +149,7 @@ If you want the freshest read-only packaging before opening the dashboard, refre
 ## Final Guardrails
 
 - Use launcher entry IDs and role groups as the primary workflow vocabulary.
+- `.\start.ps1 -List -NoPause` is grouped by role, so archive and legacy work stays accessible without becoming default thesis-facing evidence.
 - `B1` is the only main Philippine public-observation validation claim.
 - `B1` supports coastal-neighborhood usefulness, not exact 1 km overlap or universal operational accuracy.
 - March 13-14 keeps the observation-independence note explicit.

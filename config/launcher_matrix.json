@@ -1,26 +1,26 @@
 {
-  "catalog_version": "phase5_launcher_matrix_v4",
+  "catalog_version": "phase5_launcher_matrix_v5",
   "entrypoint": "start.ps1",
   "categories": [
     {
       "category_id": "scientific_reportable_tracks",
-      "label": "Scientific / reportable tracks",
-      "description": "Intentional scientific reruns or reportable output builders."
+      "label": "Main reportable scientific reruns",
+      "description": "Intentional thesis/reportable scientific reruns only; use panel mode for safe stored-output review."
     },
     {
       "category_id": "sensitivity_appendix_tracks",
       "label": "Sensitivity / appendix tracks",
-      "description": "Supporting branches, archive lanes, and compatibility aliases preserved outside the default defense path."
+      "description": "Supporting branches, archive lanes, and compatibility aliases preserved outside the default defense path and outside the main claim."
     },
     {
       "category_id": "read_only_packaging_help_utilities",
       "label": "Read-only packaging / help utilities",
-      "description": "Safe utilities that summarize or audit the current repo state without rerunning expensive science."
+      "description": "Panel-safe utilities that summarize, package, or audit stored outputs without rerunning science."
     },
     {
       "category_id": "legacy_prototype_tracks",
       "label": "Legacy prototype tracks",
-      "description": "Backward-compatible prototype workflows preserved for debugging and regression."
+      "description": "Backward-compatible prototype workflows preserved for debugging, regression, and legacy support only."
     }
   ],
   "role_groups": [
@@ -29,7 +29,7 @@
       "GroupId": "main_thesis_evidence",
       "MenuKey": "1",
       "Label": "Main thesis evidence / reportable",
-      "Description": "Intentional reruns for the defended reportable evidence lanes.",
+      "Description": "Intentional reruns for defended reportable evidence lanes; not the panel-safe review path.",
       "thesis_roles": [
         "primary_evidence"
       ]
@@ -50,7 +50,7 @@
       "GroupId": "archive_provenance",
       "MenuKey": "3",
       "Label": "Archive/provenance",
-      "Description": "Archive, provenance, and governance reruns kept outside the default defense path.",
+      "Description": "Archive, provenance, and hidden compatibility routes kept accessible but outside thesis-facing defaults.",
       "thesis_roles": [
         "archive_provenance"
       ]
@@ -60,7 +60,7 @@
       "GroupId": "legacy_debug",
       "MenuKey": "4",
       "Label": "Legacy/debug",
-      "Description": "Legacy prototype support and debug paths.",
+      "Description": "Legacy prototype support and debug paths; not replacements for Mindoro B1 or DWH.",
       "thesis_roles": [
         "legacy_support"
       ]
