@@ -7113,7 +7113,7 @@ class FigurePackagePublicationService:
                 ),
                 "guide_bullets": [
                     "Each panel overlays the observed drifter track on the stored 72 h p50 and p90 occupancy footprints.",
-                    "p50 is the tighter preferred legacy ensemble footprint; p90 is the broader support envelope.",
+                    "p50 is the tighter preferred legacy ensemble footprint; p90 is a conservative support/comparison product.",
                     "Use this board to compare how closely the observed track sits inside the stored forecast envelope for each case.",
                 ],
                 "note_lines": [

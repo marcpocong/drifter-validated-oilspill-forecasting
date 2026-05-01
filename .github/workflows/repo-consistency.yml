@@ -1,0 +1,42 @@
+name: Repo consistency
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  cheap-guardrails:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install cheap test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest pyyaml
+
+      - name: Run repo guardrail tests
+        run: >
+          python -m pytest
+          tests/test_final_paper_consistency_guardrails.py
+          tests/test_no_draft_version_labels.py
+          tests/test_validate_launcher_matrix.py
+          tests/test_launcher_matrix_metadata.py
+          tests/test_defense_claim_boundaries.py
+
+      - name: Run lightweight validators
+        shell: pwsh
+        run: |
+          python scripts/validate_final_paper_guardrails.py
+          python scripts/validate_archive_registry.py
+          python scripts/validate_paper_to_output_registry.py
+          python scripts/validate_data_sources_registry.py
+          ./start.ps1 -ValidateMatrix -NoPause

@@ -1024,7 +1024,7 @@ class TrajectoryGalleryPanelPolishService:
                 self._image_slot("Deterministic event-corridor reference", "output/CASE_DWH_RETRO_2010_72H/phase3c_external_case_run/qa_phase3c_eventcorridor_overlay.png"),
                 self._image_slot("Per-date p50 and p90 overlays", "output/trajectory_gallery/case_dwh_retro_2010_72h__phase3c_ensemble__opendrift__ensemble_overlay__2010_05_21_to_2010_05_23__p50_p90_overlays.png"),
                 self._image_slot("Event-corridor p50 and p90 overlay", "output/trajectory_gallery/case_dwh_retro_2010_72h__phase3c_ensemble__opendrift__ensemble_overlay__2010_05_21_to_2010_05_23__eventcorridor_overlay.png"),
-                self._text_slot("Model-selection note", "On this DWH definition, the deterministic event corridor remains slightly ahead of p50 on mean FSS, while p90 shows the broadest but loosest envelope. This helps the panel understand what p50 and p90 mean visually."),
+                self._text_slot("Model-selection note", "On this DWH definition, the deterministic event corridor remains slightly ahead of p50 on mean FSS, while p90 remains a conservative support/comparison product. This helps the panel understand what p50 and p90 mean visually."),
             ],
             legend_keys=["deterministic_opendrift", "ensemble_p50", "ensemble_p90", "observed_mask"],
             metric_lines=[

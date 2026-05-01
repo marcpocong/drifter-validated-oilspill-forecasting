@@ -6,6 +6,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DRAFT_WORD = "Draft"
 LOWER_DRAFT_WORD = "draft"
 TARGET_VERSION = "2" + "2"
+REDACTED_MANUSCRIPT_LABEL = "[REDACTED_MANUSCRIPT_LABEL]"
+FORBIDDEN_MANUSCRIPT_PATTERN = re.compile(
+    "".join(("Dra", "ft")) + r"[\s_-]*" + str(20 + 8),
+    re.IGNORECASE,
+)
 
 SCAN_TARGETS = (
     REPO_ROOT / "ui",
@@ -52,7 +57,11 @@ def _find_disallowed(text: str) -> str:
     for pattern, reason in DISALLOWED_PATTERNS:
         match = pattern.search(text)
         if match:
-            return f"{reason}: {match.group(0)!r}"
+            matched_text = FORBIDDEN_MANUSCRIPT_PATTERN.sub(
+                REDACTED_MANUSCRIPT_LABEL,
+                match.group(0),
+            )
+            return f"{reason}: {matched_text!r}"
     return ""
 
 

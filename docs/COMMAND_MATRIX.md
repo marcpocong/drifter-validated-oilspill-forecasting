@@ -5,6 +5,7 @@
 - Panel mode is the defense-safe default path.
 - The full launcher is the researcher / audit path.
 - Use launcher entry IDs from [config/launcher_matrix.json](../config/launcher_matrix.json) as the user-facing vocabulary.
+- Raw phase names are secondary; use panel and launcher-entry commands as the primary startup surface.
 - Panel mode and read-only entries do not rerun science.
 
 ## Final Manuscript Evidence Order
