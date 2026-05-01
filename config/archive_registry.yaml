@@ -287,17 +287,19 @@ archive_items:
     launcher_entry_id: null
     path_only: true
     path_patterns:
-      - "phase1_production_rerun_debug.log"
-      - "tmp_test_logo.png"
+      - "archive/development_artifacts/root_debug_logs/phase1_production_rerun_debug.log"
+      - "archive/development_artifacts/temporary_images/tmp_test_logo.png"
+      - "archive/development_artifacts/os_junk/**"
     status: repository_only_development
     thesis_facing: false
     reportable: false
     paper_reflected_as: "not reflected; archived for audit"
     claim_boundary: "Root-level debug artifacts have no scientific claim."
-    why_archived: "Prompt 1 audit surfaced root-level development artifacts; this registry lists them without moving or deleting them."
+    why_archived: "Prompt 1 audit surfaced root-level development artifacts and tracked OS metadata; they were moved into archive/development_artifacts for traceability instead of being silently deleted."
     rerun_allowed: false
     launcher_visibility: read_only_only
     protected_outputs:
-      - "phase1_production_rerun_debug.log"
-      - "tmp_test_logo.png"
-    notes: "Cleanup or relocation can be handled by a later prompt."
+      - "archive/development_artifacts/root_debug_logs/phase1_production_rerun_debug.log"
+      - "archive/development_artifacts/temporary_images/tmp_test_logo.png"
+      - "archive/development_artifacts/os_junk/**"
+    notes: "Repository-development archive only; not scientific evidence and not part of final paper outputs."

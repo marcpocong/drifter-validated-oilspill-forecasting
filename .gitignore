@@ -15,8 +15,11 @@ env/
 *.swo
 *.DS_Store
 Thumbs.db
+ehthumbs.db
+Icon?
 desktop.ini
 *~
+.ipynb_checkpoints/
 
 # Data files (keep structure with .gitkeep)
 data/*
@@ -86,12 +89,40 @@ output/prototype_2016_pygnome_similarity/figures/*
 .pytest_cache/
 .coverage
 htmlcov/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.cache/
 
 # Logs
+*.log
 logs/*.log
+*.trace
+*.stackdump
 
 # Environment files
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*credentials*.json
+*secret*.json
+*token*.json
+.streamlit/secrets.toml
+
+# Local scratch/debug artifacts
+tmp_*
+temp_*
+scratch/
+scratch_*/
+*.tmp
+*.temp
+*.bak
+*.orig
+tmp_test_logo.png
 
 # Markdown
 md/
