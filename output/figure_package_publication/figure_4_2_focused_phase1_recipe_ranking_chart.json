@@ -1,0 +1,12 @@
+﻿{
+    "figure_label":  "Figure 4.2",
+    "title":  "Focused Phase 1 recipe ranking chart",
+    "output_path":  "output/figure_package_publication/figure_4_2_focused_phase1_recipe_ranking_chart.png",
+    "status":  "generated_from_stored_outputs",
+    "source_file_paths_used":  [
+                                   "output/phase1_mindoro_focus_pre_spill_2016_2023/phase1_recipe_ranking.csv",
+                                   "output/phase1_mindoro_focus_pre_spill_2016_2023/phase1_recipe_summary.csv"
+                               ],
+    "caption_provenance":  "Focused Phase 1 recipe ranking chart drawn from stored ranking CSV; lower raw NCS is better.",
+    "generation_note":  "Generated from stored repository outputs only; no scientific rerun, model simulation, remote download, or manuscript-PDF extraction was performed."
+}

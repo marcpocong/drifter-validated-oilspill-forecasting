@@ -1,0 +1,12 @@
+﻿{
+    "figure_label":  "Figure 4.1",
+    "title":  "Focused Phase 1 accepted February–April segment map",
+    "output_path":  "output/figure_package_publication/figure_4_1_focused_phase1_accepted_feb_apr_segment_map.png",
+    "status":  "generated_from_stored_outputs",
+    "source_file_paths_used":  [
+                                   "output/phase1_mindoro_focus_pre_spill_2016_2023/phase1_accepted_segment_registry.csv",
+                                   "output/phase1_mindoro_focus_pre_spill_2016_2023/phase1_ranking_subset_registry.csv"
+                               ],
+    "caption_provenance":  "Focused Phase 1 accepted February–April segment map drawn from stored Phase 1 segment registries.",
+    "generation_note":  "Generated from stored repository outputs only; no scientific rerun, model simulation, remote download, or manuscript-PDF extraction was performed."
+}

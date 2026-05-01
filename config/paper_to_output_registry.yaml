@@ -1,6 +1,6 @@
 {
   "registry_schema_version": 1,
-  "updated": "2026-05-01",
+  "updated": "2026-05-02",
   "purpose": "Paper-to-repo crosswalk for final-paper claims, tables, figures, appendices, and governance/data-source registries. This is a stored-output/config/doc registry only; it does not create new scientific claims.",
   "validation_policy": {
     "fail_on_missing_required_primary_evidence": true,
@@ -580,311 +580,322 @@
     },
     {
       "paper_item_id": "figure_4_1",
-      "paper_label": "Figure 4.1 - Focused Phase 1 accepted February-April segment map",
+      "paper_label": "Figure 4.1 - Focused Phase 1 accepted February–April segment map",
       "evidence_role": "primary_evidence",
-      "claim_boundary": "Focused Phase 1 segment-map evidence is transport provenance only, not spill validation.",
+      "claim_boundary": "Transport provenance only.",
       "repo_paths": [
+        "output/figure_package_publication/figure_4_1_focused_phase1_accepted_feb_apr_segment_map.png",
+        "output/figure_package_publication/figure_4_1_focused_phase1_accepted_feb_apr_segment_map.json",
         "output/phase1_mindoro_focus_pre_spill_2016_2023/phase1_accepted_segment_registry.csv",
-        "output/phase1_mindoro_focus_pre_spill_2016_2023/phase1_ranking_subset_registry.csv",
-        "optional_missing: output/figure_package_publication/figure_4_1_focused_phase1_accepted_feb_apr_segment_map.png - dedicated final-layout map is not tracked; accepted and ranked segment registries are the stored evidence source"
+        "output/phase1_mindoro_focus_pre_spill_2016_2023/phase1_ranking_subset_registry.csv"
       ],
       "required_repo_paths": [
-        "output/phase1_mindoro_focus_pre_spill_2016_2023/phase1_accepted_segment_registry.csv"
+        "output/figure_package_publication/figure_4_1_focused_phase1_accepted_feb_apr_segment_map.png"
       ],
       "source_config_paths": [
         "config/phase1_mindoro_focus_pre_spill_2016_2023.yaml"
       ],
       "output_exists": true,
-      "validation_method": "stored accepted/ranked segment registries; no scientific rerun required",
-      "notes": "Demotes stale generic study-box context mapping."
+      "validation_method": "stored-output figure generation; no scientific rerun required",
+      "notes": "Generated from stored Phase 1 segment registries only; not a public-spill validation figure."
     },
     {
       "paper_item_id": "figure_4_2",
       "paper_label": "Figure 4.2 - Focused Phase 1 recipe ranking chart",
       "evidence_role": "primary_evidence",
-      "claim_boundary": "Recipe ranking chart is transport-provenance support only, not oil-footprint truth.",
+      "claim_boundary": "Recipe provenance only.",
       "repo_paths": [
+        "output/figure_package_publication/figure_4_2_focused_phase1_recipe_ranking_chart.png",
+        "output/figure_package_publication/figure_4_2_focused_phase1_recipe_ranking_chart.json",
         "output/phase1_mindoro_focus_pre_spill_2016_2023/phase1_recipe_ranking.csv",
-        "output/phase1_mindoro_focus_pre_spill_2016_2023/phase1_recipe_summary.csv",
-        "scripts/figures/make_fig_5_3_focused_phase1_recipe_ranking.py",
-        "optional_missing: output/figure_package_publication/figure_4_2_focused_phase1_recipe_ranking_chart.png - dedicated final-layout chart is not tracked; recipe-ranking CSV is the stored evidence source"
+        "output/phase1_mindoro_focus_pre_spill_2016_2023/phase1_recipe_summary.csv"
       ],
       "required_repo_paths": [
-        "output/phase1_mindoro_focus_pre_spill_2016_2023/phase1_recipe_ranking.csv"
+        "output/figure_package_publication/figure_4_2_focused_phase1_recipe_ranking_chart.png"
       ],
       "source_config_paths": [
         "config/phase1_mindoro_focus_pre_spill_2016_2023.yaml"
       ],
       "output_exists": true,
-      "validation_method": "stored recipe-ranking CSV and existing figure helper script",
-      "notes": "Demotes stale generic geography/domain reference mapping."
+      "validation_method": "stored-output figure generation; no scientific rerun required",
+      "notes": "Generated from stored focused Phase 1 ranking tables only; recipe provenance, not oil-footprint truth."
     },
     {
       "paper_item_id": "figure_4_3",
       "paper_label": "Figure 4.3 - Mindoro product-family board with deterministic, probability, and threshold surfaces",
       "evidence_role": "primary_evidence",
-      "claim_boundary": "Mindoro product-family board presents standardized products only; mask_p50 is preferred and mask_p90 is conservative support only.",
+      "claim_boundary": "`mask_p50` preferred; `mask_p90` conservative support only.",
       "repo_paths": [
-        "output/final_reproducibility_package/final_output_catalog.csv",
-        "output/final_validation_package/final_validation_manifest.json",
-        "output/figure_package_publication/case_mindoro_retro_2023__phase2_official__opendrift__single_trajectory__2023_03_03_to_2023_03_06__zoom__paper__deterministic_trajectory.png",
-        "output/figure_package_publication/case_mindoro_retro_2023__phase2_official__opendrift__single_trajectory__2023_03_03_to_2023_03_06__zoom__paper__ensemble_sampled_trajectory.png",
-        "scripts/figures/make_descriptive_label_manuscript_figures.py",
-        "optional_missing: output/figure_package_publication/figure_4_3_mindoro_product_family_board.png - dedicated final-layout product-family board is not tracked; final catalogs and stored publication products are the evidence source"
+        "output/figure_package_publication/figure_4_3_mindoro_product_family_board.png",
+        "output/figure_package_publication/figure_4_3_mindoro_product_family_board.json",
+        "output/final_reproducibility_package/final_output_catalog.csv"
       ],
       "required_repo_paths": [
-        "output/final_reproducibility_package/final_output_catalog.csv",
-        "output/final_validation_package/final_validation_manifest.json"
+        "output/figure_package_publication/figure_4_3_mindoro_product_family_board.png"
       ],
       "source_config_paths": [
         "config/case_mindoro_retro_2023.yaml",
         "config/ensemble.yaml"
       ],
       "output_exists": true,
-      "validation_method": "final output catalog, validation manifest, publication products, and descriptive-label helper",
-      "notes": "Product-family mapping covers deterministic, prob_presence, mask_p50, and mask_p90 without changing scientific values."
+      "validation_method": "stored-output figure generation; no scientific rerun required",
+      "notes": "Generated from stored product rasters only; mask_p50 is preferred and mask_p90 is conservative high-confidence support only."
     },
     {
       "paper_item_id": "figure_4_4",
       "paper_label": "Figure 4.4 - Mindoro primary validation board",
       "evidence_role": "primary_evidence",
-      "claim_boundary": "Primary Mindoro March 13–14 visualization supports coastal-neighborhood usefulness; not exact 1 km overlap.",
+      "claim_boundary": "Primary Mindoro supports neighborhood agreement only, not exact overlap.",
       "repo_paths": [
+        "output/figure_package_publication/figure_4_4_mindoro_primary_validation_board.png",
         "output/Phase 3B March13-14 Final Output/publication/opendrift_primary/mindoro_primary_validation_board.png",
-        "output/figure_package_publication/case_mindoro_retro_2023__phase3b_reinit_primary__opendrift__comparison_board__2023_03_13_to_2023_03_14__board__slide__mindoro_primary_validation_board.png",
-        "output/Phase 3B March13-14 Final Output/manifests/phase3b_final_output_registry.csv"
+        "output/Phase 3B March13-14 Final Output/summary/opendrift_primary/march13_14_reinit_summary.csv"
       ],
       "required_repo_paths": [
-        "output/Phase 3B March13-14 Final Output/publication/opendrift_primary/mindoro_primary_validation_board.png"
+        "output/figure_package_publication/figure_4_4_mindoro_primary_validation_board.png"
       ],
       "source_config_paths": [
         "config/publication_figure_style.yaml",
         "config/case_mindoro_retro_2023_phase3b_primary_validation_amendment.yaml"
       ],
       "output_exists": true,
-      "validation_method": "stored publication board and output registry",
-      "notes": "Final export path is the shortest stable figure source; the publication-package path is also indexed."
+      "validation_method": "stored publication-package alias; no scientific rerun required",
+      "notes": "Copied from stored Phase 3B final publication output; IoU and Dice remain zero and no exact-grid success is claimed."
     },
     {
       "paper_item_id": "figure_4_4a",
       "paper_label": "Figure 4.4A - NOAA-published March 13 WorldView-3 analysis map",
       "evidence_role": "primary_evidence",
-      "claim_boundary": "March 13 is the public seed observation for the Primary Mindoro March 13–14 validation case; it is independent from the March 14 target product.",
+      "claim_boundary": "Primary Mindoro supports neighborhood agreement only, not exact overlap.",
       "repo_paths": [
-        "output/Phase 3B March13-14 Final Output/publication/observations/figure_4_4A_noaa_mar13_worldview3.png",
-        "output/figure_package_publication/figure_4_4A_noaa_mar13_worldview3.png"
+        "output/figure_package_publication/figure_4_4A_noaa_mar13_worldview3.png",
+        "output/Phase 3B March13-14 Final Output/publication/observations/figure_4_4A_noaa_mar13_worldview3.png"
       ],
       "required_repo_paths": [
-        "output/Phase 3B March13-14 Final Output/publication/observations/figure_4_4A_noaa_mar13_worldview3.png"
+        "output/figure_package_publication/figure_4_4A_noaa_mar13_worldview3.png"
       ],
       "source_config_paths": [
         "config/data_sources.yaml"
       ],
       "output_exists": true,
-      "validation_method": "stored public-observation figure",
-      "notes": "Observation support figure only; it does not create a separate validation row."
+      "validation_method": "stored publication-package alias; no scientific rerun required",
+      "notes": "Stored support figure; March 13 is the seed observation, not a target validation score."
     },
     {
       "paper_item_id": "figure_4_4b",
       "paper_label": "Figure 4.4B - NOAA-published March 14 WorldView-3 analysis map",
       "evidence_role": "primary_evidence",
-      "claim_boundary": "March 14 is the public target observation for the Primary Mindoro March 13–14 validation case; it is independent from the March 13 seed product.",
+      "claim_boundary": "Primary Mindoro supports neighborhood agreement only, not exact overlap.",
       "repo_paths": [
-        "output/Phase 3B March13-14 Final Output/publication/observations/figure_4_4B_noaa_mar14_worldview3.png",
-        "output/figure_package_publication/figure_4_4B_noaa_mar14_worldview3.png"
+        "output/figure_package_publication/figure_4_4B_noaa_mar14_worldview3.png",
+        "output/Phase 3B March13-14 Final Output/publication/observations/figure_4_4B_noaa_mar14_worldview3.png"
       ],
       "required_repo_paths": [
-        "output/Phase 3B March13-14 Final Output/publication/observations/figure_4_4B_noaa_mar14_worldview3.png"
+        "output/figure_package_publication/figure_4_4B_noaa_mar14_worldview3.png"
       ],
       "source_config_paths": [
         "config/data_sources.yaml"
       ],
       "output_exists": true,
-      "validation_method": "stored public-observation figure",
-      "notes": "Observation support figure only; it does not create a separate validation row."
+      "validation_method": "stored publication-package alias; no scientific rerun required",
+      "notes": "Stored support figure; March 14 is the independent target observation."
     },
     {
       "paper_item_id": "figure_4_4c",
       "paper_label": "Figure 4.4C - ArcGIS overlay of March 13 and March 14 observed oil-spill extents",
       "evidence_role": "primary_evidence",
-      "claim_boundary": "Overlay illustrates independent day-specific public-observation products; it does not imply exact forecast overlap.",
+      "claim_boundary": "Primary Mindoro supports neighborhood agreement only, not exact overlap.",
       "repo_paths": [
-        "output/Phase 3B March13-14 Final Output/publication/observations/figure_4_4C_arcgis_mar13_mar14_observed_overlay.png",
-        "output/figure_package_publication/figure_4_4C_arcgis_mar13_mar14_observed_overlay.png"
+        "output/figure_package_publication/figure_4_4C_arcgis_mar13_mar14_observed_overlay.png",
+        "output/Phase 3B March13-14 Final Output/publication/observations/figure_4_4C_arcgis_mar13_mar14_observed_overlay.png"
       ],
       "required_repo_paths": [
-        "output/Phase 3B March13-14 Final Output/publication/observations/figure_4_4C_arcgis_mar13_mar14_observed_overlay.png"
+        "output/figure_package_publication/figure_4_4C_arcgis_mar13_mar14_observed_overlay.png"
       ],
       "source_config_paths": [
         "config/data_sources.yaml"
       ],
       "output_exists": true,
-      "validation_method": "stored observed-overlay figure",
-      "notes": "Observation support figure only."
+      "validation_method": "stored publication-package alias; no scientific rerun required",
+      "notes": "Stored observation-pair support figure; does not imply exact forecast overlap."
     },
     {
       "paper_item_id": "figure_4_5",
       "paper_label": "Figure 4.5 - Mindoro same-case OpenDrift–PyGNOME spatial comparator board",
       "evidence_role": "comparator_support",
-      "claim_boundary": "PyGNOME is comparator-only and never observational truth; this is not a second validation row.",
+      "claim_boundary": "Mindoro comparator-only; PyGNOME is not truth.",
       "repo_paths": [
+        "output/figure_package_publication/figure_4_5_mindoro_same_case_opendrift_pygnome_spatial_comparator_board.png",
         "output/Phase 3B March13-14 Final Output/publication/comparator_pygnome/Figure_4_5_Mindoro_TrackA_OpenDrift_PyGNOME_spatial_board.png",
-        "output/Phase 3B March13-14 Final Output/publication/comparator_pygnome/mindoro_crossmodel_board.png",
-        "output/figure_package_publication/Figure_4_5_Mindoro_TrackA_OpenDrift_PyGNOME_spatial_board.png"
+        "output/Phase 3B March13-14 Final Output/summary/comparator_pygnome/march13_14_reinit_crossmodel_summary.csv"
       ],
-      "required_repo_paths": [],
+      "required_repo_paths": [
+        "output/figure_package_publication/figure_4_5_mindoro_same_case_opendrift_pygnome_spatial_comparator_board.png"
+      ],
       "source_config_paths": [
         "config/publication_figure_style.yaml"
       ],
       "output_exists": true,
-      "validation_method": "stored comparator board",
-      "notes": "Same-case OpenDrift/PyGNOME support against the March 14 public mask."
+      "validation_method": "stored publication-package alias; no scientific rerun required",
+      "notes": "Copied from stored comparator board; PyGNOME is comparator-only and never observational truth."
     },
     {
       "paper_item_id": "figure_4_6",
       "paper_label": "Figure 4.6 - Mindoro same-case OpenDrift–PyGNOME comparator mean FSS summary",
       "evidence_role": "comparator_support",
-      "claim_boundary": "PyGNOME is comparator-only and never observational truth; this is not a second validation row.",
+      "claim_boundary": "Mindoro comparator-only; PyGNOME is not truth.",
       "repo_paths": [
-        "output/Phase 3B March13-14 Final Output/publication/comparator_pygnome/march14_crossmodel_r1_overlay.png",
-        "output/Phase 3B March13-14 Final Output/publication/comparator_pygnome/march14_crossmodel_pygnome_overlay.png",
+        "output/figure_package_publication/figure_4_6_mindoro_comparator_mean_fss_summary.png",
+        "output/figure_package_publication/figure_4_6_mindoro_comparator_mean_fss_summary.json",
         "output/Phase 3B March13-14 Final Output/summary/comparator_pygnome/march13_14_reinit_crossmodel_model_ranking.csv"
       ],
-      "required_repo_paths": [],
+      "required_repo_paths": [
+        "output/figure_package_publication/figure_4_6_mindoro_comparator_mean_fss_summary.png"
+      ],
       "source_config_paths": [
         "config/panel_paper_expected_values.yaml"
       ],
       "output_exists": true,
-      "validation_method": "stored overlays plus ranking CSV",
-      "notes": "No new claim is made if a dedicated bar-chart figure is absent; the stored ranking CSV is the traceable numeric source."
+      "validation_method": "stored-output figure generation; no scientific rerun required",
+      "notes": "Generated from stored comparator ranking CSV only; PyGNOME is comparator-only and not a second validation row."
     },
     {
       "paper_item_id": "figure_4_7",
       "paper_label": "Figure 4.7 - DWH observed, deterministic, mask_p50, and PyGNOME event-corridor board",
       "evidence_role": "external_transfer",
-      "claim_boundary": "DWH is external transfer validation only; PyGNOME is comparator-only.",
+      "claim_boundary": "DWH external transfer; PyGNOME comparator-only where shown.",
       "repo_paths": [
-        "output/Phase 3C DWH Final Output/publication/comparator_pygnome/dwh_2010-05-21_to_2010-05-23_eventcorridor_observed_deterministic_mask_p50_pygnome_board.png",
-        "output/figure_package_publication/case_dwh_retro_2010_72h__phase3c_dwh_pygnome_comparator__opendrift_vs_pygnome__comparison_board__2010_05_21_to_2010_05_23__board__slide__observed_deterministic_mask_p50_pygnome_board.png"
+        "output/figure_package_publication/figure_4_7_dwh_eventcorridor_observed_deterministic_mask_p50_pygnome_board.png",
+        "output/Phase 3C DWH Final Output/publication/comparator_pygnome/dwh_2010-05-21_to_2010-05-23_eventcorridor_observed_deterministic_mask_p50_pygnome_board.png"
       ],
       "required_repo_paths": [
-        "output/Phase 3C DWH Final Output/publication/comparator_pygnome/dwh_2010-05-21_to_2010-05-23_eventcorridor_observed_deterministic_mask_p50_pygnome_board.png"
+        "output/figure_package_publication/figure_4_7_dwh_eventcorridor_observed_deterministic_mask_p50_pygnome_board.png"
       ],
       "source_config_paths": [
         "config/publication_figure_style.yaml"
       ],
       "output_exists": true,
-      "validation_method": "stored DWH deterministic board",
-      "notes": "Read-only packaging from stored outputs."
+      "validation_method": "stored publication-package alias; no scientific rerun required",
+      "notes": "Copied from stored DWH final output; DWH is external transfer validation only and PyGNOME is comparator-only."
     },
     {
       "paper_item_id": "figure_4_8",
       "paper_label": "Figure 4.8 - DWH 24 h, 48 h, and 72 h mask_p50, mask_p90, and PyGNOME overview board",
       "evidence_role": "external_transfer",
-      "claim_boundary": "DWH p50 is the preferred probabilistic footprint; p90 is conservative support only; PyGNOME is comparator-only.",
+      "claim_boundary": "DWH external transfer; PyGNOME comparator-only where shown.",
       "repo_paths": [
-        "output/Phase 3C DWH Final Output/publication/comparator_pygnome/dwh_24h_48h_72h_mask_p50_mask_p90_vs_pygnome_three_row_overview_board.png",
-        "output/Phase 3C DWH Final Output/publication/comparator_pygnome/dwh_24h_48h_72h_mask_p50_mask_p90_dual_threshold_vs_pygnome_overview_board.png",
-        "output/figure_package_publication/case_dwh_retro_2010_72h__phase3c_dwh_pygnome_comparator__opendrift_vs_pygnome__comparison_board__2010_05_21_to_2010_05_23__board__slide__24h_48h_72h_mask_p50_mask_p90_vs_pygnome_three_row_overview_board.png"
+        "output/figure_package_publication/figure_4_8_dwh_24h_48h_72h_mask_p50_mask_p90_pygnome_overview_board.png",
+        "output/Phase 3C DWH Final Output/publication/comparator_pygnome/dwh_24h_48h_72h_mask_p50_mask_p90_vs_pygnome_three_row_overview_board.png"
       ],
       "required_repo_paths": [
-        "output/Phase 3C DWH Final Output/publication/comparator_pygnome/dwh_24h_48h_72h_mask_p50_mask_p90_vs_pygnome_three_row_overview_board.png"
+        "output/figure_package_publication/figure_4_8_dwh_24h_48h_72h_mask_p50_mask_p90_pygnome_overview_board.png"
       ],
       "source_config_paths": [
         "config/ensemble.yaml",
         "config/publication_figure_style.yaml"
       ],
       "output_exists": true,
-      "validation_method": "stored DWH ensemble board",
-      "notes": "Never relabel p90 as a broad envelope."
+      "validation_method": "stored publication-package alias; no scientific rerun required",
+      "notes": "Copied from stored DWH final output; mask_p90 is conservative high-confidence support only."
     },
     {
       "paper_item_id": "figure_4_9",
       "paper_label": "Figure 4.9 - DWH 48 h observed, deterministic, mask_p50, and PyGNOME board",
       "evidence_role": "external_transfer",
-      "claim_boundary": "DWH 48 h board is external transfer only; PyGNOME is comparator-only.",
+      "claim_boundary": "DWH external transfer; PyGNOME comparator-only where shown.",
       "repo_paths": [
-        "output/Phase 3C DWH Final Output/publication/comparator_pygnome/dwh_2010-05-22_48h_observed_deterministic_mask_p50_pygnome_board.png",
-        "output/figure_package_publication/case_dwh_retro_2010_72h__phase3c_dwh_pygnome_comparator__opendrift_vs_pygnome__comparison_board__2010_05_22__board__slide__observed_deterministic_mask_p50_pygnome_board.png"
+        "output/figure_package_publication/figure_4_9_dwh_48h_observed_deterministic_mask_p50_pygnome_board.png",
+        "output/Phase 3C DWH Final Output/publication/comparator_pygnome/dwh_2010-05-22_48h_observed_deterministic_mask_p50_pygnome_board.png"
       ],
       "required_repo_paths": [
-        "output/Phase 3C DWH Final Output/publication/comparator_pygnome/dwh_2010-05-22_48h_observed_deterministic_mask_p50_pygnome_board.png"
+        "output/figure_package_publication/figure_4_9_dwh_48h_observed_deterministic_mask_p50_pygnome_board.png"
       ],
       "source_config_paths": [
         "config/publication_figure_style.yaml"
       ],
       "output_exists": true,
-      "validation_method": "stored DWH comparator board",
-      "notes": "Comparator support only."
+      "validation_method": "stored publication-package alias; no scientific rerun required",
+      "notes": "Copied from stored DWH final output; DWH is external transfer validation only and PyGNOME is comparator-only."
     },
     {
       "paper_item_id": "figure_4_10",
       "paper_label": "Figure 4.10 - CASE_2016-09-01 secondary drifter-track benchmark map panel",
       "evidence_role": "secondary_support",
-      "claim_boundary": "Secondary 2016 is support only, not public-spill validation; PyGNOME is comparator-only.",
+      "claim_boundary": "Secondary/legacy support only.",
       "repo_paths": [
+        "output/figure_package_publication/figure_4_10_case_2016_09_01_secondary_drifter_track_benchmark_map_panel.png",
         "output/2016_drifter_benchmark/case_boards/CASE_2016-09-01_drifter_track_benchmark.png",
-        "output/figure_package_publication/case_2016_09_01__prototype_2016_home_overview__observation__single_support_context__2016_09_01__single__paper__drifter_track_case_2016_09_01.png"
+        "output/2016_drifter_benchmark/scorecard.csv"
       ],
-      "required_repo_paths": [],
+      "required_repo_paths": [
+        "output/figure_package_publication/figure_4_10_case_2016_09_01_secondary_drifter_track_benchmark_map_panel.png"
+      ],
       "source_config_paths": [
         "config/archive_registry.yaml"
       ],
       "output_exists": true,
-      "validation_method": "stored direct drifter-track benchmark board",
-      "notes": "Observed reference is a NOAA drifter track; PyGNOME remains deterministic comparator only where present."
+      "validation_method": "stored publication-package alias; no scientific rerun required",
+      "notes": "Copied from stored secondary 2016 benchmark board; secondary support only, not public-spill validation."
     },
     {
       "paper_item_id": "figure_4_11",
       "paper_label": "Figure 4.11 - CASE_2016-09-06 secondary drifter-track benchmark map panel",
       "evidence_role": "secondary_support",
-      "claim_boundary": "Secondary 2016 is support only, not public-spill validation; PyGNOME is comparator-only.",
+      "claim_boundary": "Secondary/legacy support only.",
       "repo_paths": [
+        "output/figure_package_publication/figure_4_11_case_2016_09_06_secondary_drifter_track_benchmark_map_panel.png",
         "output/2016_drifter_benchmark/case_boards/CASE_2016-09-06_drifter_track_benchmark.png",
-        "output/figure_package_publication/case_2016_09_06__prototype_2016_home_overview__observation__single_support_context__2016_09_06__single__paper__drifter_track_case_2016_09_06.png"
+        "output/2016_drifter_benchmark/scorecard.csv"
       ],
-      "required_repo_paths": [],
+      "required_repo_paths": [
+        "output/figure_package_publication/figure_4_11_case_2016_09_06_secondary_drifter_track_benchmark_map_panel.png"
+      ],
       "source_config_paths": [
         "config/archive_registry.yaml"
       ],
       "output_exists": true,
-      "validation_method": "stored direct drifter-track benchmark board",
-      "notes": "Observed reference is a NOAA drifter track; PyGNOME remains deterministic comparator only where present."
+      "validation_method": "stored publication-package alias; no scientific rerun required",
+      "notes": "Copied from stored secondary 2016 benchmark board; secondary support only, not public-spill validation."
     },
     {
       "paper_item_id": "figure_4_12",
       "paper_label": "Figure 4.12 - CASE_2016-09-17 secondary drifter-track benchmark map panel",
       "evidence_role": "secondary_support",
-      "claim_boundary": "Secondary 2016 is support only, not public-spill validation; PyGNOME is comparator-only.",
+      "claim_boundary": "Secondary/legacy support only.",
       "repo_paths": [
+        "output/figure_package_publication/figure_4_12_case_2016_09_17_secondary_drifter_track_benchmark_map_panel.png",
         "output/2016_drifter_benchmark/case_boards/CASE_2016-09-17_drifter_track_benchmark.png",
-        "output/figure_package_publication/case_2016_09_17__prototype_2016_home_overview__observation__single_support_context__2016_09_17__single__paper__drifter_track_case_2016_09_17.png"
+        "output/2016_drifter_benchmark/scorecard.csv"
       ],
-      "required_repo_paths": [],
+      "required_repo_paths": [
+        "output/figure_package_publication/figure_4_12_case_2016_09_17_secondary_drifter_track_benchmark_map_panel.png"
+      ],
       "source_config_paths": [
         "config/archive_registry.yaml"
       ],
       "output_exists": true,
-      "validation_method": "stored direct drifter-track benchmark board",
-      "notes": "Observed reference is a NOAA drifter track; PyGNOME remains deterministic comparator only where present."
+      "validation_method": "stored publication-package alias; no scientific rerun required",
+      "notes": "Copied from stored secondary 2016 benchmark board; secondary support only, not public-spill validation."
     },
     {
       "paper_item_id": "figure_4_13",
       "paper_label": "Figure 4.13 - Legacy 2016 OpenDrift-versus-PyGNOME overall mean FSS chart",
       "evidence_role": "secondary_support",
-      "claim_boundary": "Secondary 2016 is support only, not public-spill validation; PyGNOME is comparator-only.",
+      "claim_boundary": "Secondary/legacy support only.",
       "repo_paths": [
+        "output/figure_package_publication/figure_4_13_legacy_2016_opendrift_pygnome_overall_mean_fss_chart.png",
         "output/prototype_2016_pygnome_similarity/qa_prototype_pygnome_scorecard.png",
-        "output/prototype_2016_pygnome_similarity/prototype_pygnome_fss_by_case_window.csv",
         "output/2016 Legacy Runs FINAL Figures/summary/phase3a/prototype_pygnome_fss_by_case_window.csv"
       ],
-      "required_repo_paths": [],
+      "required_repo_paths": [
+        "output/figure_package_publication/figure_4_13_legacy_2016_opendrift_pygnome_overall_mean_fss_chart.png"
+      ],
       "source_config_paths": [
         "config/archive_registry.yaml"
       ],
       "output_exists": true,
-      "validation_method": "stored legacy scorecard chart and FSS tables",
-      "notes": "Demotes stale legacy fate/shoreline mapping; Figure 4.13 is the legacy OpenDrift-versus-PyGNOME overall mean FSS chart source."
+      "validation_method": "stored publication-package alias; no scientific rerun required",
+      "notes": "Copied from stored legacy scorecard chart; legacy comparator support only, not public-spill validation."
     },
     {
       "paper_item_id": "output_phase1_mindoro_focus_root",

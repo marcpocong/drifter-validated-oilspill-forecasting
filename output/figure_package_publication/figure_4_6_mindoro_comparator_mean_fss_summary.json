@@ -1,0 +1,11 @@
+﻿{
+    "figure_label":  "Figure 4.6",
+    "title":  "Mindoro same-case OpenDrift–PyGNOME comparator mean FSS summary",
+    "output_path":  "output/figure_package_publication/figure_4_6_mindoro_comparator_mean_fss_summary.png",
+    "status":  "generated_from_stored_outputs",
+    "source_file_paths_used":  [
+                                   "output/Phase 3B March13-14 Final Output/summary/comparator_pygnome/march13_14_reinit_crossmodel_model_ranking.csv"
+                               ],
+    "caption_provenance":  "Mindoro same-case comparator mean FSS summary drawn from the stored comparator ranking CSV.",
+    "generation_note":  "Generated from stored repository outputs only; no scientific rerun, model simulation, remote download, or manuscript-PDF extraction was performed."
+}

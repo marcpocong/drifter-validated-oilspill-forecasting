@@ -1,0 +1,14 @@
+﻿{
+    "figure_label":  "Figure 4.3",
+    "title":  "Mindoro product-family board with deterministic, probability, and threshold surfaces",
+    "output_path":  "output/figure_package_publication/figure_4_3_mindoro_product_family_board.png",
+    "status":  "generated_from_stored_outputs",
+    "source_file_paths_used":  [
+                                   "output/CASE_MINDORO_RETRO_2023/forecast/control_footprint_mask_2023-03-06T09-59-00Z.tif",
+                                   "output/CASE_MINDORO_RETRO_2023/official_rerun_r1/R1_selected_previous/forecast_datecomposites/prob_presence_2023-03-06_datecomposite.tif",
+                                   "output/CASE_MINDORO_RETRO_2023/official_rerun_r1/R1_selected_previous/forecast_datecomposites/mask_p50_2023-03-06_datecomposite.tif",
+                                   "output/CASE_MINDORO_RETRO_2023/official_rerun_r1/R1_selected_previous/forecast_datecomposites/mask_p90_2023-03-06_datecomposite.tif"
+                               ],
+    "caption_provenance":  "Mindoro product-family board drawn from stored deterministic, prob_presence, mask_p50, and mask_p90 rasters.",
+    "generation_note":  "Generated from stored repository outputs only; no scientific rerun, model simulation, remote download, or manuscript-PDF extraction was performed."
+}
