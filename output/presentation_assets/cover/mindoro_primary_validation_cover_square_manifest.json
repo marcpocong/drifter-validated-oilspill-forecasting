@@ -1,0 +1,46 @@
+{
+  "asset": "Mindoro primary validation cover square",
+  "generated_from": {
+    "precheck_json": "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit/precheck/march14_reinit_branch_R1_previous.json",
+    "summary_csv": "output/Phase 3B March13-14 Final Output/summary/opendrift_primary/march13_14_reinit_summary.csv",
+    "seed_mask": "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit/march13_seed_mask_on_grid.tif",
+    "target_mask": "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public/accepted_obs_masks/10b37c42a9754363a5f7b14199b077e6.tif",
+    "forecast_mask_p50": "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit/R1_previous/forecast_datecomposites/mask_p50_2023-03-14_localdate.tif",
+    "sea_mask": "data_processed/grids/sea_mask.tif"
+  },
+  "scorecard": {
+    "mean_fss": "0.108",
+    "nearest_km": "1.41 km",
+    "cells": "5 modeled / 22 observed cells"
+  },
+  "outputs": [
+    {
+      "output_path": "output/presentation_assets/cover/mindoro_primary_validation_cover_square.png",
+      "pixel_size": [
+        2000,
+        2000
+      ],
+      "map_extent_epsg32651_m": {
+        "x_min": 322000.0,
+        "x_max": 346000.0,
+        "y_min": 1456500.0,
+        "y_max": 1474500.0
+      }
+    },
+    {
+      "output_path": "output/presentation_assets/cover/mindoro_primary_validation_cover_square_hires.png",
+      "pixel_size": [
+        4000,
+        4000
+      ],
+      "map_extent_epsg32651_m": {
+        "x_min": 322000.0,
+        "x_max": 346000.0,
+        "y_min": 1456500.0,
+        "y_max": 1474500.0
+      }
+    }
+  ],
+  "font": "Arial",
+  "claim_boundary": "Cover-slide visual summary only; not a replacement for the full analysis board."
+}
