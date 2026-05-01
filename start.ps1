@@ -687,6 +687,18 @@ function Write-LauncherEntrySummary {
     if ($IncludeHiddenMarker -and [bool]$LauncherEntry.menu_hidden) {
         $tags += "hidden-from-default-menu"
     }
+    if ($LauncherEntry.archive_status) {
+        $tags += ("archive-status={0}" -f [string]$LauncherEntry.archive_status)
+    }
+    if ([bool]$LauncherEntry.experimental_only) {
+        $tags += "experimental-only"
+    }
+    if (($LauncherEntry.PSObject.Properties.Name -contains "thesis_facing") -and (-not [bool]$LauncherEntry.thesis_facing)) {
+        $tags += "not-thesis-facing"
+    }
+    if (($LauncherEntry.PSObject.Properties.Name -contains "reportable") -and (-not [bool]$LauncherEntry.reportable)) {
+        $tags += "not-reportable"
+    }
     if ($LauncherEntry.alias_of) {
         $tags += ("alias-of={0}" -f [string]$LauncherEntry.alias_of)
     }
@@ -2096,6 +2108,12 @@ function New-LauncherRunPlan {
         thesis_role_label = Format-ThesisRoleLabel -Role ([string]$LauncherEntry.thesis_role)
         manuscript_section = Get-LauncherEntryManuscriptSection -LauncherEntry $LauncherEntry
         claim_boundary = [string]$LauncherEntry.claim_boundary
+        thesis_facing = [bool]$LauncherEntry.thesis_facing
+        reportable = [bool]$LauncherEntry.reportable
+        experimental_only = [bool]$LauncherEntry.experimental_only
+        archive_status = [string]$LauncherEntry.archive_status
+        archive_registry_id = [string]$LauncherEntry.archive_registry_id
+        launcher_visibility = [string]$LauncherEntry.launcher_visibility
         run_kind = [string]$LauncherEntry.run_kind
         rerun_cost = [string]$LauncherEntry.rerun_cost
         safe_default = [bool]$LauncherEntry.safe_default
@@ -2156,6 +2174,12 @@ function Export-LauncherRunPlan {
         ('- Thesis role: `{0}` ({1})' -f $plan.thesis_role, $plan.thesis_role_label),
         ("- Manuscript section: {0}" -f $plan.manuscript_section),
         ("- Claim boundary: {0}" -f $plan.claim_boundary),
+        ('- Thesis-facing: `{0}`' -f ([string]$plan.thesis_facing).ToLowerInvariant()),
+        ('- Reportable: `{0}`' -f ([string]$plan.reportable).ToLowerInvariant()),
+        ('- Experimental-only: `{0}`' -f ([string]$plan.experimental_only).ToLowerInvariant()),
+        ('- Archive status: `{0}`' -f $(if ($plan.archive_status) { $plan.archive_status } else { "none" })),
+        ('- Archive registry ID: `{0}`' -f $(if ($plan.archive_registry_id) { $plan.archive_registry_id } else { "none" })),
+        ('- Launcher visibility: `{0}`' -f $(if ($plan.launcher_visibility) { $plan.launcher_visibility } else { "default" })),
         ('- Run kind: `{0}`' -f $plan.run_kind),
         ('- Rerun cost: `{0}`' -f $plan.rerun_cost),
         ('- Services and phases: `{0}`' -f $plan.services_and_phases),

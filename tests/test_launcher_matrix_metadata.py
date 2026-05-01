@@ -32,6 +32,9 @@ class LauncherMatrixMetadataTests(unittest.TestCase):
             "run_kind",
             "recommended_for",
             "confirms_before_run",
+            "thesis_facing",
+            "reportable",
+            "experimental_only",
         )
 
         for entry in self.entries:
@@ -50,11 +53,60 @@ class LauncherMatrixMetadataTests(unittest.TestCase):
             self.assertTrue(entry["recommended_for"])
             self.assertIsInstance(entry["safe_default"], bool)
             self.assertIsInstance(entry["confirms_before_run"], bool)
+            self.assertIsInstance(entry["thesis_facing"], bool)
+            self.assertIsInstance(entry["reportable"], bool)
+            self.assertIsInstance(entry["experimental_only"], bool)
             self.assertIsInstance(entry["steps"], list)
             self.assertTrue(entry["steps"], f"{entry['entry_id']} must define at least one step")
             if entry.get("alias_of"):
                 self.assertIn("menu_hidden", entry, f"{entry['entry_id']} alias must declare menu_hidden metadata")
                 self.assertTrue(entry["menu_hidden"], f"{entry['entry_id']} alias must stay hidden from the default menu")
+
+    def test_primary_evidence_group_contains_only_final_manuscript_entries(self):
+        primary_entry_ids = {
+            entry["entry_id"]
+            for entry in self.entries
+            if entry.get("thesis_role") == "primary_evidence"
+        }
+
+        self.assertEqual(
+            primary_entry_ids,
+            {
+                "phase1_mindoro_focus_provenance",
+                "mindoro_phase3b_primary_public_validation",
+                "dwh_reportable_bundle",
+                "mindoro_reportable_core",
+            },
+        )
+        self.assertFalse(self.entry_map["mindoro_reportable_core"]["default_panel_path"])
+        self.assertTrue(self.entry_map["mindoro_reportable_core"]["intentional_full_evidence_support_bundle"])
+
+    def test_archive_and_hidden_experimental_metadata_stays_non_thesis_facing(self):
+        hidden_experimental_ids = {
+            "phase3b_mindoro_march3_4_philsa_5000_experiment",
+            "mindoro_mar09_12_multisource_experiment",
+            "phase3b_mindoro_march13_14_reinit_5000_experiment",
+        }
+
+        for entry in self.entries:
+            if entry.get("archive_status"):
+                self.assertFalse(entry["thesis_facing"], entry["entry_id"])
+                self.assertFalse(entry["reportable"], entry["entry_id"])
+                self.assertIn("archive_registry_id", entry, entry["entry_id"])
+                self.assertIn(
+                    entry.get("launcher_visibility"),
+                    {"visible_archive", "hidden_alias", "hidden_experimental", "read_only_only"},
+                    entry["entry_id"],
+                )
+
+        for entry_id in hidden_experimental_ids:
+            entry = self.entry_map[entry_id]
+            self.assertTrue(entry["menu_hidden"], entry_id)
+            self.assertTrue(entry["experimental_only"], entry_id)
+            self.assertEqual(entry["archive_status"], "experimental_only", entry_id)
+            self.assertEqual(entry["launcher_visibility"], "hidden_experimental", entry_id)
+            self.assertFalse(entry["thesis_facing"], entry_id)
+            self.assertFalse(entry["reportable"], entry_id)
 
     def test_role_groups_define_launcher_home_lanes(self):
         group_ids = {group.get("GroupId") for group in self.role_groups}

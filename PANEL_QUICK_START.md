@@ -43,6 +43,8 @@ Use launcher entry IDs and panel options as the user-facing startup vocabulary; 
 - It does not promote archive, appendix, or personal-experiment outputs into defended evidence.
 - It does not treat the full launcher as the default defense path.
 
+Archive governance is documented in [docs/ARCHIVE_GOVERNANCE.md](docs/ARCHIVE_GOVERNANCE.md). The archive registry keeps non-final-paper work inspectable without changing the final manuscript evidence boundaries.
+
 ## Panel Menu Controls
 
 - `B`, `BACK`, `0` go back to launcher home when that path is available.
@@ -106,6 +108,20 @@ docs\DATA_SOURCES.md
 ```
 
 This is a read-only registry. It does not download inputs, rerun workflows, rewrite scientific outputs, or change thesis claims.
+
+## Inspect Archive Governance
+
+Open:
+
+```powershell
+docs\ARCHIVE_GOVERNANCE.md
+```
+
+To list archive routes through the launcher, run:
+
+```powershell
+.\start.ps1 -ListRole archive_provenance -NoPause
+```
 
 ## If You Intentionally Need The Full Launcher
 

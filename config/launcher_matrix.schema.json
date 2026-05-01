@@ -115,6 +115,9 @@
           "run_kind",
           "recommended_for",
           "confirms_before_run",
+          "thesis_facing",
+          "reportable",
+          "experimental_only",
           "steps"
         ],
         "properties": {
@@ -191,6 +194,43 @@
             "type": "string"
           },
           "menu_hidden": {
+            "type": "boolean"
+          },
+          "thesis_facing": {
+            "type": "boolean"
+          },
+          "reportable": {
+            "type": "boolean"
+          },
+          "experimental_only": {
+            "type": "boolean"
+          },
+          "archive_status": {
+            "type": "string",
+            "enum": [
+              "archive_provenance",
+              "legacy_support",
+              "experimental_only",
+              "repository_only_development"
+            ]
+          },
+          "archive_registry_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "launcher_visibility": {
+            "type": "string",
+            "enum": [
+              "visible_archive",
+              "hidden_alias",
+              "hidden_experimental",
+              "read_only_only"
+            ]
+          },
+          "default_panel_path": {
+            "type": "boolean"
+          },
+          "intentional_full_evidence_support_bundle": {
             "type": "boolean"
           },
           "expected_output_dirs": {

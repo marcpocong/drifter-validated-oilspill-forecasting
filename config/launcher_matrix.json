@@ -100,7 +100,10 @@
           "description": "Focused pre-spill 2016-2023 Mindoro Phase 1 provenance rerun"
         }
       ],
-      "manuscript_section": "Final manuscript evidence 1 / Focused Mindoro Phase 1 provenance"
+      "manuscript_section": "Final manuscript evidence 1 / Focused Mindoro Phase 1 provenance",
+      "experimental_only": false,
+      "thesis_facing": true,
+      "reportable": true
     },
     {
       "entry_id": "phase1_mindoro_focus_pre_spill_experiment",
@@ -112,8 +115,8 @@
       "service_profile": "pipeline_only",
       "rerun_cost": "expensive",
       "safe_default": false,
-      "thesis_role": "primary_evidence",
-      "claim_boundary": "Focused Mindoro Phase 1 transport-provenance basis for B1; not direct spill-footprint validation.",
+      "thesis_role": "archive_provenance",
+      "claim_boundary": "Hidden compatibility alias for focused Mindoro Phase 1 provenance; resolves to the canonical entry and does not create separate thesis evidence.",
       "run_kind": "scientific_rerun",
       "recommended_for": "researcher",
       "confirms_before_run": true,
@@ -127,7 +130,13 @@
           "description": "Focused pre-spill 2016-2023 Mindoro Phase 1 provenance rerun"
         }
       ],
-      "manuscript_section": "Final manuscript evidence 1 / Focused Mindoro Phase 1 provenance"
+      "manuscript_section": "Archive/provenance / legacy focused Phase 1 compatibility alias",
+      "experimental_only": false,
+      "thesis_facing": false,
+      "reportable": false,
+      "archive_status": "archive_provenance",
+      "archive_registry_id": "phase1_mindoro_focus_pre_spill_experiment_alias",
+      "launcher_visibility": "hidden_alias"
     },
     {
       "entry_id": "mindoro_phase3b_primary_public_validation",
@@ -157,7 +166,10 @@
           "description": "March 13 -> March 14 primary public-validation row"
         }
       ],
-      "manuscript_section": "Final manuscript evidence 3 / Mindoro B1 primary public-observation validation"
+      "manuscript_section": "Final manuscript evidence 3 / Mindoro B1 primary public-observation validation",
+      "experimental_only": false,
+      "thesis_facing": true,
+      "reportable": true
     },
     {
       "entry_id": "dwh_reportable_bundle",
@@ -202,7 +214,10 @@
           "description": "Comparator-only PyGNOME comparison against observed DWH truth masks"
         }
       ],
-      "manuscript_section": "Final manuscript evidence 5 / DWH external transfer validation"
+      "manuscript_section": "Final manuscript evidence 5 / DWH external transfer validation",
+      "experimental_only": false,
+      "thesis_facing": true,
+      "reportable": true
     },
     {
       "entry_id": "mindoro_reportable_core",
@@ -215,7 +230,7 @@
       "rerun_cost": "expensive",
       "safe_default": false,
       "thesis_role": "primary_evidence",
-      "claim_boundary": "Full Mindoro bundle including B1, archive rows, and support/context; use only for intentional researcher/audit reruns, not as the default defense path.",
+      "claim_boundary": "Intentional full evidence/support rerun for researcher audit use, not the default panel path; preserves final-paper ordering without promoting support or archive outputs above B1 and DWH.",
       "run_kind": "scientific_rerun",
       "recommended_for": "auditor",
       "confirms_before_run": true,
@@ -257,7 +272,12 @@
           "description": "Mindoro support-only Phase 4 oil-type fate and shoreline-impact workflow"
         }
       ],
-      "manuscript_section": "Final manuscript evidence 1-6 / Mindoro integrated evidence and support bundle"
+      "manuscript_section": "Final manuscript evidence 1-6 / Mindoro integrated evidence and support bundle",
+      "experimental_only": false,
+      "thesis_facing": true,
+      "reportable": true,
+      "default_panel_path": false,
+      "intentional_full_evidence_support_bundle": true
     },
     {
       "entry_id": "phase1_regional_reference_rerun",
@@ -282,7 +302,13 @@
           "description": "Full 2016-2022 historical/regional Phase 1 production rerun with candidate-baseline staging only"
         }
       ],
-      "manuscript_section": "Archive/provenance / Phase 1 regional reference"
+      "manuscript_section": "Archive/provenance / Phase 1 regional reference",
+      "experimental_only": false,
+      "thesis_facing": false,
+      "reportable": false,
+      "archive_status": "archive_provenance",
+      "archive_registry_id": "phase1_regional_reference_rerun",
+      "launcher_visibility": "visible_archive"
     },
     {
       "entry_id": "phase1_production_rerun",
@@ -309,7 +335,13 @@
           "description": "Full 2016-2022 historical/regional Phase 1 production rerun with candidate-baseline staging only"
         }
       ],
-      "manuscript_section": "Archive/provenance / Phase 1 regional reference"
+      "manuscript_section": "Archive/provenance / Phase 1 regional reference",
+      "experimental_only": false,
+      "thesis_facing": false,
+      "reportable": false,
+      "archive_status": "archive_provenance",
+      "archive_registry_id": "phase1_regional_reference_rerun_alias",
+      "launcher_visibility": "hidden_alias"
     },
     {
       "entry_id": "mindoro_phase4_only",
@@ -334,7 +366,10 @@
           "description": "Mindoro support-only Phase 4 oil-type fate and shoreline-impact workflow"
         }
       ],
-      "manuscript_section": "Final manuscript evidence 6 / Mindoro oil-type and shoreline support/context"
+      "manuscript_section": "Final manuscript evidence 6 / Mindoro oil-type and shoreline support/context",
+      "experimental_only": false,
+      "thesis_facing": true,
+      "reportable": true
     },
     {
       "entry_id": "mindoro_appendix_sensitivity_bundle",
@@ -427,7 +462,10 @@
           "description": "Recipe / branch sensitivity matrix"
         }
       ],
-      "manuscript_section": "Appendix/support / Mindoro comparator and sensitivity context"
+      "manuscript_section": "Appendix/support / Mindoro comparator and sensitivity context",
+      "experimental_only": false,
+      "thesis_facing": false,
+      "reportable": true
     },
     {
       "entry_id": "mindoro_march13_14_phase1_focus_trial",
@@ -461,7 +499,13 @@
           }
         }
       ],
-      "manuscript_section": "Archive/provenance / Mindoro Phase 1 focus comparison trial"
+      "manuscript_section": "Archive/provenance / Mindoro Phase 1 focus comparison trial",
+      "experimental_only": false,
+      "thesis_facing": false,
+      "reportable": false,
+      "archive_status": "archive_provenance",
+      "archive_registry_id": "mindoro_march13_14_phase1_focus_trial",
+      "launcher_visibility": "visible_archive"
     },
     {
       "entry_id": "mindoro_march6_recovery_sensitivity",
@@ -486,7 +530,13 @@
           "description": "Appendix-only March 6 recovery matrix"
         }
       ],
-      "manuscript_section": "Archive/provenance / Mindoro March 6 honesty support"
+      "manuscript_section": "Archive/provenance / Mindoro March 6 honesty support",
+      "experimental_only": false,
+      "thesis_facing": false,
+      "reportable": false,
+      "archive_status": "archive_provenance",
+      "archive_registry_id": "mindoro_march6_recovery_sensitivity",
+      "launcher_visibility": "visible_archive"
     },
     {
       "entry_id": "mindoro_march23_extended_public_stress_test",
@@ -516,7 +566,13 @@
           "description": "March 23 exact-date branch comparison"
         }
       ],
-      "manuscript_section": "Archive/provenance / Mindoro March 23 stress test"
+      "manuscript_section": "Archive/provenance / Mindoro March 23 stress test",
+      "experimental_only": false,
+      "thesis_facing": false,
+      "reportable": false,
+      "archive_status": "archive_provenance",
+      "archive_registry_id": "mindoro_march23_extended_public_stress_test",
+      "launcher_visibility": "visible_archive"
     },
     {
       "entry_id": "phase3b_mindoro_march3_4_philsa_5000_experiment",
@@ -545,7 +601,10 @@
           "description": "Run the separate PhilSA March 3 -> March 4 5,000-element experimental archive/provenance validation test"
         }
       ],
-      "manuscript_section": "Experimental-only archive / PhilSA March 3 to March 4 candidate"
+      "manuscript_section": "Experimental-only archive / PhilSA March 3 to March 4 candidate",
+      "archive_status": "experimental_only",
+      "archive_registry_id": "phase3b_mindoro_march3_4_philsa_5000_experiment",
+      "launcher_visibility": "hidden_experimental"
     },
     {
       "entry_id": "mindoro_mar09_12_multisource_experiment",
@@ -589,7 +648,10 @@
           "description": "Run comparator-only PyGNOME products and finalize the 12-row FSS scorecards, figures, manifests, and README"
         }
       ],
-      "manuscript_section": "Experimental-only archive / Mindoro March 9-12 multi-source provenance"
+      "manuscript_section": "Experimental-only archive / Mindoro March 9-12 multi-source provenance",
+      "archive_status": "experimental_only",
+      "archive_registry_id": "mindoro_mar09_12_multisource_experiment",
+      "launcher_visibility": "hidden_experimental"
     },
     {
       "entry_id": "phase3b_mindoro_march13_14_reinit_5000_experiment",
@@ -623,7 +685,10 @@
           "description": "Build the separate experimental 100k-vs-5k comparison board, metrics tables, manifest, and README"
         }
       ],
-      "manuscript_section": "Experimental-only archive / personal B1 element-count sensitivity"
+      "manuscript_section": "Experimental-only archive / personal B1 element-count sensitivity",
+      "archive_status": "experimental_only",
+      "archive_registry_id": "phase3b_mindoro_march13_14_reinit_5000_experiment",
+      "launcher_visibility": "hidden_experimental"
     },
     {
       "entry_id": "mindoro_march13_14_noaa_reinit_stress_test",
@@ -635,8 +700,8 @@
       "service_profile": "pipeline_only",
       "rerun_cost": "expensive",
       "safe_default": false,
-      "thesis_role": "primary_evidence",
-      "claim_boundary": "Only main Philippine public-observation validation claim for Mindoro B1; March 13 and March 14 are independent NOAA-published day-specific observation products, and interpretation remains neighborhood-scale rather than exact 1 km overlap.",
+      "thesis_role": "archive_provenance",
+      "claim_boundary": "Hidden compatibility alias for the canonical Mindoro B1 public-observation validation; resolves to the canonical entry and does not create separate thesis evidence.",
       "run_kind": "scientific_rerun",
       "recommended_for": "developer",
       "confirms_before_run": true,
@@ -655,7 +720,13 @@
           "description": "March 13 -> March 14 primary public-validation row"
         }
       ],
-      "manuscript_section": "Final manuscript evidence 3 / Mindoro B1 primary public-observation validation"
+      "manuscript_section": "Archive/provenance / legacy Mindoro B1 compatibility alias",
+      "experimental_only": false,
+      "thesis_facing": false,
+      "reportable": false,
+      "archive_status": "archive_provenance",
+      "archive_registry_id": "mindoro_march13_14_noaa_reinit_stress_test_alias",
+      "launcher_visibility": "hidden_alias"
     },
     {
       "entry_id": "phase1_audit",
@@ -680,7 +751,10 @@
           "description": "Phase 1 read-only architecture audit"
         }
       ],
-      "manuscript_section": "Final manuscript evidence 8 / Reproducibility and governance"
+      "manuscript_section": "Final manuscript evidence 8 / Reproducibility and governance",
+      "experimental_only": false,
+      "thesis_facing": true,
+      "reportable": true
     },
     {
       "entry_id": "phase2_audit",
@@ -705,7 +779,10 @@
           "description": "Phase 2 read-only semantics audit"
         }
       ],
-      "manuscript_section": "Final manuscript evidence 8 / Reproducibility and governance"
+      "manuscript_section": "Final manuscript evidence 8 / Reproducibility and governance",
+      "experimental_only": false,
+      "thesis_facing": true,
+      "reportable": true
     },
     {
       "entry_id": "b1_drifter_context_panel",
@@ -730,7 +807,10 @@
           "description": "Read-only B1 drifter provenance/context packaging"
         }
       ],
-      "manuscript_section": "Final manuscript evidence 1 to 3 bridge / Phase 1 provenance to Mindoro B1"
+      "manuscript_section": "Final manuscript evidence 1 to 3 bridge / Phase 1 provenance to Mindoro B1",
+      "experimental_only": false,
+      "thesis_facing": true,
+      "reportable": true
     },
     {
       "entry_id": "final_validation_package",
@@ -755,7 +835,10 @@
           "description": "Read-only final validation packaging"
         }
       ],
-      "manuscript_section": "Final manuscript evidence 8 / Reproducibility and governance"
+      "manuscript_section": "Final manuscript evidence 8 / Reproducibility and governance",
+      "experimental_only": false,
+      "thesis_facing": true,
+      "reportable": true
     },
     {
       "entry_id": "phase5_sync",
@@ -780,7 +863,10 @@
           "description": "Phase 5 launcher/docs/package synchronization"
         }
       ],
-      "manuscript_section": "Final manuscript evidence 8 / Reproducibility and governance"
+      "manuscript_section": "Final manuscript evidence 8 / Reproducibility and governance",
+      "experimental_only": false,
+      "thesis_facing": true,
+      "reportable": true
     },
     {
       "entry_id": "trajectory_gallery",
@@ -805,7 +891,10 @@
           "description": "Read-only static trajectory gallery build"
         }
       ],
-      "manuscript_section": "Final manuscript evidence 8 / Reproducibility and governance"
+      "manuscript_section": "Final manuscript evidence 8 / Reproducibility and governance",
+      "experimental_only": false,
+      "thesis_facing": true,
+      "reportable": true
     },
     {
       "entry_id": "trajectory_gallery_panel",
@@ -830,7 +919,10 @@
           "description": "Read-only polished trajectory gallery board build"
         }
       ],
-      "manuscript_section": "Final manuscript evidence 8 / Reproducibility and governance"
+      "manuscript_section": "Final manuscript evidence 8 / Reproducibility and governance",
+      "experimental_only": false,
+      "thesis_facing": true,
+      "reportable": true
     },
     {
       "entry_id": "figure_package_publication",
@@ -855,7 +947,10 @@
           "description": "Read-only publication-grade figure package build"
         }
       ],
-      "manuscript_section": "Final manuscript evidence 8 / Reproducibility and governance"
+      "manuscript_section": "Final manuscript evidence 8 / Reproducibility and governance",
+      "experimental_only": false,
+      "thesis_facing": true,
+      "reportable": true
     },
     {
       "entry_id": "prototype_legacy_final_figures",
@@ -880,7 +975,13 @@
           "description": "Read-only curated legacy-2016 final paper-figure export"
         }
       ],
-      "manuscript_section": "Legacy support / Secondary 2016 drifter-track and legacy FSS support"
+      "manuscript_section": "Legacy support / Secondary 2016 drifter-track and legacy FSS support",
+      "experimental_only": false,
+      "thesis_facing": false,
+      "reportable": false,
+      "archive_status": "legacy_support",
+      "archive_registry_id": "prototype_legacy_final_figures",
+      "launcher_visibility": "visible_archive"
     },
     {
       "entry_id": "prototype_2021_bundle",
@@ -920,7 +1021,13 @@
           "description": "Prototype 2021 cross-case PyGNOME similarity summary and forecast figure package"
         }
       ],
-      "manuscript_section": "Legacy support / Prototype 2021 debug support"
+      "manuscript_section": "Legacy support / Prototype 2021 debug support",
+      "experimental_only": false,
+      "thesis_facing": false,
+      "reportable": false,
+      "archive_status": "legacy_support",
+      "archive_registry_id": "prototype_2021_bundle",
+      "launcher_visibility": "visible_archive"
     },
     {
       "entry_id": "prototype_legacy_bundle",
@@ -970,7 +1077,13 @@
           "description": "Curated final paper-figure export for the legacy 2016 support cases"
         }
       ],
-      "manuscript_section": "Legacy support / Secondary 2016 legacy archive support"
+      "manuscript_section": "Legacy support / Secondary 2016 legacy archive support",
+      "experimental_only": false,
+      "thesis_facing": false,
+      "reportable": false,
+      "archive_status": "legacy_support",
+      "archive_registry_id": "prototype_legacy_bundle",
+      "launcher_visibility": "visible_archive"
     }
   ],
   "optional_future_work": [

@@ -39,6 +39,8 @@ See [PANEL_QUICK_START.md](PANEL_QUICK_START.md) and [docs/PANEL_REVIEW_GUIDE.md
 
 Panel reviewers can inspect the external observation, drifter, forcing, shoreline, oil-property, and model/tool sources in [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md). The machine-readable registry is [config/data_sources.yaml](config/data_sources.yaml), and the read-only Streamlit UI includes a `Data Sources & Provenance` reference page.
 
+Archive governance is documented in [docs/ARCHIVE_GOVERNANCE.md](docs/ARCHIVE_GOVERNANCE.md), with the machine-readable archive registry in [config/archive_registry.yaml](config/archive_registry.yaml). Archive entries remain inspectable without becoming thesis-facing evidence.
+
 ## Final Manuscript Alignment
 
 1. Focused Mindoro Phase 1 provenance lane = historical drifter-based transport validation and recipe selection.
@@ -204,6 +206,7 @@ Launcher controls:
 - [PANEL_QUICK_START.md](PANEL_QUICK_START.md)
 - [docs/PANEL_REVIEW_GUIDE.md](docs/PANEL_REVIEW_GUIDE.md)
 - [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md)
+- [docs/ARCHIVE_GOVERNANCE.md](docs/ARCHIVE_GOVERNANCE.md)
 - [docs/PHASE_STATUS.md](docs/PHASE_STATUS.md)
 - [docs/COMMAND_MATRIX.md](docs/COMMAND_MATRIX.md)
 - [docs/THESIS_SURFACE_GOVERNANCE.md](docs/THESIS_SURFACE_GOVERNANCE.md)

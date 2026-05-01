@@ -1,0 +1,303 @@
+archive_schema_version: 1
+updated: "2026-05-01"
+purpose: "Preserve non-final-paper work as inspectable repository provenance without promoting it into thesis-facing evidence."
+archive_items:
+  - archive_id: phase1_regional_reference_rerun
+    launcher_entry_id: phase1_regional_reference_rerun
+    path_patterns:
+      - "config/phase1_regional_2016_2022.yaml"
+      - "output/phase1_production_rerun/**"
+      - "output/phase1_regional_2016_2022/**"
+      - "docs/PHASE1_REGIONAL_2016_2022_REFERENCE_NOTE.md"
+    status: archive_provenance
+    thesis_facing: false
+    reportable: false
+    paper_reflected_as: "provenance only"
+    claim_boundary: "Regional 2016-2022 reference work is not the focused Mindoro Phase 1 transport-provenance claim."
+    why_archived: "Superseded by the focused Mindoro 2016-2023 pre-spill provenance lane selected for the final paper."
+    rerun_allowed: true
+    launcher_visibility: visible_archive
+    protected_outputs:
+      - "output/phase1_production_rerun/**"
+      - "output/phase1_regional_2016_2022/**"
+    notes: "Kept for audit traceability and historical comparison only."
+
+  - archive_id: phase1_regional_reference_rerun_alias
+    launcher_entry_id: phase1_production_rerun
+    path_patterns:
+      - "config/phase1_regional_2016_2022.yaml"
+      - "output/phase1_production_rerun/**"
+    status: archive_provenance
+    thesis_facing: false
+    reportable: false
+    paper_reflected_as: "provenance only"
+    claim_boundary: "Hidden compatibility alias; it does not create a separate reportable Phase 1 result."
+    why_archived: "Preserves older launcher muscle memory while routing to the canonical regional reference archive entry."
+    rerun_allowed: true
+    launcher_visibility: hidden_alias
+    protected_outputs:
+      - "output/phase1_production_rerun/**"
+    notes: "Alias resolves through launcher metadata and remains outside the main thesis evidence role."
+
+  - archive_id: phase1_mindoro_focus_pre_spill_experiment_alias
+    launcher_entry_id: phase1_mindoro_focus_pre_spill_experiment
+    path_patterns:
+      - "config/phase1_mindoro_focus_pre_spill_2016_2023.yaml"
+      - "output/phase1_mindoro_focus_pre_spill_2016_2023/**"
+    status: archive_provenance
+    thesis_facing: false
+    reportable: false
+    paper_reflected_as: "provenance only"
+    claim_boundary: "Hidden compatibility alias for the canonical focused Mindoro Phase 1 provenance entry."
+    why_archived: "The alias remains available for compatibility, but the final paper uses phase1_mindoro_focus_provenance."
+    rerun_allowed: true
+    launcher_visibility: hidden_alias
+    protected_outputs:
+      - "output/phase1_mindoro_focus_pre_spill_2016_2023/**"
+    notes: "Use phase1_mindoro_focus_provenance for final-paper-facing provenance."
+
+  - archive_id: mindoro_march13_14_phase1_focus_trial
+    launcher_entry_id: mindoro_march13_14_phase1_focus_trial
+    path_patterns:
+      - "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit_phase1_mindoro_focus_pre_spill/**"
+      - "output/Phase 3B March13-14 Final Output Archive R0 Legacy/**"
+    status: archive_provenance
+    thesis_facing: false
+    reportable: false
+    paper_reflected_as: "provenance only"
+    claim_boundary: "Trial branch is not the promoted B1 March 13 to March 14 public-observation validation."
+    why_archived: "Retained to document the focused Phase 1 sensitivity path before the canonical B1 route was fixed."
+    rerun_allowed: true
+    launcher_visibility: visible_archive
+    protected_outputs:
+      - "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit_phase1_mindoro_focus_pre_spill/**"
+    notes: "Inspect only as archive provenance; do not cite as a separate validation result."
+
+  - archive_id: mindoro_march6_recovery_sensitivity
+    launcher_entry_id: mindoro_march6_recovery_sensitivity
+    path_patterns:
+      - "output/CASE_MINDORO_RETRO_2023/march6_recovery_sensitivity/**"
+      - "output/trajectory_gallery*/*march6*"
+      - "thesis_outputs/drifter_mindoro_march3_6_overlay/**"
+    status: archive_provenance
+    thesis_facing: false
+    reportable: false
+    paper_reflected_as: "not reflected; archived for audit"
+    claim_boundary: "March 6 recovery sensitivity is not public-spill validation and does not replace Mindoro B1."
+    why_archived: "Superseded by the March 13 to March 14 B1 public-observation validation claim."
+    rerun_allowed: true
+    launcher_visibility: visible_archive
+    protected_outputs:
+      - "output/CASE_MINDORO_RETRO_2023/march6_recovery_sensitivity/**"
+      - "thesis_outputs/drifter_mindoro_march3_6_overlay/**"
+    notes: "Useful for diagnosing older base-case behavior only."
+
+  - archive_id: mindoro_march23_extended_public_stress_test
+    launcher_entry_id: mindoro_march23_extended_public_stress_test
+    path_patterns:
+      - "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march23/**"
+      - "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public/**"
+    status: archive_provenance
+    thesis_facing: false
+    reportable: false
+    paper_reflected_as: "not reflected; archived for audit"
+    claim_boundary: "March 23 stress testing is not a final-paper validation endpoint."
+    why_archived: "Preserved to show stress-test exploration after the canonical B1 window."
+    rerun_allowed: true
+    launcher_visibility: visible_archive
+    protected_outputs:
+      - "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march23/**"
+    notes: "Does not alter the B1 coastal-neighborhood usefulness interpretation."
+
+  - archive_id: phase3b_mindoro_march3_4_philsa_5000_experiment
+    launcher_entry_id: phase3b_mindoro_march3_4_philsa_5000_experiment
+    path_patterns:
+      - "scripts/run_mindoro_march3_4_philsa_5000_experiment.py"
+      - "scripts/run_mindoro_march3_4_philsa_5000_pygnome_comparator.py"
+      - "scripts/debug_mindoro_march3_4_philsa_5000_*.py"
+      - "output/CASE_MINDORO_RETRO_2023/*philsa*5000*/**"
+    status: experimental_only
+    thesis_facing: false
+    reportable: false
+    paper_reflected_as: "not reflected; archived for audit"
+    claim_boundary: "PhilSA-only March 3 to March 4 experiment is not Mindoro B1 and is not a public-observation validation claim."
+    why_archived: "Exploratory candidate branch not promoted to final-paper evidence."
+    rerun_allowed: false
+    launcher_visibility: hidden_experimental
+    protected_outputs:
+      - "output/CASE_MINDORO_RETRO_2023/*philsa*5000*/**"
+    notes: "Hidden from normal panel routes; inspect only for development provenance."
+
+  - archive_id: mindoro_mar09_12_multisource_experiment
+    launcher_entry_id: mindoro_mar09_12_multisource_experiment
+    path_patterns:
+      - "config/experiments/mindoro_mar09_12_multisource.yaml"
+      - "docs/EXPERIMENT_MINDORO_MAR09_12_MULTISOURCE.md"
+      - "output/CASE_MINDORO_RETRO_2023/*mar09*12*multisource*/**"
+    status: experimental_only
+    thesis_facing: false
+    reportable: false
+    paper_reflected_as: "not reflected; archived for audit"
+    claim_boundary: "March 9 to March 12 multisource exploration is not a replacement for B1 or DWH."
+    why_archived: "Experimental multisource branch retained for forcing and observation-ingest provenance."
+    rerun_allowed: false
+    launcher_visibility: hidden_experimental
+    protected_outputs:
+      - "output/CASE_MINDORO_RETRO_2023/*mar09*12*multisource*/**"
+    notes: "PyGNOME steps remain comparator-only inside this archive lane."
+
+  - archive_id: phase3b_mindoro_march13_14_reinit_5000_experiment
+    launcher_entry_id: phase3b_mindoro_march13_14_reinit_5000_experiment
+    path_patterns:
+      - "scripts/watch_march13_14_reinit_status.ps1"
+      - "output/CASE_MINDORO_RETRO_2023/*5000*element*/**"
+      - "output/CASE_MINDORO_RETRO_2023/*element_count_sensitivity*/**"
+    status: experimental_only
+    thesis_facing: false
+    reportable: false
+    paper_reflected_as: "not reflected; archived for audit"
+    claim_boundary: "Element-count sensitivity is not the promoted B1 forecast product."
+    why_archived: "Experimental rerun scale test; retained for provenance and performance diagnosis."
+    rerun_allowed: false
+    launcher_visibility: hidden_experimental
+    protected_outputs:
+      - "output/CASE_MINDORO_RETRO_2023/*5000*element*/**"
+    notes: "Hidden experimental route with no thesis-facing claim."
+
+  - archive_id: mindoro_march13_14_noaa_reinit_stress_test_alias
+    launcher_entry_id: mindoro_march13_14_noaa_reinit_stress_test
+    path_patterns:
+      - "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit/**"
+    status: archive_provenance
+    thesis_facing: false
+    reportable: false
+    paper_reflected_as: "provenance only"
+    claim_boundary: "Hidden alias resolves to canonical B1 validation and does not create a separate stress-test claim."
+    why_archived: "Preserves old launcher naming while preventing an extra primary-evidence row."
+    rerun_allowed: true
+    launcher_visibility: hidden_alias
+    protected_outputs:
+      - "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored_march13_14_reinit/**"
+    notes: "Use mindoro_phase3b_primary_public_validation for final-paper-facing B1 validation."
+
+  - archive_id: mindoro_march3_6_base_case_archive
+    launcher_entry_id: null
+    path_only: true
+    path_patterns:
+      - "output/CASE_MINDORO_RETRO_2023/phase3b_multidate_public/**"
+      - "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored/**"
+      - "output/trajectory_gallery/*march3_6*"
+      - "output/trajectory_gallery*/*phase3b_legacy*"
+      - "thesis_outputs/drifter_mindoro_march3_6_overlay/**"
+    status: archive_provenance
+    thesis_facing: false
+    reportable: false
+    paper_reflected_as: "not reflected; archived for audit"
+    claim_boundary: "Old March 3 to March 6 base-case rows are not promoted to B1 and are not primary validation."
+    why_archived: "Kept to explain the historical route that preceded the final March 13 to March 14 B1 claim."
+    rerun_allowed: false
+    launcher_visibility: read_only_only
+    protected_outputs:
+      - "output/CASE_MINDORO_RETRO_2023/phase3b_multidate_public/**"
+      - "output/CASE_MINDORO_RETRO_2023/phase3b_extended_public_scored/**"
+      - "thesis_outputs/drifter_mindoro_march3_6_overlay/**"
+    notes: "List-only archive item; no launcher rerun is assigned."
+
+  - archive_id: prototype_legacy_final_figures
+    launcher_entry_id: prototype_legacy_final_figures
+    path_patterns:
+      - "output/2016 Legacy Runs FINAL Figures/**"
+      - "output/prototype_2016_display_review/**"
+    status: legacy_support
+    thesis_facing: false
+    reportable: false
+    paper_reflected_as: "Appendix/support"
+    claim_boundary: "Legacy 2016 figures support repository inspection only and do not replace Mindoro B1 or DWH."
+    why_archived: "Preserves prototype 2016 figure packaging as legacy support after final-paper ordering was fixed."
+    rerun_allowed: true
+    launcher_visibility: visible_archive
+    protected_outputs:
+      - "output/2016 Legacy Runs FINAL Figures/**"
+      - "output/prototype_2016_display_review/**"
+    notes: "PyGNOME content remains comparator-only."
+
+  - archive_id: prototype_2021_bundle
+    launcher_entry_id: prototype_2021_bundle
+    path_patterns:
+      - "config/prototype_2021_cases.yaml"
+      - "output/prototype_2021*/**"
+      - "output/CASE_2021*/**"
+    status: legacy_support
+    thesis_facing: false
+    reportable: false
+    paper_reflected_as: "not reflected; archived for audit"
+    claim_boundary: "Prototype 2021 bundle is not final-paper evidence."
+    why_archived: "Older prototype branch retained for regression and development provenance."
+    rerun_allowed: true
+    launcher_visibility: visible_archive
+    protected_outputs:
+      - "output/prototype_2021*/**"
+      - "output/CASE_2021*/**"
+    notes: "Kept visible only through legacy/debug routes."
+
+  - archive_id: prototype_legacy_bundle
+    launcher_entry_id: prototype_legacy_bundle
+    path_patterns:
+      - "output/CASE_2016-*/**"
+      - "output/prototype_2016_pygnome_similarity/**"
+      - "output/2016 Legacy Runs FINAL Figures/**"
+    status: legacy_support
+    thesis_facing: false
+    reportable: false
+    paper_reflected_as: "Appendix/support"
+    claim_boundary: "Legacy 2016 bundle is secondary support only, not public-spill validation and not a replacement for B1 or DWH."
+    why_archived: "Retains the older end-to-end prototype workflow without promoting it above final Mindoro/DWH evidence."
+    rerun_allowed: true
+    launcher_visibility: visible_archive
+    protected_outputs:
+      - "output/CASE_2016-*/**"
+      - "output/prototype_2016_pygnome_similarity/**"
+      - "output/2016 Legacy Runs FINAL Figures/**"
+    notes: "Use for legacy support and regression only."
+
+  - archive_id: prototype_2016_support_surfaces
+    launcher_entry_id: null
+    path_only: true
+    path_patterns:
+      - "output/2016_drifter_benchmark/**"
+      - "output/prototype_2016_pygnome_similarity/**"
+      - "output/CASE_2016-*/benchmark/**"
+      - "output/CASE_2016-*/phase4_pygnome_comparator/**"
+    status: legacy_support
+    thesis_facing: false
+    reportable: false
+    paper_reflected_as: "Appendix/support"
+    claim_boundary: "Secondary 2016 support surfaces are not public-spill validation and do not replace Mindoro B1 or DWH."
+    why_archived: "Preserved as secondary drifter-track and legacy FSS support while keeping the final-paper claim boundary clear."
+    rerun_allowed: false
+    launcher_visibility: read_only_only
+    protected_outputs:
+      - "output/2016_drifter_benchmark/**"
+      - "output/prototype_2016_pygnome_similarity/**"
+      - "output/CASE_2016-*/benchmark/**"
+      - "output/CASE_2016-*/phase4_pygnome_comparator/**"
+    notes: "PyGNOME remains comparator-only; these files are support/provenance surfaces."
+
+  - archive_id: root_debug_artifacts_prompt1
+    launcher_entry_id: null
+    path_only: true
+    path_patterns:
+      - "phase1_production_rerun_debug.log"
+      - "tmp_test_logo.png"
+    status: repository_only_development
+    thesis_facing: false
+    reportable: false
+    paper_reflected_as: "not reflected; archived for audit"
+    claim_boundary: "Root-level debug artifacts have no scientific claim."
+    why_archived: "Prompt 1 audit surfaced root-level development artifacts; this registry lists them without moving or deleting them."
+    rerun_allowed: false
+    launcher_visibility: read_only_only
+    protected_outputs:
+      - "phase1_production_rerun_debug.log"
+      - "tmp_test_logo.png"
+    notes: "Cleanup or relocation can be handled by a later prompt."

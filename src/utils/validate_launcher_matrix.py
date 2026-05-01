@@ -53,6 +53,25 @@ ALLOWED_THESIS_ROLES = {
     "legacy_support",
     "read_only_governance",
 }
+ALLOWED_ARCHIVE_STATUSES = {
+    "archive_provenance",
+    "legacy_support",
+    "experimental_only",
+    "repository_only_development",
+}
+ALLOWED_LAUNCHER_VISIBILITIES = {
+    "visible_archive",
+    "hidden_alias",
+    "hidden_experimental",
+    "read_only_only",
+}
+PRIMARY_EVIDENCE_ENTRY_IDS = {
+    "phase1_mindoro_focus_provenance",
+    "mindoro_phase3b_primary_public_validation",
+    "dwh_reportable_bundle",
+    "mindoro_reportable_core",
+}
+ARCHIVE_THESIS_ROLES = {"archive_provenance", "legacy_support"}
 REQUIRED_ENTRY_FIELDS = (
     "entry_id",
     "label",
@@ -67,6 +86,9 @@ REQUIRED_ENTRY_FIELDS = (
     "run_kind",
     "recommended_for",
     "confirms_before_run",
+    "thesis_facing",
+    "reportable",
+    "experimental_only",
     "steps",
 )
 
@@ -382,9 +404,62 @@ def _entry_issues(
     if run_kind not in ALLOWED_RUN_KINDS:
         issues.append(f"invalid run_kind '{run_kind}'")
 
+    alias_of = str(entry.get("alias_of") or "").strip()
     thesis_role = str(entry.get("thesis_role") or "")
     if thesis_role not in ALLOWED_THESIS_ROLES:
         issues.append(f"invalid thesis_role '{thesis_role}'")
+    elif thesis_role == "primary_evidence" and entry_id not in PRIMARY_EVIDENCE_ENTRY_IDS:
+        issues.append("primary_evidence role is limited to final manuscript evidence entries")
+
+    for boolean_field in ("thesis_facing", "reportable", "experimental_only"):
+        if boolean_field in entry and not isinstance(entry.get(boolean_field), bool):
+            issues.append(f"field '{boolean_field}' must be boolean")
+
+    archive_status = str(entry.get("archive_status") or "").strip()
+    launcher_visibility = str(entry.get("launcher_visibility") or "").strip()
+    boundary = str(entry.get("claim_boundary") or "").strip().lower()
+    if archive_status:
+        if archive_status not in ALLOWED_ARCHIVE_STATUSES:
+            issues.append(f"invalid archive_status '{archive_status}'")
+        if not str(entry.get("archive_registry_id") or "").strip():
+            issues.append("archive_status entries must declare archive_registry_id")
+        if not launcher_visibility:
+            issues.append("archive_status entries must declare launcher_visibility")
+        elif launcher_visibility not in ALLOWED_LAUNCHER_VISIBILITIES:
+            issues.append(f"invalid launcher_visibility '{launcher_visibility}'")
+        if entry.get("thesis_facing") is True:
+            issues.append("archived launcher entries cannot be thesis_facing=true")
+        if archive_status in {"archive_provenance", "legacy_support", "experimental_only"} and entry.get("reportable") is True:
+            issues.append("archived launcher entries cannot be reportable=true")
+
+    if thesis_role in ARCHIVE_THESIS_ROLES and entry.get("thesis_facing") is True:
+        issues.append("archive/legacy thesis roles cannot be thesis_facing=true")
+
+    if bool(entry.get("experimental_only")):
+        if archive_status != "experimental_only":
+            issues.append("experimental_only entries must declare archive_status='experimental_only'")
+        if launcher_visibility != "hidden_experimental":
+            issues.append("experimental_only entries must use launcher_visibility='hidden_experimental'")
+        if not bool(entry.get("menu_hidden")):
+            issues.append("experimental_only entries must be hidden from panel/main menus")
+        if entry.get("thesis_facing") is not False:
+            issues.append("experimental_only entries must set thesis_facing=false")
+        if entry.get("reportable") is not False:
+            issues.append("experimental_only entries must set reportable=false")
+
+    if launcher_visibility == "hidden_alias":
+        if not alias_of:
+            issues.append("hidden_alias launcher_visibility requires alias_of")
+        if not bool(entry.get("menu_hidden")):
+            issues.append("hidden_alias entries must be menu_hidden=true")
+
+    if entry_id == "mindoro_reportable_core":
+        if entry.get("default_panel_path") is not False:
+            issues.append("mindoro_reportable_core must declare default_panel_path=false")
+        if entry.get("intentional_full_evidence_support_bundle") is not True:
+            issues.append("mindoro_reportable_core must declare intentional_full_evidence_support_bundle=true")
+        if "not the default panel path" not in boundary:
+            issues.append("mindoro_reportable_core boundary must say it is not the default panel path")
 
     if bool(entry.get("safe_default")) and run_kind in SCIENTIFIC_RUN_KINDS:
         issues.append("scientific/archive/comparator entries cannot be safe_default=true")
@@ -423,7 +498,6 @@ def _entry_issues(
                 + ", ".join(sorted(set(scientific_steps)))
             )
 
-    alias_of = str(entry.get("alias_of") or "").strip()
     if alias_of:
         target = entry_map.get(alias_of)
         if target is None:
@@ -472,9 +546,20 @@ def _schema_file_issues(repo_root: str | Path) -> list[str]:
         issues.append(
             "schema entry required list is missing: " + ", ".join(missing_required)
         )
+    entry_properties = entry_schema.get("properties", {})
+    for field_name in (
+        "archive_status",
+        "archive_registry_id",
+        "launcher_visibility",
+        "thesis_facing",
+        "reportable",
+        "experimental_only",
+    ):
+        if field_name not in entry_properties:
+            issues.append(f"schema entry properties are missing '{field_name}'")
 
     run_kind_enum = set(
-        entry_schema.get("properties", {})
+        entry_properties
         .get("run_kind", {})
         .get("enum", [])
     )
@@ -482,12 +567,20 @@ def _schema_file_issues(repo_root: str | Path) -> list[str]:
         issues.append("schema run_kind enum does not match validator allowed values")
 
     thesis_role_enum = set(
-        entry_schema.get("properties", {})
+        entry_properties
         .get("thesis_role", {})
         .get("enum", [])
     )
     if thesis_role_enum and thesis_role_enum != ALLOWED_THESIS_ROLES:
         issues.append("schema thesis_role enum does not match validator allowed values")
+
+    archive_status_enum = set(entry_properties.get("archive_status", {}).get("enum", []))
+    if archive_status_enum and archive_status_enum != ALLOWED_ARCHIVE_STATUSES:
+        issues.append("schema archive_status enum does not match validator allowed values")
+
+    launcher_visibility_enum = set(entry_properties.get("launcher_visibility", {}).get("enum", []))
+    if launcher_visibility_enum and launcher_visibility_enum != ALLOWED_LAUNCHER_VISIBILITIES:
+        issues.append("schema launcher_visibility enum does not match validator allowed values")
 
     return issues
 
