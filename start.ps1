@@ -462,6 +462,18 @@ function Format-ThesisRoleLabel {
     }
 }
 
+function Get-LauncherEntryManuscriptSection {
+    param([Parameter(Mandatory = $true)]$LauncherEntry)
+
+    $section = [string]$LauncherEntry.manuscript_section
+    if (-not [string]::IsNullOrWhiteSpace($section)) {
+        return $section
+    }
+
+    # Internal compatibility only for older local matrices; do not display the retired key name.
+    return [string]$LauncherEntry.draft_section
+}
+
 function Format-RunKindLabel {
     param([string]$RunKind)
 
@@ -663,7 +675,7 @@ function Write-LauncherEntrySummary {
     Write-Host ("{0}{1}" -f $prefix, $LauncherEntry.label) -ForegroundColor White
     Write-Host ("     id={0}" -f $LauncherEntry.entry_id) -ForegroundColor DarkGray
     Write-Host ("     category={0} | thesis role={1}" -f (Get-LauncherCategoryLabel -CategoryId ([string]$LauncherEntry.category_id)), (Format-ThesisRoleLabel -Role ([string]$LauncherEntry.thesis_role))) -ForegroundColor Yellow
-    Write-Host ("     draft={0}" -f ([string]$LauncherEntry.draft_section)) -ForegroundColor Yellow
+    Write-Host ("     manuscript section={0}" -f (Get-LauncherEntryManuscriptSection -LauncherEntry $LauncherEntry)) -ForegroundColor Yellow
 
     $safetyTag = if ([bool]$LauncherEntry.safe_default) { "safe-default" } else { "explicit-confirm" }
     $tags = @(
@@ -966,7 +978,7 @@ function Write-LauncherEntryPreviewContent {
     Write-Host ("Label: {0}" -f [string]$LauncherEntry.label) -ForegroundColor White
     Write-Host ("Category: {0}" -f (Get-LauncherCategoryLabel -CategoryId ([string]$LauncherEntry.category_id))) -ForegroundColor White
     Write-Host ("Thesis role: {0}" -f (Format-ThesisRoleLabel -Role ([string]$LauncherEntry.thesis_role))) -ForegroundColor White
-    Write-Host ("Draft section: {0}" -f [string]$LauncherEntry.draft_section) -ForegroundColor White
+    Write-Host ("Manuscript section: {0}" -f (Get-LauncherEntryManuscriptSection -LauncherEntry $LauncherEntry)) -ForegroundColor White
     Write-Host ("Claim boundary: {0}" -f [string]$LauncherEntry.claim_boundary) -ForegroundColor White
     Write-Host ("Run kind: {0}" -f (Format-RunKindLabel -RunKind ([string]$LauncherEntry.run_kind))) -ForegroundColor White
     Write-Host ("Rerun cost: {0}" -f [string]$LauncherEntry.rerun_cost) -ForegroundColor White
@@ -1016,7 +1028,7 @@ function Write-LauncherEntryCompactPreview {
     Write-Host ("  Label: {0}" -f [string]$LauncherEntry.label) -ForegroundColor White
     Write-Host ("  Category: {0}" -f (Get-LauncherCategoryLabel -CategoryId ([string]$LauncherEntry.category_id))) -ForegroundColor White
     Write-Host ("  Thesis role: {0}" -f (Format-ThesisRoleLabel -Role ([string]$LauncherEntry.thesis_role))) -ForegroundColor White
-    Write-Host ("  Manuscript section: {0}" -f [string]$LauncherEntry.draft_section) -ForegroundColor White
+    Write-Host ("  Manuscript section: {0}" -f (Get-LauncherEntryManuscriptSection -LauncherEntry $LauncherEntry)) -ForegroundColor White
     Write-Host ("  Claim boundary: {0}" -f [string]$LauncherEntry.claim_boundary) -ForegroundColor White
     Write-Host ("  Run kind: {0}" -f (Format-RunKindLabel -RunKind ([string]$LauncherEntry.run_kind))) -ForegroundColor White
     Write-Host ("  Rerun cost: {0}" -f [string]$LauncherEntry.rerun_cost) -ForegroundColor White
@@ -2082,6 +2094,7 @@ function New-LauncherRunPlan {
         category = Get-LauncherCategoryLabel -CategoryId ([string]$LauncherEntry.category_id)
         thesis_role = [string]$LauncherEntry.thesis_role
         thesis_role_label = Format-ThesisRoleLabel -Role ([string]$LauncherEntry.thesis_role)
+        manuscript_section = Get-LauncherEntryManuscriptSection -LauncherEntry $LauncherEntry
         claim_boundary = [string]$LauncherEntry.claim_boundary
         run_kind = [string]$LauncherEntry.run_kind
         rerun_cost = [string]$LauncherEntry.rerun_cost
@@ -2141,6 +2154,7 @@ function Export-LauncherRunPlan {
         ('- Canonical entry ID: `{0}`' -f $plan.canonical_entry_id),
         ("- Label: {0}" -f $plan.label),
         ('- Thesis role: `{0}` ({1})' -f $plan.thesis_role, $plan.thesis_role_label),
+        ("- Manuscript section: {0}" -f $plan.manuscript_section),
         ("- Claim boundary: {0}" -f $plan.claim_boundary),
         ('- Run kind: `{0}`' -f $plan.run_kind),
         ('- Rerun cost: `{0}`' -f $plan.rerun_cost),

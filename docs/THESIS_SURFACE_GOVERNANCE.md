@@ -4,7 +4,7 @@
 
 This repo keeps one canonical artifact-surface vocabulary in `src/core/artifact_status.py` so the UI, publication registry, launcher, and validation/export packaging all agree on what is main evidence, comparator support, archive-only, legacy/archive support, or advanced-only.
 
-## Current Manuscript Evidence Order
+## Final Manuscript Evidence Order
 
 1. Focused Mindoro Phase 1 provenance
 2. Phase 2 standardized forecast products

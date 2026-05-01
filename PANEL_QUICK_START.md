@@ -56,7 +56,7 @@ Use launcher entry IDs and panel options as the user-facing startup vocabulary; 
 - `S`, `SEARCH` is available in the full launcher and read-only group for entry search.
 - `E`, `EXPORT` after an inspect/search preview exports a run plan without running science.
 
-## Current Manuscript Evidence Boundaries
+## Final Manuscript Evidence Boundaries
 
 1. Focused Mindoro Phase 1 provenance = historical drifter-based transport validation and recipe selection.
 2. Phase 2 = standardized deterministic and 50-member machine-readable forecast products.

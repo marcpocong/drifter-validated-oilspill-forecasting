@@ -32,7 +32,7 @@ None of those steps are meant to rerun expensive science or change thesis claims
 
 Use [DATA_SOURCES.md](DATA_SOURCES.md) or the dashboard's `Data Sources & Provenance` reference page to answer what external data sources were used, where they came from, what each source was used for, and where the related manifests or stored outputs live. This is read-only governance documentation backed by [config/data_sources.yaml](../config/data_sources.yaml); it does not promote new claims or rerun science.
 
-## 3. Current Manuscript Evidence Order
+## 3. Final Manuscript Evidence Order
 
 1. Focused Mindoro Phase 1 provenance
 2. Phase 2 standardized forecast products

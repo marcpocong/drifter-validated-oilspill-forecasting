@@ -27,7 +27,7 @@ class LauncherMatrixMetadataTests(unittest.TestCase):
             "safe_default",
             "steps",
             "thesis_role",
-            "draft_section",
+            "manuscript_section",
             "claim_boundary",
             "run_kind",
             "recommended_for",
@@ -43,7 +43,8 @@ class LauncherMatrixMetadataTests(unittest.TestCase):
             self.assertTrue(entry["workflow_mode"])
             self.assertTrue(entry["rerun_cost"])
             self.assertTrue(entry["thesis_role"])
-            self.assertTrue(entry["draft_section"])
+            self.assertTrue(entry["manuscript_section"])
+            self.assertNotIn("draft_section", entry)
             self.assertTrue(entry["claim_boundary"])
             self.assertTrue(entry["run_kind"])
             self.assertTrue(entry["recommended_for"])

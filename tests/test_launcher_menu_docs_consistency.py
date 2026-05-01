@@ -25,7 +25,7 @@ def _entry_map() -> dict[str, dict]:
 
 
 def _combined_entry_text(entry: dict) -> str:
-    fields = ("entry_id", "label", "description", "notes", "claim_boundary", "draft_section")
+    fields = ("entry_id", "label", "description", "notes", "claim_boundary", "manuscript_section")
     return " ".join(str(entry.get(field, "")) for field in fields).lower()
 
 

@@ -7,7 +7,7 @@
 - Use launcher entry IDs from [config/launcher_matrix.json](../config/launcher_matrix.json) as the user-facing vocabulary.
 - Panel mode and read-only entries do not rerun science.
 
-## Current Manuscript Evidence Order
+## Final Manuscript Evidence Order
 
 1. Focused Mindoro Phase 1 provenance
 2. Phase 2 standardized forecast products

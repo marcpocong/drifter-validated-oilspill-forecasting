@@ -110,7 +110,7 @@
           "rerun_cost",
           "safe_default",
           "thesis_role",
-          "draft_section",
+          "manuscript_section",
           "claim_boundary",
           "run_kind",
           "recommended_for",
@@ -162,7 +162,7 @@
               "read_only_governance"
             ]
           },
-          "draft_section": {
+          "manuscript_section": {
             "type": "string",
             "minLength": 1
           },

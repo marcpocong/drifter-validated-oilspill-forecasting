@@ -95,9 +95,9 @@ def main() -> int:
                     f"{path.relative_to(ROOT)} still contains forbidden wording `{forbidden}`."
                 )
 
-    evidence_summary = extract_markdown_section(readme_text, "Current Manuscript Alignment")
+    evidence_summary = extract_markdown_section(readme_text, "Final Manuscript Alignment")
     if not evidence_summary:
-        issues.append("README is missing the `Current Manuscript Alignment` section.")
+        issues.append("README is missing the `Final Manuscript Alignment` section.")
     elif "PyGNOME" in evidence_summary:
         comparator_ok = "comparator-only" in evidence_summary and (
             "never observational truth" in evidence_summary

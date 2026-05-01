@@ -1,6 +1,6 @@
 # Drifter-Validated 24–72 h Oil-Spill Forecasting for Philippine Coasts: Probability Footprints and Oil-Type Fate
 
-This repository is the panel-ready reproducibility and review package for the thesis workflow. It preserves the stored Mindoro, DWH, oil-type, publication, and UI artifacts used for manuscript review, while keeping panel mode and the presentation surfaces read-only unless a researcher intentionally launches a rerun.
+This repository is the panel-ready reproducibility and review package for the thesis workflow. It preserves the stored Mindoro, DWH, oil-type, publication, and UI artifacts used for final manuscript review, while keeping panel mode and the presentation surfaces read-only unless a researcher intentionally launches a rerun.
 
 ## Panel / Defense Quick Start
 
@@ -39,7 +39,7 @@ See [PANEL_QUICK_START.md](PANEL_QUICK_START.md) and [docs/PANEL_REVIEW_GUIDE.md
 
 Panel reviewers can inspect the external observation, drifter, forcing, shoreline, oil-property, and model/tool sources in [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md). The machine-readable registry is [config/data_sources.yaml](config/data_sources.yaml), and the read-only Streamlit UI includes a `Data Sources & Provenance` reference page.
 
-## Current Manuscript Alignment
+## Final Manuscript Alignment
 
 1. Focused Mindoro Phase 1 provenance lane = historical drifter-based transport validation and recipe selection.
 2. Phase 2 = standardized deterministic and 50-member machine-readable forecast product generation.
@@ -222,5 +222,5 @@ For questions or issues, contact `marcpocong@gmail.com`.
 ## Status Stamp
 
 - Last updated: `2026-04-29`
-- Current sync state: aligned to current manuscript evidence structure and stored-output review package
+- Current sync state: aligned to final manuscript evidence structure and stored-output review package
 - Biggest remaining scientific follow-up: broader `2016-2022` regional/reference Phase 1 lane remains separate from finalized Mindoro-specific B1 provenance and is not the main Mindoro validation claim

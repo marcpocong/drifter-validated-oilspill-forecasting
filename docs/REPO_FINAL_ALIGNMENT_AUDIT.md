@@ -36,10 +36,10 @@ All tracked files returned by `git ls-files` were scanned. Binary assets were in
 
 ## Needs Cleanup
 
-- `config/launcher_matrix.json`, `config/launcher_matrix.schema.json`, `src/utils/validate_launcher_matrix.py`, `start.ps1`, and related tests still use `draft_section` / `draft=` vocabulary for evidence placement. Later cleanup should rename this to final-paper/evidence vocabulary without changing launcher routing or science.
-- `README.md`, `PANEL_QUICK_START.md`, `docs/COMMAND_MATRIX.md`, `docs/PANEL_REVIEW_GUIDE.md`, `docs/PHASE_STATUS.md`, and `docs/THESIS_SURFACE_GOVERNANCE.md` still contain `Current Manuscript` wording. The evidence order is aligned, but the heading language should be made final-paper-facing.
+- Launcher metadata and display paths used legacy evidence-placement vocabulary at audit time. Later cleanup should rename it to final manuscript section vocabulary without changing launcher routing or science.
+- `README.md`, `PANEL_QUICK_START.md`, `docs/COMMAND_MATRIX.md`, `docs/PANEL_REVIEW_GUIDE.md`, `docs/PHASE_STATUS.md`, and `docs/THESIS_SURFACE_GOVERNANCE.md` contained older manuscript-current wording at audit time. The evidence order was aligned, but the heading language should be made final-paper-facing.
 - Some stored outputs and services still carry `not_frozen`, `inherited_provisional`, or similar provenance/status wording. Treat this as a vocabulary/routing cleanup, not a reason to delete outputs or change scientific claims.
-- `output/defense_readiness/*` contains stale launcher snapshots with `draft=` labels and older catalog wording. It should be regenerated after launcher vocabulary cleanup or routed as archived readiness provenance.
+- `output/defense_readiness/*` contains stale launcher snapshots with older launcher-section labels and catalog wording. It should be regenerated after launcher vocabulary cleanup or routed as archived readiness provenance.
 
 ## Archive Routing
 
@@ -47,7 +47,7 @@ All tracked files returned by `git ls-files` were scanned. Binary assets were in
 - `march_family_archive_rows`: route as archive-provenance / appendix-support / experimental-only, depending on launcher entry. Reason: Mindoro B1 March 13-14 is the only main Philippine public-observation validation claim.
 - `prototype_2016_legacy_outputs`: route as legacy-support / secondary-support only. Reason: Secondary 2016 material supports history and comparator context but is not public-spill validation and not a replacement for Mindoro B1 or DWH.
 - `generic_publication_package_legacy_items`: keep the package read-only, but route legacy/prototype figures to legacy-support indexes and final-paper figures to explicit final-paper registry entries. Reason: Some filenames include paper-style labels for legacy/prototype assets; metadata generally marks support-only, but later cleanup should make routing unmistakable.
-- `defense_readiness_stale_launcher_snapshots`: route as regenerate or archive after launcher vocabulary migration. Reason: Snapshot contains old launcher display text including draft labels and older catalog wording; do not delete, but route as stale provenance or refresh after cleanup.
+- `defense_readiness_stale_launcher_snapshots`: route as regenerate or archive after launcher vocabulary migration. Reason: Snapshot contains old launcher display text and older catalog wording; do not delete, but route as stale provenance or refresh after cleanup.
 
 ## Already Aligned
 
@@ -72,8 +72,8 @@ All tracked files returned by `git ls-files` were scanned. Binary assets were in
 
 ## Remediation Plan For Later Prompts
 
-1. Rename launcher evidence-placement vocabulary from draft_section/draft display labels to final_paper_section or evidence_section across config, schema, start.ps1, validation utilities, tests, and docs.
-2. Update docs headings from Current Manuscript wording to Final Paper / Final-Paper Alignment, then adjust scripts/check_docs_against_manuscript_claims.py expectations.
+1. Rename launcher evidence-placement vocabulary to final manuscript section wording across config, schema, start.ps1, validation utilities, tests, and docs.
+2. Update docs headings from older manuscript-current wording to Final Paper / Final-Paper Alignment, then adjust scripts/check_docs_against_manuscript_claims.py expectations.
 3. Separate final-paper evidence status from repository provenance status for inherited-provisional/not_frozen fields without deleting stored outputs.
 4. Add or refresh archive-routing metadata for Phase 1 regional reference, March-family experiments, prototype 2016/2021, and secondary 2016 drifter-track outputs.
 5. Regenerate read-only defense readiness and launcher documentation snapshots after vocabulary cleanup, preserving old snapshots only as archive provenance if needed.

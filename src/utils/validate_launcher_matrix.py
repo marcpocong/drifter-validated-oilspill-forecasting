@@ -62,7 +62,7 @@ REQUIRED_ENTRY_FIELDS = (
     "rerun_cost",
     "safe_default",
     "thesis_role",
-    "draft_section",
+    "manuscript_section",
     "claim_boundary",
     "run_kind",
     "recommended_for",
@@ -261,26 +261,37 @@ def _step_labels(entry: dict[str, Any]) -> list[str]:
 
 
 def _combined_text(entry: dict[str, Any]) -> str:
-    fields = ("entry_id", "label", "description", "notes", "claim_boundary", "draft_section")
-    return " ".join(str(entry.get(field) or "") for field in fields).lower()
+    fields = ("entry_id", "label", "description", "notes", "claim_boundary", "manuscript_section")
+    text_parts = [str(entry.get(field) or "") for field in fields]
+    # Internal compatibility only: older local matrices may still carry the retired field.
+    text_parts.append(str(entry.get("draft_section") or ""))
+    return " ".join(text_parts).lower()
+
+
+def _manuscript_section(entry: dict[str, Any]) -> str:
+    section = str(entry.get("manuscript_section") or "").strip()
+    if section:
+        return section
+    # Internal compatibility only. The public matrix schema now requires manuscript_section.
+    return str(entry.get("draft_section") or "").strip()
 
 
 def _contains_any(text: str, phrases: Iterable[str]) -> bool:
     return any(phrase in text for phrase in phrases)
 
 
-def _draft_alignment_issues(entry: dict[str, Any]) -> list[str]:
+def _manuscript_alignment_issues(entry: dict[str, Any]) -> list[str]:
     entry_id = str(entry.get("entry_id") or "")
     workflow_mode = str(entry.get("workflow_mode") or "")
     run_kind = str(entry.get("run_kind") or "")
     text = _combined_text(entry)
     boundary = str(entry.get("claim_boundary") or "").strip().lower()
-    draft_section = str(entry.get("draft_section") or "").strip()
+    manuscript_section = _manuscript_section(entry)
     step_phases = {str(step.get("phase") or "") for step in entry.get("steps") or []}
     issues: list[str] = []
 
-    if not draft_section:
-        issues.append("draft_section is empty; manuscript evidence alignment cannot be checked")
+    if not manuscript_section:
+        issues.append("manuscript_section is empty; final manuscript evidence alignment cannot be checked")
     if not boundary:
         issues.append("claim_boundary is empty")
 
@@ -305,7 +316,7 @@ def _draft_alignment_issues(entry: dict[str, Any]) -> list[str]:
     if workflow_mode == "dwh_retro_2010" or entry_id.startswith("dwh_"):
         for phrase in ("external transfer", "not mindoro recalibration"):
             if phrase not in text:
-                issues.append(f"DWH entry is missing current manuscript boundary phrase '{phrase}'")
+                issues.append(f"DWH entry is missing final manuscript boundary phrase '{phrase}'")
 
     is_comparator_entry = run_kind == "comparator_rerun" or str(entry.get("thesis_role") or "") == "comparator_support"
     if "pygnome" in text or is_comparator_entry:
@@ -431,7 +442,7 @@ def _entry_issues(
     if command_matrix_ids is not None and not bool(entry.get("menu_hidden")) and entry_id not in command_matrix_ids:
         issues.append("visible entry is missing from docs/COMMAND_MATRIX.md Launcher Entry Map")
 
-    issues.extend(_draft_alignment_issues(entry))
+    issues.extend(_manuscript_alignment_issues(entry))
     return issues
 
 
