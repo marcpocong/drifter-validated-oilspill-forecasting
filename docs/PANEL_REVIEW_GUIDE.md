@@ -89,7 +89,6 @@ Panel mode is built to respect that order instead of flattening the repo into on
 ### Mindoro `Track A`
 
 - OpenDrift `R1_previous`: forecast cells `5`; nearest distance `1414.21 m`; mean FSS `0.1075`
-- OpenDrift `R0`: forecast cells `0`; mean FSS `0.0000`
 - PyGNOME deterministic comparator-only support: forecast cells `6`; nearest distance `6082.76 m`; FSS `0.0000 / 0.0000 / 0.0000 / 0.0244`; mean FSS `0.0061`
 
 ### DWH
@@ -166,6 +165,9 @@ Dashboard:
 ```bash
 docker compose exec pipeline python -m streamlit run ui/app.py --server.address 0.0.0.0 --server.port 8501
 ```
+
+The default dashboard page order is `Overview / Final Manuscript Alignment`, `Data Sources & Provenance`, `Focused Mindoro Phase 1 Provenance`, `Mindoro B1 Public-Observation Validation`, `Mindoro Track A Comparator Support`, `DWH External Transfer Validation`, `Mindoro Oil-Type and Shoreline Support/Context`, `Secondary 2016 Support`, `Archive/Provenance and Legacy Support`, and `Reproducibility / Governance / Audit`.
+Dashboard pages organize stored outputs only and do not create new scientific results.
 
 Data sources and provenance:
 

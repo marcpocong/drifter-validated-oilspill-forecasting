@@ -226,7 +226,7 @@ def render(state: dict, ui_state: dict) -> None:
     )
 
     render_modern_hero(
-        "Phase 1 Transport Provenance",
+        "Focused Mindoro Phase 1 Provenance",
         "Focused historical drifter segments support transport provenance and recipe selection for official B1; they do not directly validate the mapped oil footprint.",
         badge=ROLE_THESIS,
         eyebrow="Transport provenance lane",

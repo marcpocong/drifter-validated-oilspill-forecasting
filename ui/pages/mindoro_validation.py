@@ -115,7 +115,7 @@ def render(state: dict, ui_state: dict) -> None:
     recipe_scope = f"{len(recipe_family)}-recipe" if recipe_family else "focused"
 
     render_modern_hero(
-        "Mindoro B1 Primary Validation",
+        "Mindoro B1 Public-Observation Validation",
         "Mindoro B1 is the only main Philippine public-observation validation claim: a March 13-14 reinitialization-based check against the March 14 public observation mask.",
         badge=ROLE_THESIS,
         eyebrow="Primary thesis-facing Mindoro validation",
@@ -270,7 +270,7 @@ def render(state: dict, ui_state: dict) -> None:
     def _archive_note() -> None:
         render_status_callout(
             "Archive note",
-            "Non-primary Mindoro validation provenance is separated from this B1 page. Use Archive — Mindoro Validation Provenance for audit-only rows.",
+            "Non-primary Mindoro validation provenance is separated from this B1 page. Use Archive/Provenance and Legacy Support for audit-only rows.",
             "warning",
         )
         if archive_package:

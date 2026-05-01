@@ -30,6 +30,11 @@ from ui.data_access import parse_source_paths, read_json, read_text, resolve_rep
 from ui.evidence_contract import panel_safe_label, role_badge_for_record
 
 
+READ_ONLY_DASHBOARD_NOTICE = "Dashboard pages organize stored outputs only and do not create new scientific results."
+COMPARATOR_ONLY_NOTICE = "Comparator-only; not observation truth."
+ARCHIVE_ONLY_NOTICE = "Archive/provenance only; not a final-paper validation claim."
+
+
 def _clean_text_value(value: Any) -> str:
     if value is None:
         return ""
@@ -65,13 +70,19 @@ def _tone_class(tone: str | None, *, default: str = "info") -> str:
         "critical": "error",
         "caution": "warning",
         "caveat": "warning",
+        "primary-evidence": "thesis",
         "primary": "thesis",
         "thesis-facing": "thesis",
+        "external-transfer-validation": "thesis",
         "comparator-support": "comparator",
         "support-context": "context",
         "support": "context",
+        "secondary-support": "legacy",
+        "archive-provenance": "archive",
         "archive-only": "archive",
+        "legacy-debug": "legacy",
         "legacy-support": "legacy",
+        "read-only-governance": "readonly",
     }
     allowed = {
         "info",
@@ -85,6 +96,7 @@ def _tone_class(tone: str | None, *, default: str = "info") -> str:
         "archive",
         "legacy",
         "advanced",
+        "readonly",
     }
     key = aliases.get(key, key)
     return key if key in allowed else default
@@ -94,16 +106,22 @@ def _role_modifier(label: Any) -> str:
     text = _clean_text_value(label).upper()
     if not text:
         return "neutral"
-    if "THESIS-FACING" in text:
+    if "PRIMARY EVIDENCE" in text or "THESIS-FACING" in text:
+        return "thesis"
+    if "EXTERNAL TRANSFER" in text:
         return "thesis"
     if "COMPARATOR" in text:
         return "comparator"
+    if "SECONDARY SUPPORT" in text:
+        return "legacy"
     if "LEGACY" in text:
         return "legacy"
     if "ARCHIVE" in text:
         return "archive"
-    if "SUPPORT / CONTEXT" in text or "CONTEXT ONLY" in text:
+    if "SUPPORT/CONTEXT" in text or "SUPPORT / CONTEXT" in text or "CONTEXT ONLY" in text:
         return "context"
+    if "READ-ONLY GOVERNANCE" in text or "READ ONLY GOVERNANCE" in text:
+        return "readonly"
     if "ADVANCED" in text:
         return "advanced"
     if "REFERENCE" in text or "TECHNICAL" in text or "AUDIT" in text:
@@ -225,6 +243,18 @@ def render_page_intro(title: str, body: str, *, badge: str = "") -> None:
 
 def render_status_callout(label: str, value: str, tone: str = "info") -> None:
     st.markdown(build_callout_html(label, value, tone), unsafe_allow_html=True)
+
+
+def render_dashboard_read_only_banner() -> None:
+    render_status_callout("Read-only dashboard", READ_ONLY_DASHBOARD_NOTICE, "readonly")
+
+
+def render_comparator_banner() -> None:
+    render_status_callout("Comparator boundary", COMPARATOR_ONLY_NOTICE, "comparator")
+
+
+def render_archive_banner() -> None:
+    render_status_callout("Archive boundary", ARCHIVE_ONLY_NOTICE, "archive")
 
 
 def render_key_takeaway(label: str, value: str, *, tone: str = "thesis", badge: str = "") -> None:

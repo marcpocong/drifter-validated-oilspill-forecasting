@@ -8,12 +8,16 @@ from typing import Any, Mapping
 import pandas as pd
 
 
-ROLE_THESIS = "THESIS-FACING"
-ROLE_COMPARATOR = "COMPARATOR SUPPORT"
-ROLE_CONTEXT = "SUPPORT / CONTEXT ONLY"
-ROLE_ARCHIVE = "ARCHIVE ONLY"
-ROLE_LEGACY = "LEGACY / ARCHIVE SUPPORT"
-ROLE_ADVANCED = "ADVANCED TECHNICAL REFERENCE"
+ROLE_PRIMARY = "Primary evidence"
+ROLE_THESIS = ROLE_PRIMARY
+ROLE_COMPARATOR = "Comparator support"
+ROLE_EXTERNAL_TRANSFER = "External transfer validation"
+ROLE_CONTEXT = "Support/context"
+ROLE_SECONDARY = "Secondary support"
+ROLE_ARCHIVE = "Archive/provenance"
+ROLE_LEGACY = "Legacy/debug"
+ROLE_GOVERNANCE = "Read-only governance"
+ROLE_ADVANCED = ROLE_GOVERNANCE
 
 
 @dataclass(frozen=True)
@@ -307,13 +311,15 @@ def role_badge_for_record(record: Mapping[str, Any]) -> str:
     if surface == "archive_only" or status in ARCHIVE_STATUS_KEYS or scope == "archive_only" or _text(record, "archive_only").lower() == "true":
         return ROLE_ARCHIVE
     if surface == "legacy_support" or status in LEGACY_STATUS_KEYS or scope == "legacy_support" or _text(record, "legacy_support").lower() == "true":
-        return ROLE_LEGACY
+        return ROLE_SECONDARY
     if surface == "advanced_only" or status in ADVANCED_STATUS_KEYS or scope == "advanced_only":
         return ROLE_ADVANCED
     if status in CONTEXT_STATUS_KEYS or "phase4" in status or _text(record, "support_only").lower() == "true" or _text(record, "optional_context_only").lower() == "true":
         return ROLE_CONTEXT
     if surface == "comparator_support" or status in COMPARATOR_STATUS_KEYS or "comparator" in role or _text(record, "comparator_only").lower() == "true":
         return ROLE_COMPARATOR
+    if status.startswith("dwh_") or "dwh" in _text(record, "case_id").lower():
+        return ROLE_EXTERNAL_TRANSFER
     return ROLE_THESIS
 
 

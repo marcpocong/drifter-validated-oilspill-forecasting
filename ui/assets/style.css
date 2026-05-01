@@ -555,6 +555,11 @@ div[data-testid="stCaptionContainer"] {
   background: var(--ui-context);
 }
 
+.ui-callout--advanced .ui-callout__bar,
+.ui-callout--readonly .ui-callout__bar {
+  background: var(--ui-info);
+}
+
 .ui-callout--archive .ui-callout__bar,
 .ui-callout--neutral .ui-callout__bar {
   background: var(--ui-archive);
@@ -753,7 +758,8 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
   border-top: 3px solid var(--ui-legacy) !important;
 }
 
-.ui-feature-card--advanced {
+.ui-feature-card--advanced,
+.ui-feature-card--readonly {
   border-top: 3px solid var(--ui-info) !important;
 }
 

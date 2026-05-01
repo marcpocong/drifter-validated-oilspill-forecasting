@@ -89,34 +89,34 @@ class UiReadonlySemanticsTests(unittest.TestCase):
         self.assertEqual(
             panel_labels,
             [
-                "Defense / Panel Review",
-                "Phase 1 Transport Provenance",
-                "Mindoro B1 Primary Validation",
+                "Overview / Final Manuscript Alignment",
+                "Data Sources & Provenance",
+                "Focused Mindoro Phase 1 Provenance",
+                "Mindoro B1 Public-Observation Validation",
                 "Mindoro Track A Comparator Support",
                 "DWH External Transfer Validation",
-                "Mindoro Oil-Type and Shoreline Context",
-                "Archive — Mindoro Validation Provenance",
-                "Archive — Legacy 2016 Support",
-                "Data Sources & Provenance",
-                "Artifacts / Logs / Registries",
+                "Mindoro Oil-Type and Shoreline Support/Context",
+                "Secondary 2016 Support",
+                "Archive/Provenance and Legacy Support",
+                "Reproducibility / Governance / Audit",
             ],
         )
         self.assertEqual(
             [page.navigation_section for page in panel_pages],
             [
-                "Main Defense Story",
-                "Main Defense Story",
-                "Main Defense Story",
-                "Main Defense Story",
-                "Main Defense Story",
-                "Main Defense Story",
-                "Archive / Support Only",
-                "Archive / Support Only",
-                "Reference",
-                "Reference",
+                "Final Paper Evidence",
+                "Final Paper Evidence",
+                "Final Paper Evidence",
+                "Final Paper Evidence",
+                "Final Paper Evidence",
+                "Final Paper Evidence",
+                "Final Paper Evidence",
+                "Final Paper Evidence",
+                "Archive / Provenance",
+                "Governance",
             ],
         )
-        self.assertEqual(panel_pages[-1].navigation_section, "Reference")
+        self.assertEqual(panel_pages[-1].navigation_section, "Governance")
 
     def test_page_registry_source_matches_panel_default_map(self):
         registry_path = REPO_ROOT / "ui" / "pages" / "__init__.py"
@@ -144,21 +144,21 @@ class UiReadonlySemanticsTests(unittest.TestCase):
         self.assertEqual(
             [definition[1] for definition in default_definitions],
             [
-                "Defense / Panel Review",
-                "Phase 1 Transport Provenance",
-                "Mindoro B1 Primary Validation",
+                "Overview / Final Manuscript Alignment",
+                "Data Sources & Provenance",
+                "Focused Mindoro Phase 1 Provenance",
+                "Mindoro B1 Public-Observation Validation",
                 "Mindoro Track A Comparator Support",
                 "DWH External Transfer Validation",
-                "Mindoro Oil-Type and Shoreline Context",
-                "Archive — Mindoro Validation Provenance",
-                "Archive — Legacy 2016 Support",
-                "Data Sources & Provenance",
-                "Artifacts / Logs / Registries",
+                "Mindoro Oil-Type and Shoreline Support/Context",
+                "Secondary 2016 Support",
+                "Archive/Provenance and Legacy Support",
+                "Reproducibility / Governance / Audit",
             ],
         )
         self.assertEqual(
             sorted({definition[2] for definition in default_definitions}),
-            ["Archive / Support Only", "Main Defense Story", "Reference"],
+            ["Archive / Provenance", "Final Paper Evidence", "Governance"],
         )
 
     def test_phase1_page_stays_visible_when_focused_artifacts_are_missing(self):
@@ -168,7 +168,7 @@ class UiReadonlySemanticsTests(unittest.TestCase):
         state["phase1_focused_manifest"] = {}
         state["phase1_focused_recipe_ranking"] = state["phase1_focused_recipe_ranking"].iloc[0:0].copy()
         panel_labels = [page.label for page in pages_module.visible_page_definitions(state, advanced=False)]
-        self.assertIn("Phase 1 Transport Provenance", panel_labels)
+        self.assertIn("Focused Mindoro Phase 1 Provenance", panel_labels)
 
     def test_panel_facing_ui_source_avoids_internal_status_strings(self):
         forbidden_tokens = (
@@ -298,7 +298,7 @@ class UiReadonlySemanticsTests(unittest.TestCase):
         archive_text = (REPO_ROOT / "ui" / "pages" / "mindoro_validation_archive.py").read_text(encoding="utf-8")
         legacy_text = (REPO_ROOT / "ui" / "pages" / "legacy_2016_support.py").read_text(encoding="utf-8")
 
-        self.assertIn("Phase 1 Transport Provenance", phase1_text)
+        self.assertIn("Focused Mindoro Phase 1 Provenance", phase1_text)
         self.assertIn("Drifter segments support transport-provenance and recipe selection; they are not direct oil-footprint truth.", phase1_text)
         self.assertIn("cmems_gfs", phase1_text)
         self.assertIn("4.5886", phase1_text)
@@ -323,7 +323,7 @@ class UiReadonlySemanticsTests(unittest.TestCase):
         self.assertIn("0.5389", dwh_text)
         self.assertIn("0.4966", dwh_text)
         self.assertIn("0.3612", dwh_text)
-        self.assertIn("Mindoro Oil-Type and Shoreline Context", phase4_text)
+        self.assertIn("Mindoro Oil-Type and Shoreline Support/Context", phase4_text)
         self.assertIn("Support/context only; not a primary validation phase.", phase4_text)
         self.assertIn("No matched Mindoro PyGNOME fate-and-shoreline comparison is packaged yet.", phase4_text)
         self.assertIn("0.02%", phase4_text)
@@ -331,12 +331,12 @@ class UiReadonlySemanticsTests(unittest.TestCase):
         self.assertIn("0.63%", phase4_text)
         self.assertIn("Budget-only deterministic PyGNOME comparator pilot.", legacy_text)
         self.assertIn("Shoreline comparison is not packaged because matched PyGNOME shoreline outputs are not available.", legacy_text)
-        self.assertIn("Archive — Mindoro Validation Provenance", archive_text)
-        self.assertIn("ARCHIVE / SUPPORT ONLY — not part of the main Mindoro validation claim.", archive_text)
+        self.assertIn("Archive/Provenance and Legacy Support", archive_text)
+        self.assertIn("Archive/provenance only; not a final-paper validation claim.", archive_text)
         self.assertIn("ROLE_ARCHIVE", archive_text)
-        self.assertIn("Archive — Legacy 2016 Support", legacy_text)
-        self.assertIn("ARCHIVE / SUPPORT ONLY — not part of the main Mindoro validation claim.", legacy_text)
-        self.assertIn("ROLE_LEGACY", legacy_text)
+        self.assertIn("Secondary 2016 Support", legacy_text)
+        self.assertIn("SECONDARY SUPPORT ONLY - not public-spill validation.", legacy_text)
+        self.assertIn("ROLE_SECONDARY", legacy_text)
         self.assertIn("First-code search context", legacy_text)
         self.assertIn("Historical origin source boxes", legacy_text)
         self.assertIn("first-code search box", legacy_text)
@@ -345,7 +345,7 @@ class UiReadonlySemanticsTests(unittest.TestCase):
         self.assertIn("operative scientific/display extents", legacy_text)
 
     def test_non_archive_pages_have_no_archive_content_leak_terms(self):
-        allowed_home_terms = {"Archive — Legacy 2016 Support"}
+        allowed_home_terms = set()
         pages_to_check = (
             REPO_ROOT / "ui" / "pages" / "phase1_recipe_selection.py",
             REPO_ROOT / "ui" / "pages" / "mindoro_validation.py",
@@ -376,12 +376,13 @@ class UiReadonlySemanticsTests(unittest.TestCase):
             "def assert_no_archive_leak",
             "def role_badge_for_record",
             "def panel_safe_label",
-            "THESIS-FACING",
-            "COMPARATOR SUPPORT",
-            "SUPPORT / CONTEXT ONLY",
-            "ARCHIVE ONLY",
-            "LEGACY / ARCHIVE SUPPORT",
-            "ADVANCED TECHNICAL REFERENCE",
+            "Primary evidence",
+            "Comparator support",
+            "Support/context",
+            "Secondary support",
+            "Archive/provenance",
+            "Legacy/debug",
+            "Read-only governance",
         ):
             self.assertIn(phrase, contract_text)
         page_texts = "\n".join(path.read_text(encoding="utf-8") for path in (REPO_ROOT / "ui" / "pages").glob("*.py"))
@@ -413,7 +414,7 @@ class UiReadonlySemanticsTests(unittest.TestCase):
         self.assertEqual(evidence_contract.role_badge_for_record({"surface_key": "comparator_support"}), evidence_contract.ROLE_COMPARATOR)
         self.assertEqual(evidence_contract.role_badge_for_record({"status_key": "mindoro_phase4_oil_budget"}), evidence_contract.ROLE_CONTEXT)
         self.assertEqual(evidence_contract.role_badge_for_record({"surface_key": "archive_only"}), evidence_contract.ROLE_ARCHIVE)
-        self.assertEqual(evidence_contract.role_badge_for_record({"surface_key": "legacy_support"}), evidence_contract.ROLE_LEGACY)
+        self.assertEqual(evidence_contract.role_badge_for_record({"surface_key": "legacy_support"}), evidence_contract.ROLE_SECONDARY)
 
     def test_artifacts_logs_keeps_raw_previews_advanced_only(self):
         artifacts_text = (REPO_ROOT / "ui" / "pages" / "artifacts_logs.py").read_text(encoding="utf-8")

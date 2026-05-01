@@ -24,7 +24,10 @@ from ui.evidence_contract import (
     ROLE_ARCHIVE,
     ROLE_COMPARATOR,
     ROLE_CONTEXT,
+    ROLE_EXTERNAL_TRANSFER,
+    ROLE_GOVERNANCE,
     ROLE_LEGACY,
+    ROLE_SECONDARY,
     ROLE_THESIS,
     assert_no_archive_leak,
     filter_for_page,
@@ -120,11 +123,11 @@ def render(state: dict, ui_state: dict) -> None:
     subset_count = int((phase1_manifest.get("ranking_subset") or {}).get("segment_count") or 19)
 
     render_modern_hero(
-        "Defense / Panel Review",
-        "This dashboard displays stored thesis-facing outputs only and does not rerun science.",
-        badge="Read-only thesis review",
-        eyebrow="Thesis defense landing page",
-        meta=["Stored outputs only", "No science reruns", "Panel-friendly by default"],
+        "Overview / Final Manuscript Alignment",
+        "This dashboard displays stored final-paper outputs only and does not rerun science.",
+        badge=ROLE_GOVERNANCE,
+        eyebrow="Final paper alignment overview",
+        meta=["Stored outputs only", "No science reruns", "Panel-safe by default"],
         tone="thesis",
     )
 
@@ -139,9 +142,14 @@ def render(state: dict, ui_state: dict) -> None:
     render_evidence_path(
         [
             {
-                "title": "Transport provenance",
+                "title": "Focused Mindoro Phase 1 provenance",
                 "badge": ROLE_THESIS,
                 "body": "Focused Phase 1 selects the transport recipe; drifters are not oil-footprint truth.",
+            },
+            {
+                "title": "Phase 2 forecast products",
+                "badge": ROLE_THESIS,
+                "body": "Standardized deterministic and 50-member forecast products are stored as outputs, not recomputed here.",
             },
             {
                 "title": "Mindoro B1 validation",
@@ -155,7 +163,7 @@ def render(state: dict, ui_state: dict) -> None:
             },
             {
                 "title": "DWH transfer validation",
-                "badge": ROLE_THESIS,
+                "badge": ROLE_EXTERNAL_TRANSFER,
                 "body": "Separate external transfer validation; not Mindoro recalibration.",
             },
             {
@@ -164,13 +172,18 @@ def render(state: dict, ui_state: dict) -> None:
                 "body": "Downstream consequence support only.",
             },
             {
-                "title": "Archive / legacy support",
-                "badge": ROLE_LEGACY,
-                "body": "Preserved for audit and historical context only.",
+                "title": "Secondary 2016 support",
+                "badge": ROLE_SECONDARY,
+                "body": "Direct drifter-track and legacy FSS support only; not public-spill validation.",
+            },
+            {
+                "title": "Governance / archive",
+                "badge": ROLE_GOVERNANCE,
+                "body": "Read-only package, audit, archive, and legacy/debug surfaces remain separated.",
             },
         ],
-        title="Defense Path",
-        caption="A panel-first pathway from recipe provenance to the main claim, then comparator, transfer, context, and archive lanes.",
+        title="Final-Paper Evidence Order",
+        caption="A panel-safe pathway from provenance to main validation, comparator support, transfer validation, support/context, secondary support, and governance.",
         export_mode=export_mode,
     )
 
@@ -200,7 +213,7 @@ def render(state: dict, ui_state: dict) -> None:
             },
             {
                 "title": "What does DWH add?",
-                "badge": ROLE_THESIS,
+                "badge": ROLE_EXTERNAL_TRANSFER,
                 "body": "DWH adds a separate external transfer-validation lane using public daily observation masks.",
                 "note": "It does not recalibrate Mindoro.",
             },
@@ -244,7 +257,7 @@ def render(state: dict, ui_state: dict) -> None:
             },
             {
                 "label": "Oil-type/shoreline status",
-                "value": "SUPPORT / CONTEXT ONLY",
+                "value": ROLE_CONTEXT,
                 "note": "No matched Mindoro PyGNOME fate-and-shoreline package stored.",
                 "full_width": True,
             },
@@ -258,7 +271,7 @@ def render(state: dict, ui_state: dict) -> None:
             [
                 "- Only Mindoro B1 is the main Philippine validation claim.",
                 "- B1 supports coastal-neighborhood usefulness, not exact 1 km overlap.",
-                "- Track A, DWH, oil-type/shoreline, and legacy/archive outputs have separate support roles.",
+                "- Track A, DWH, oil-type/shoreline, secondary 2016, and archive outputs have separate roles.",
             ]
         ),
         tone="thesis",
@@ -303,7 +316,7 @@ def render(state: dict, ui_state: dict) -> None:
     phase1_quick_link = {
         "package_id": "phase1_recipe_selection",
         "label": "Phase 1 focused provenance package",
-        "page_label": "Phase 1 Transport Provenance",
+        "page_label": "Focused Mindoro Phase 1 Provenance",
         "relative_path": "output/phase1_mindoro_focus_pre_spill_2016_2023",
         "description": "Focused historical drifter provenance lane used to select the official Mindoro B1 recipe before the B1 validation result is discussed.",
         "secondary_note": ROLE_THESIS,
@@ -320,7 +333,7 @@ def render(state: dict, ui_state: dict) -> None:
         {
             "package_id": "panel_registry",
             "label": "Paper-to-output registry",
-            "page_label": "Artifacts / Logs / Registries",
+            "page_label": "Reproducibility / Governance / Audit",
             "relative_path": "docs/PAPER_OUTPUT_REGISTRY.md",
             "description": "Plain-language manuscript-to-output map for tables, figures, and support-only packages.",
             "secondary_note": "Read-only reference",
@@ -329,7 +342,7 @@ def render(state: dict, ui_state: dict) -> None:
         {
             "package_id": "final_validation_package",
             "label": "Final validation package",
-            "page_label": "Artifacts / Logs / Registries",
+            "page_label": "Reproducibility / Governance / Audit",
             "relative_path": "output/final_validation_package",
             "description": "Stored thesis-facing validation summaries and final packaging manifests.",
             "secondary_note": "Packaging only",
@@ -338,7 +351,7 @@ def render(state: dict, ui_state: dict) -> None:
         {
             "package_id": "figure_package_publication",
             "label": "Publication figure package",
-            "page_label": "Artifacts / Logs / Registries",
+            "page_label": "Reproducibility / Governance / Audit",
             "relative_path": "output/figure_package_publication",
             "description": "Current publication and defense figures rebuilt from stored outputs only.",
             "secondary_note": "Packaging only",
@@ -347,7 +360,7 @@ def render(state: dict, ui_state: dict) -> None:
         {
             "package_id": "final_reproducibility_package",
             "label": "Final reproducibility package",
-            "page_label": "Artifacts / Logs / Registries",
+            "page_label": "Reproducibility / Governance / Audit",
             "relative_path": "output/final_reproducibility_package",
             "description": "Synced reproducibility indexes, command references, manifests, and logs.",
             "secondary_note": "Packaging only",
@@ -359,7 +372,7 @@ def render(state: dict, ui_state: dict) -> None:
             {
                 "package_id": "panel_review_check",
                 "label": "Latest panel verification output",
-                "page_label": "Artifacts / Logs / Registries",
+                "page_label": "Reproducibility / Governance / Audit",
                 "relative_path": "output/panel_review_check",
                 "description": "Latest manuscript-to-output verification results written by the panel review checker.",
                 "secondary_note": "Read-only output",
@@ -372,13 +385,13 @@ def render(state: dict, ui_state: dict) -> None:
         phase1_quick_link,
         _story_package("mindoro_b1_final", ROLE_THESIS),
         _story_package("mindoro_comparator", ROLE_COMPARATOR),
-        _story_package("dwh_phase3c_final", ROLE_THESIS),
+        _story_package("dwh_phase3c_final", ROLE_EXTERNAL_TRANSFER),
         _story_package("phase4_context_status", ROLE_CONTEXT),
+        _story_package("legacy_2016_final", ROLE_SECONDARY),
     ]
     primary_quick_links = [package for package in primary_quick_links if package]
     secondary_quick_links = [
         _story_package("mindoro_validation_archive", ROLE_ARCHIVE),
-        _story_package("legacy_2016_final", ROLE_LEGACY),
     ]
     secondary_quick_links = [package for package in secondary_quick_links if package]
 
@@ -395,18 +408,18 @@ def render(state: dict, ui_state: dict) -> None:
 
     archive_panel_cards = [
             {
-                "title": "Archive — Mindoro Validation Provenance",
+                "title": "Archive/provenance material",
                 "classification": ROLE_ARCHIVE,
                 "body": "Archived Mindoro rows are centralized here for provenance, audit, and reproducibility.",
                 "note": "Not thesis-facing evidence; main paper uses March 13 -> March 14 R1 only.",
-                "page_label": "Archive — Mindoro Validation Provenance",
+                "page_label": "Archive/Provenance and Legacy Support",
             },
             {
-                "title": "Archive — Legacy 2016 Support",
+                "title": "Legacy/debug routes",
                 "classification": ROLE_LEGACY,
-                "body": "The 2016 package preserves the legacy support flow and includes support-only comparator context outside the main Mindoro and DWH thesis claims.",
-                "note": "Support-only; not main validation evidence.",
-                "page_label": "Archive — Legacy 2016 Support",
+                "body": "Legacy and debug routes remain inspectable without replacing the main Mindoro B1 or DWH evidence.",
+                "note": "Legacy/debug only; not main validation evidence.",
+                "page_label": "Archive/Provenance and Legacy Support",
             },
     ]
     if ui_state["advanced"] and not export_mode and secondary_quick_links:

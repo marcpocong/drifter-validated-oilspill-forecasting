@@ -12,6 +12,7 @@ Panel reviewers should start with either:
 ```
 
 Panel mode opens the defense-safe launcher path. It reads stored outputs, opens review surfaces, checks package consistency, and rebuilds presentation packages from existing artifacts only.
+The Streamlit dashboard is also read-only by default: its pages organize stored outputs only and do not create new scientific results.
 
 The full launcher stays available for intentional researcher or audit work, but it is grouped by role instead of presenting archive, support, legacy, and main evidence as one flat list:
 
@@ -68,6 +69,7 @@ See [docs/ARCHIVE_GOVERNANCE.md](docs/ARCHIVE_GOVERNANCE.md) and [config/archive
 ## Data Sources And Provenance
 
 External observation, drifter, forcing, shoreline, oil-property, and model/tool sources are documented in [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md). The machine-readable source registry is [config/data_sources.yaml](config/data_sources.yaml).
+In the dashboard, the default navigation begins with `Overview / Final Manuscript Alignment`, then `Data Sources & Provenance`, and then the focused Mindoro, B1, comparator, DWH, support/context, secondary support, archive/provenance, and governance pages.
 
 ## Panel Documentation
 

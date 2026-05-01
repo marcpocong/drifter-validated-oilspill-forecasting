@@ -67,7 +67,7 @@ def render(state: dict, ui_state: dict) -> None:
     shoreline_status = get_artifact_status("mindoro_phase4_shoreline")
 
     render_modern_hero(
-        "Mindoro Oil-Type and Shoreline Context",
+        "Mindoro Oil-Type and Shoreline Support/Context",
         "Downstream oil-type and shoreline outputs show consequence sensitivity under the retained transport setup. They are support/context only, not a primary validation phase.",
         badge=ROLE_CONTEXT,
         eyebrow="Downstream support/context lane",

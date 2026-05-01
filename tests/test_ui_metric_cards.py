@@ -13,7 +13,7 @@ class UiMetricCardTests(unittest.TestCase):
         from ui.pages.common import render_metric_row
 
         long_label = "Phase 4 status with enough wording to require wrapping in panel review"
-        long_value = "SUPPORT / CONTEXT ONLY; no matched Mindoro Phase 4 PyGNOME fate-and-shoreline package"
+        long_value = "Support/context; no matched Mindoro Phase 4 PyGNOME fate-and-shoreline package"
         with patch("ui.pages.common.st.markdown") as markdown:
             render_metric_row(
                 [
@@ -30,7 +30,7 @@ class UiMetricCardTests(unittest.TestCase):
         rendered_html = markdown.call_args.args[0]
         self.assertIn("ui-metric-grid--compact", rendered_html)
         self.assertIn("ui-metric-card--full", rendered_html)
-        self.assertIn("SUPPORT / CONTEXT ONLY", rendered_html)
+        self.assertIn("Support/context", rendered_html)
 
     def test_metric_card_html_escapes_unsafe_text(self):
         from ui.pages.common import build_metric_row_html

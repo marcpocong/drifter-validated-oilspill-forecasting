@@ -22,8 +22,9 @@ import streamlit as st
 
 from src.core.artifact_status import get_artifact_status
 from ui.data_access import figure_subset
-from ui.evidence_contract import ROLE_ARCHIVE
+from ui.evidence_contract import ROLE_ARCHIVE, ROLE_LEGACY
 from ui.pages.common import (
+    render_archive_banner,
     render_archive_notice,
     render_badge_strip,
     render_export_note,
@@ -106,13 +107,14 @@ def render(state: dict, ui_state: dict) -> None:
     transport_context_figures = figure_subset("panel", case_id=case_id, surface_keys=["advanced_only"])
 
     render_modern_hero(
-        "Archive — Mindoro Validation Provenance",
+        "Archive/Provenance and Legacy Support",
         "This page centralizes archived Mindoro validation material that remains repo-preserved for provenance, audit, and reproducibility. The main paper and thesis-facing Mindoro reporting will use the March 13 -> March 14 R1 primary validation row only.",
         badge=ROLE_ARCHIVE,
         eyebrow="Archive / support only",
         meta=["Provenance layer", "Not primary claim", "Read-only artifacts"],
         tone="archive",
     )
+    render_archive_banner()
 
     if export_mode:
         render_export_note(
@@ -152,12 +154,18 @@ def render(state: dict, ui_state: dict) -> None:
                 "badge": ROLE_ARCHIVE,
                 "tone": "archive",
             },
+            {
+                "title": "Legacy/debug routes",
+                "body": "Legacy and debug artifacts remain inspectable from archive/provenance paths without becoming final-paper validation claims.",
+                "badge": ROLE_LEGACY,
+                "tone": "legacy",
+            },
         ],
-        columns_per_row=3,
+        columns_per_row=4,
         export_mode=export_mode,
     )
 
-    render_status_callout("ARCHIVE / SUPPORT ONLY — not part of the main Mindoro validation claim.", "ARCHIVE / SUPPORT ONLY — not part of the main Mindoro validation claim.", "warning")
+    render_status_callout("Archive/provenance only", "Archive/provenance only; not a final-paper validation claim.", "warning")
     render_status_callout(
         "Main paper rule",
         "The March 13 -> March 14 R1 primary validation row will be the only thesis-facing Mindoro B1 validation row used in the main paper.",

@@ -64,16 +64,18 @@ For print/export review, append `?export=1` to a page URL. Export mode hides sid
 
 ## Viewing Modes
 
-Panel-friendly mode is the default. It should show the main defense story first:
+Panel-friendly mode is the default. It should show the final-paper evidence order first:
 
-1. Defense / Panel Review
-2. Phase 1 Transport Provenance
-3. Mindoro B1 Primary Validation
-4. Mindoro Track A Comparator Support
-5. DWH External Transfer Validation
-6. Mindoro Oil-Type and Shoreline Context
-7. Archive / Support Only pages as secondary material
-8. Reference pages for provenance and registries
+1. Overview / Final Manuscript Alignment
+2. Data Sources & Provenance
+3. Focused Mindoro Phase 1 Provenance
+4. Mindoro B1 Public-Observation Validation
+5. Mindoro Track A Comparator Support
+6. DWH External Transfer Validation
+7. Mindoro Oil-Type and Shoreline Support/Context
+8. Secondary 2016 Support
+9. Archive/Provenance and Legacy Support
+10. Reproducibility / Governance / Audit
 
 Advanced mode exposes technical inspection layers:
 
@@ -95,8 +97,10 @@ Keep these claims stable across page text, labels, captions, and export views:
 - Mindoro Track A and PyGNOME are comparator-only support.
 - DWH is external transfer validation only; it does not recalibrate Mindoro.
 - Mindoro oil-type and shoreline outputs are support/context only.
-- Legacy/archive outputs are preserved for provenance, audit, and reproducibility only.
+- Secondary 2016 outputs are drifter-track and legacy FSS support only; they are not public-spill validation.
+- Archive/provenance and legacy/debug outputs are preserved for provenance, audit, and reproducibility only.
 - UI/publication packages are presentation and governance surfaces over stored outputs only.
+Dashboard pages organize stored outputs only and do not create new scientific results.
 
 Legacy/internal folder names may contain Phase 3B, Phase 3C, or Phase 4, but panel-facing labels should use B1, Track A, DWH external transfer validation, and Mindoro oil-type/shoreline support/context.
 
@@ -128,7 +132,7 @@ Before review, check the app at laptop and projector widths:
 - Long metric values should wrap cleanly without horizontal overflow.
 - Figure cards should keep captions readable and avoid large empty gaps.
 - Sidebar navigation should be readable, structured, and less visually dominant than the page content.
-- Archive and legacy pages should use muted hero/card styling and remain visually secondary.
+- Archive/provenance and legacy/debug pages should use muted hero/card styling and remain visually secondary.
 - Export mode should hide chrome and avoid breaking inside hero/cards where possible.
 
 ## Branding

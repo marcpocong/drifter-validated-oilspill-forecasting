@@ -56,6 +56,8 @@ The unfiltered launcher list is grouped by thesis role. Archive/provenance, lega
 
 Hidden aliases and hidden experimental entries remain resolvable by explicit ID for audit or compatibility, but they are not panel defaults and are not part of the main thesis evidence group. `-Explain <hidden_id>` prints both the requested ID and the canonical entry ID before any run confirmation.
 
+The dashboard follows the same split. Panel-friendly navigation shows the final-paper evidence order first and routes preserved archive material through `Archive/Provenance and Legacy Support`; legacy/debug items stay visibly marked and do not appear on the main panel page as final-paper validation claims.
+
 ## Governance Rules
 
 - Do not delete archive outputs simply because they are no longer thesis-facing.

@@ -24,11 +24,11 @@ from PIL import Image
 
 from ui.data_access import build_dashboard_state, dashboard_state_signature
 from ui.pages import PageDefinition, visible_page_definitions
-from ui.pages.common import render_status_callout
+from ui.pages.common import render_dashboard_read_only_banner, render_status_callout
 
 
 APP_TITLE = "Drifter-Validated Oil Spill Forecasting"
-APP_SUBTITLE = "Read-only thesis dashboard over the curated final packages, publication figures, and synced registries."
+APP_SUBTITLE = "Read-only final-paper dashboard over curated packages, publication figures, and synced registries."
 SIDEBAR_SUBTITLE = "Read-only thesis dashboard"
 
 
@@ -152,13 +152,13 @@ def _render_sidebar_branding(branding: dict) -> None:
 
 def _sidebar_section_modifier(section: str) -> str:
     key = section.strip().lower()
-    if "main" in key:
+    if "main" in key or "final" in key or "evidence" in key:
         return "main"
-    if "archive" in key or "support" in key:
+    if "archive" in key or "provenance" in key:
         return "archive"
     if "advanced" in key:
         return "advanced"
-    if "reference" in key:
+    if "reference" in key or "governance" in key:
         return "reference"
     return "neutral"
 
@@ -237,7 +237,7 @@ def _render_sidebar_controls(state: dict, branding: dict) -> dict:
     with st.sidebar:
         _render_sidebar_branding(branding)
         st.markdown(
-            "<div class='sidebar-note'>Curated outputs only. This UI never reruns science, edits artifacts, or writes back to the repo.</div>",
+            "<div class='sidebar-note'>Dashboard pages organize stored outputs only and do not create new scientific results.</div>",
             unsafe_allow_html=True,
         )
         st.markdown("<div class='sidebar-section-label sidebar-section-label--control'>Viewing Mode</div>", unsafe_allow_html=True)
@@ -297,7 +297,7 @@ def _render_sidebar_controls(state: dict, branding: dict) -> dict:
             st.markdown(
                 (
                     "<div class='sidebar-inspection-note sidebar-inspection-note--panel'>"
-                    "Publication layer is active. Main defense pages appear first; archive and legacy pages are secondary read-only support."
+                    "Publication layer is active. Final-paper evidence appears first; archive/provenance and governance pages remain secondary read-only support."
                     "</div>"
                 ),
                 unsafe_allow_html=True,
@@ -329,12 +329,12 @@ def _render_sidebar_navigation(ui_state: dict) -> None:
                 f"<div class='sidebar-nav-heading sidebar-nav-heading--{modifier}'>{section}</div>",
                 unsafe_allow_html=True,
             )
-            if section == "Archive / Support Only":
+            if "Archive" in section:
                 st.markdown(
                     "<div class='sidebar-nav-note'>Preserved support and audit material, not primary thesis claims.</div>",
                     unsafe_allow_html=True,
                 )
-            if ui_state["advanced"] and section == "Advanced":
+            if ui_state["advanced"] and section.startswith("Advanced"):
                 st.markdown(
                     "<div class='sidebar-nav-note'>Technical pages for inspection only; stored artifacts remain read-only.</div>",
                     unsafe_allow_html=True,
@@ -351,6 +351,7 @@ def _render_sidebar_navigation(ui_state: dict) -> None:
 def _render_page_wrapper(page_definition: PageDefinition, state: dict, ui_state: dict):
     def _run() -> None:
         try:
+            render_dashboard_read_only_banner()
             page_definition.renderer(state, ui_state)
         except Exception:
             if ui_state["advanced"]:
@@ -361,7 +362,7 @@ def _render_page_wrapper(page_definition: PageDefinition, state: dict, ui_state:
                 "warning",
             )
             st.caption(
-                "Open the Artifacts / Logs / Registries page for the synced file indexes, or switch to Advanced mode if you need lower-level inspection."
+                "Open the Reproducibility / Governance / Audit page for the synced file indexes, or switch to Advanced mode if you need lower-level inspection."
             )
 
     return _run

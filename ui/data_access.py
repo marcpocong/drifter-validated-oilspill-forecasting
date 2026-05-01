@@ -40,6 +40,9 @@ LEGACY_2016_FINAL_DIR = Path("output") / "2016 Legacy Runs FINAL Figures"
 MINDORO_ARCHIVE_DECISION_PATH = FINAL_VALIDATION_DIR / "mindoro_validation_archive_decision.md"
 PAPER_OUTPUT_REGISTRY_PATH = Path("docs") / "PAPER_OUTPUT_REGISTRY.md"
 DATA_SOURCE_REGISTRY_PATH = Path("config") / "data_sources.yaml"
+LAUNCHER_MATRIX_PATH = Path("config") / "launcher_matrix.json"
+ARCHIVE_REGISTRY_PATH = Path("config") / "archive_registry.yaml"
+PAPER_TO_OUTPUT_REGISTRY_PATH = Path("config") / "paper_to_output_registry.yaml"
 RAW_GALLERY_DIR = Path("output") / "trajectory_gallery"
 PANEL_GALLERY_DIR = Path("output") / "trajectory_gallery_panel"
 PUBLICATION_DIR = Path("output") / "figure_package_publication"
@@ -65,6 +68,9 @@ DASHBOARD_STATE_PATHS: tuple[Path, ...] = (
     FINAL_REPRO_DIR / "final_reproducibility_summary.md",
     PAPER_OUTPUT_REGISTRY_PATH,
     DATA_SOURCE_REGISTRY_PATH,
+    LAUNCHER_MATRIX_PATH,
+    ARCHIVE_REGISTRY_PATH,
+    PAPER_TO_OUTPUT_REGISTRY_PATH,
     FINAL_VALIDATION_DIR / "final_validation_manifest.json",
     FINAL_VALIDATION_DIR / "final_validation_case_registry.csv",
     FINAL_VALIDATION_DIR / "final_validation_limitations.csv",
@@ -576,6 +582,25 @@ def data_source_registry(repo_root: str | Path | None = None) -> dict[str, Any]:
     return read_yaml(DATA_SOURCE_REGISTRY_PATH, repo_root)
 
 
+def launcher_matrix(repo_root: str | Path | None = None) -> dict[str, Any]:
+    return read_json(LAUNCHER_MATRIX_PATH, repo_root)
+
+
+def archive_registry(repo_root: str | Path | None = None) -> dict[str, Any]:
+    return read_yaml(ARCHIVE_REGISTRY_PATH, repo_root)
+
+
+def paper_to_output_registry(repo_root: str | Path | None = None) -> dict[str, Any]:
+    text = read_text(PAPER_TO_OUTPUT_REGISTRY_PATH, repo_root)
+    if not text.strip():
+        return {}
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return read_yaml(PAPER_TO_OUTPUT_REGISTRY_PATH, repo_root)
+    return payload if isinstance(payload, dict) else {}
+
+
 def panel_review_check_table(repo_root: str | Path | None = None) -> pd.DataFrame:
     return read_csv(PANEL_REVIEW_DIR / "panel_results_match_check.csv", repo_root)
 
@@ -830,7 +855,7 @@ def curated_package_roots(repo_root: str | Path | None = None) -> list[dict[str,
         {
             "package_id": "mindoro_b1_final",
             "label": "Mindoro B1 primary validation package",
-            "page_label": "Mindoro B1 Primary Validation",
+            "page_label": "Mindoro B1 Public-Observation Validation",
             "relative_path": str(MINDORO_FINAL_DIR),
             "description": "Curated thesis-facing package for the Mindoro March 13 -> March 14 R1 primary validation row built from stored outputs only.",
             "secondary_note": "Main paper uses March 13 -> March 14 R1 only.",
@@ -848,10 +873,10 @@ def curated_package_roots(repo_root: str | Path | None = None) -> list[dict[str,
         {
             "package_id": "mindoro_validation_archive",
             "label": "Mindoro validation archive",
-            "page_label": "Archive — Mindoro Validation Provenance",
+            "page_label": "Archive/Provenance and Legacy Support",
             "relative_path": str(FINAL_VALIDATION_DIR),
             "description": "Archived March13-14 R0 baseline, older R0-including March13-14 outputs, and preserved March-family legacy rows retained for provenance only.",
-            "secondary_note": "Archive-only; not thesis-facing evidence.",
+            "secondary_note": "Archive/provenance only; not final-paper evidence.",
             "artifact_count": int(len(mindoro_archive_artifacts)),
         },
         {
@@ -860,22 +885,22 @@ def curated_package_roots(repo_root: str | Path | None = None) -> list[dict[str,
             "page_label": "DWH External Transfer Validation",
             "relative_path": str(DWH_FINAL_DIR),
             "description": "Curated frozen DWH transfer-validation package with C1/C2/C3 kept separate and explicit.",
-            "secondary_note": "No drifter baseline is used for DWH.",
+            "secondary_note": "External transfer validation only; not Mindoro recalibration.",
             "artifact_count": int(len(dwh_registry)),
         },
         {
             "package_id": "legacy_2016_final",
             "label": "Legacy 2016 final package",
-            "page_label": "Archive — Legacy 2016 Support",
+            "page_label": "Secondary 2016 Support",
             "relative_path": str(LEGACY_2016_FINAL_DIR),
             "description": "Authoritative curated support-only package for the thesis-facing prototype_2016 legacy flow.",
-            "secondary_note": "Support-only; visible flow is Phase 1 / 2 / 3A / 4 / 5.",
+            "secondary_note": "Secondary support only; not public-spill validation.",
             "artifact_count": int(len(legacy_registry)),
         },
         {
             "package_id": "phase4_context_status",
             "label": "Mindoro oil-type and shoreline support/context",
-            "page_label": "Mindoro Oil-Type and Shoreline Context",
+            "page_label": "Mindoro Oil-Type and Shoreline Support/Context",
             "relative_path": str(PHASE4_DIR),
             "description": "Mindoro oil-type and shoreline support/context outputs with the no-matched-comparator decision already folded into the plain-language page.",
             "secondary_note": "No matched PyGNOME fate-and-shoreline comparison is packaged yet.",
@@ -892,7 +917,7 @@ def curated_package_roots(repo_root: str | Path | None = None) -> list[dict[str,
         {
             "package_id": "artifacts_and_logs",
             "label": "Artifacts, manifests, and logs",
-            "page_label": "Artifacts / Logs / Registries",
+            "page_label": "Reproducibility / Governance / Audit",
             "relative_path": str(FINAL_REPRO_DIR),
             "description": "Synced reproducibility indexes, final validation package pointers, manifests, and log catalogs.",
             "secondary_note": "Curated registries are the safest entry point for thesis indexing and audit work.",
@@ -1718,6 +1743,9 @@ def build_dashboard_state(repo_root: str | Path | None = None) -> dict[str, Any]
         "final_reproducibility_summary": final_reproducibility_summary(root),
         "paper_output_registry_markdown": paper_output_registry_markdown(root),
         "data_source_registry": data_source_registry(root),
+        "launcher_matrix": launcher_matrix(root),
+        "archive_registry": archive_registry(root),
+        "paper_to_output_registry": paper_to_output_registry(root),
         "panel_review_check_table": panel_review_check_table(root),
         "panel_review_check_markdown": panel_review_check_markdown(root),
         "panel_review_check_manifest": panel_review_check_manifest(root),

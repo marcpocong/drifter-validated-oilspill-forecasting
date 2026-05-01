@@ -22,6 +22,7 @@ ensure_repo_root_on_path(__file__)
 import pandas as pd
 import streamlit as st
 
+from ui.evidence_contract import ROLE_GOVERNANCE
 from ui.pages.common import (
     render_badge_strip,
     render_feature_grid,
@@ -168,18 +169,18 @@ def render(state: dict, ui_state: dict) -> None:
     render_modern_hero(
         "Data Sources & Provenance",
         "Reference registry of external observation, drifter, forcing, shoreline, oil-property, and model/tool sources used by the stored workflow.",
-        badge="Reference page / read-only provenance",
+        badge=ROLE_GOVERNANCE,
         eyebrow="Provenance reference",
         meta=["Drifters", "Forcing", "Public masks", "Manifests"],
-        tone="advanced",
+        tone="readonly",
     )
-    render_badge_strip(["panel-ready", "stored outputs", "provenance", "read-only"])
+    render_badge_strip([ROLE_GOVERNANCE, "stored outputs", "provenance", "read-only"])
 
     render_key_takeaway(
         "Panel answer",
         "The workflow uses public drifter, satellite/ArcGIS observation, ocean-current, wind, wave/Stokes, shoreline, and oil-property sources. Exact source names, links, repo paths, and caveats are listed below.",
-        tone="advanced",
-        badge="Reference page / read-only provenance",
+        tone="readonly",
+        badge=ROLE_GOVERNANCE,
     )
     render_status_callout(
         "How to read this page",
@@ -216,42 +217,42 @@ def render(state: dict, ui_state: dict) -> None:
     render_section_header(
         "Source Families",
         "Cards group the same registry into the families panel reviewers usually ask about first.",
-        badge="Reference page / read-only provenance",
+        badge=ROLE_GOVERNANCE,
     )
     render_feature_grid(
         [
             {
                 "title": "Drifters",
                 "body": "Transport-provenance inputs and drifter validation sources.",
-                "badge": "Reference page",
+                "badge": ROLE_GOVERNANCE,
                 "note": f"{_category_count(role_counts, 'transport validation')} registered source(s)",
                 "tone": "advanced",
             },
             {
                 "title": "Forcing",
                 "body": "Ocean-current, wind, and wave/Stokes products used by stored model runs.",
-                "badge": "Reference page",
+                "badge": ROLE_GOVERNANCE,
                 "note": f"{_category_count(role_counts, 'forcing input')} registered source(s)",
                 "tone": "advanced",
             },
             {
                 "title": "Public masks",
                 "body": "Public-observation masks used as validation references, not model comparators.",
-                "badge": "Reference page",
+                "badge": ROLE_GOVERNANCE,
                 "note": f"{_category_count(role_counts, 'observation validation mask')} registered source(s)",
                 "tone": "advanced",
             },
             {
                 "title": "Shoreline / grids",
                 "body": "Shoreline, geography, grid, and support layers used by stored outputs.",
-                "badge": "Reference page",
+                "badge": ROLE_GOVERNANCE,
                 "note": f"{_category_count(role_counts, 'shoreline support')} registered source(s)",
                 "tone": "advanced",
             },
             {
                 "title": "Manifests / package roots",
                 "body": "Repo manifests, registries, inventories, and package-root references used for audit.",
-                "badge": "Reference page",
+                "badge": ROLE_GOVERNANCE,
                 "note": f"{manifest_count} source row(s) mention manifests, packages, or registries",
                 "tone": "advanced",
             },

@@ -22,6 +22,7 @@ import streamlit as st
 from ui.evidence_contract import ROLE_COMPARATOR, assert_no_archive_leak, filter_for_page
 from ui.pages.common import (
     render_caveat_ribbon,
+    render_comparator_banner,
     render_export_note,
     render_feature_grid,
     render_figure_gallery,
@@ -111,6 +112,7 @@ def render(state: dict, ui_state: dict) -> None:
         meta=["Comparator support only", "March 14 target", "PyGNOME is not truth"],
         tone="comparator",
     )
+    render_comparator_banner()
 
     if export_mode:
         render_export_note(
@@ -233,7 +235,7 @@ def render(state: dict, ui_state: dict) -> None:
     if archive_package:
         render_status_callout(
             "Archive note",
-            "Archived comparator outputs are not displayed here. Use Archive — Mindoro Validation Provenance for provenance-only review.",
+            "Archived comparator outputs are not displayed here. Use Archive/Provenance and Legacy Support for provenance-only review.",
             "warning",
         )
         archive_card = {

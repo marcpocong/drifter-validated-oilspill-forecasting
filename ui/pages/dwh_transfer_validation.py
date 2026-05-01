@@ -17,9 +17,10 @@ except ModuleNotFoundError:
 
 ensure_repo_root_on_path(__file__)
 
-from ui.evidence_contract import ROLE_COMPARATOR, ROLE_CONTEXT, ROLE_THESIS, assert_no_archive_leak, filter_for_page
+from ui.evidence_contract import ROLE_COMPARATOR, ROLE_CONTEXT, ROLE_EXTERNAL_TRANSFER, assert_no_archive_leak, filter_for_page
 from ui.pages.common import (
     render_caveat_ribbon,
+    render_comparator_banner,
     render_export_note,
     render_feature_grid,
     render_figure_gallery,
@@ -83,7 +84,7 @@ def render(state: dict, ui_state: dict) -> None:
     render_modern_hero(
         "DWH External Transfer Validation",
         "DWH is a separate external transfer validation story using public daily observation masks on its own fixed 1 km scoring grid.",
-        badge=ROLE_THESIS,
+        badge=ROLE_EXTERNAL_TRANSFER,
         eyebrow="External transfer validation",
         meta=["DWH only", "Public daily observation masks", "Not Mindoro recalibration"],
         tone="thesis",
@@ -101,7 +102,7 @@ def render(state: dict, ui_state: dict) -> None:
         "DWH tests external transferability; it does not recalibrate Mindoro.",
         "The frozen DWH event-corridor results keep deterministic OpenDrift, ensemble p50, p90 support, and PyGNOME comparator roles separated.",
         tone="thesis",
-        badge=ROLE_THESIS,
+        badge=ROLE_EXTERNAL_TRANSFER,
     )
     render_caveat_ribbon(
         "External-transfer boundary",
@@ -112,13 +113,13 @@ def render(state: dict, ui_state: dict) -> None:
         [
             {
                 "title": "C1 deterministic",
-                "badge": ROLE_THESIS,
+                "badge": ROLE_EXTERNAL_TRANSFER,
                 "body": "OpenDrift deterministic control.",
                 "note": "Event-corridor mean FSS 0.5568.",
             },
             {
                 "title": "C2 p50 ensemble",
-                "badge": ROLE_THESIS,
+                "badge": ROLE_EXTERNAL_TRANSFER,
                 "body": "Preferred probabilistic likely footprint.",
                 "note": "Event-corridor mean FSS 0.5389.",
             },
@@ -169,7 +170,7 @@ def render(state: dict, ui_state: dict) -> None:
         ),
     )
     ensemble_comparison_figures = _dwh_name_subset(ensemble_figures, ("mask_p90_overlay", "mask_p50_mask_p90_board"))
-    pygnome_truth_figures = _dwh_name_subset(
+    pygnome_observed_context_figures = _dwh_name_subset(
         comparator_figures,
         ("pygnome_footprint_overlay", "observed_deterministic_mask_p50_pygnome_board"),
         ("_vs_pygnome_board",),
@@ -282,11 +283,12 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     def _c3_pygnome() -> None:
+        render_comparator_banner()
         render_status_callout("C3 framing", "C3 keeps PyGNOME visible as comparator-only against the same observed DWH masks. PyGNOME is never truth.", "warning")
         render_figure_gallery(
-            pygnome_truth_figures,
+            pygnome_observed_context_figures,
             title="C3 PyGNOME-vs-observed figures",
-            caption="These figures keep the PyGNOME footprint overlays and the truth-plus-OpenDrift-plus-PyGNOME boards together under the comparator-only rule, with the official DWH observation-derived masks still serving as the scoring reference.",
+            caption="These figures keep the PyGNOME footprint overlays and the observed-mask plus OpenDrift plus PyGNOME boards together under the comparator-only rule, with the official DWH observation-derived masks still serving as the scoring reference.",
             limit=2 if export_mode else (None if ui_state["advanced"] else 4),
             columns_per_row=1 if export_mode else 2,
             export_mode=export_mode,
@@ -318,7 +320,7 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     def _support_boards() -> None:
-        render_status_callout("Support boards", "These boards keep the OpenDrift-versus-PyGNOME comparison visible as support material after the truth-first validation story has already been established.", "info")
+        render_status_callout("Support boards", "These boards keep the OpenDrift-versus-PyGNOME comparison visible as support material after the observed-mask-first validation story has already been established.", "info")
         render_figure_gallery(
             pygnome_support_figures,
             title="OpenDrift-vs-PyGNOME support boards",

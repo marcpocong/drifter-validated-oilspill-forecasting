@@ -37,12 +37,12 @@ from ui.pages.common import (
 def render(state: dict, ui_state: dict) -> None:
     export_mode = bool(ui_state.get("export_mode"))
     render_modern_hero(
-        "Artifacts / Logs / Registries",
+        "Reproducibility / Governance / Audit",
         "Technical audit page for synced reproducibility indexes, panel-result verification outputs, registries, manifests, and logs.",
         badge=ROLE_ADVANCED,
         eyebrow="Read-only technical audit",
         meta=["Registries", "Manifests", "Logs", "No writes"],
-        tone="advanced",
+        tone="readonly",
     )
 
     if export_mode:
@@ -65,6 +65,9 @@ def render(state: dict, ui_state: dict) -> None:
     manifests = state["final_manifest_index"]
     logs = state["final_log_index"]
     panel_review_check = state["panel_review_check_table"]
+    launcher_entries = state.get("launcher_matrix", {}).get("entries", [])
+    archive_items = state.get("archive_registry", {}).get("archive_items", [])
+    paper_output_entries = state.get("paper_to_output_registry", {}).get("entries", [])
 
     def _package_overview() -> None:
         render_metric_row(
@@ -73,6 +76,9 @@ def render(state: dict, ui_state: dict) -> None:
                 ("Output catalog rows", str(len(catalog))),
                 ("Manifest index rows", str(len(manifests))),
                 ("Log index rows", str(len(logs))),
+                ("Launcher entries", str(len(launcher_entries))),
+                ("Archive registry items", str(len(archive_items))),
+                ("Paper-output registry rows", str(len(paper_output_entries))),
             ],
             export_mode=export_mode,
         )
@@ -91,13 +97,19 @@ def render(state: dict, ui_state: dict) -> None:
                     "tone": "advanced",
                 },
                 {
+                    "title": "Config-backed routing",
+                    "body": "Launcher, archive, and paper-to-output registries are loaded from config files and exposed here as governance context.",
+                    "badge": ROLE_ADVANCED,
+                    "tone": "readonly",
+                },
+                {
                     "title": "Read-only previews",
                     "body": "Artifact previews never rerun workflows or write back to stored outputs.",
                     "badge": ROLE_ADVANCED,
-                    "tone": "advanced",
+                    "tone": "readonly",
                 },
             ],
-            columns_per_row=3,
+            columns_per_row=4,
             export_mode=export_mode,
         )
 

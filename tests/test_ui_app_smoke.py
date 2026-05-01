@@ -287,7 +287,7 @@ class UiAppSmokeTests(unittest.TestCase):
         at.run()
         self.assertFalse(at.exception)
         text_blocks = self._visible_text(at, "markdown", "title")
-        self.assertIn("Defense / Panel Review", text_blocks)
+        self.assertIn("Overview / Final Manuscript Alignment", text_blocks)
         self.assertEqual(len(at.sidebar.radio), 1)
         self.assertEqual(at.sidebar.radio[0].label, "Viewing mode")
         self.assertEqual(len(at.sidebar.selectbox), 0)
@@ -297,23 +297,23 @@ class UiAppSmokeTests(unittest.TestCase):
         at.run()
         self.assertFalse(at.exception)
         text_blocks = self._visible_text(at, "markdown", "title")
-        self.assertIn("Defense / Panel Review", text_blocks)
+        self.assertIn("Overview / Final Manuscript Alignment", text_blocks)
 
     def test_pages_render_via_wrapper_functions(self):
         for wrapper, expected_title in (
-            (_home_panel_wrapper_for_test, "Defense / Panel Review"),
-            (_home_advanced_wrapper_for_test, "Defense / Panel Review"),
+            (_home_panel_wrapper_for_test, "Overview / Final Manuscript Alignment"),
+            (_home_advanced_wrapper_for_test, "Overview / Final Manuscript Alignment"),
             (_b1_drifter_context_wrapper_for_test, "B1 Recipe Provenance — Not Truth Mask"),
-            (_mindoro_validation_wrapper_for_test, "Mindoro B1 Primary Validation"),
-            (_mindoro_validation_archive_wrapper_for_test, "Archive — Mindoro Validation Provenance"),
+            (_mindoro_validation_wrapper_for_test, "Mindoro B1 Public-Observation Validation"),
+            (_mindoro_validation_archive_wrapper_for_test, "Archive/Provenance and Legacy Support"),
             (_cross_model_wrapper_for_test, "Mindoro Track A Comparator Support"),
             (_dwh_wrapper_for_test, "DWH External Transfer Validation"),
-            (_legacy_wrapper_for_test, "Archive — Legacy 2016 Support"),
-            (_phase1_wrapper_for_test, "Phase 1 Transport Provenance"),
-            (_phase1_advanced_wrapper_for_test, "Phase 1 Transport Provenance"),
-            (_phase4_wrapper_for_test, "Mindoro Oil-Type and Shoreline Context"),
-            (_home_export_wrapper_for_test, "Defense / Panel Review"),
-            (_phase1_export_wrapper_for_test, "Phase 1 Transport Provenance"),
+            (_legacy_wrapper_for_test, "Secondary 2016 Support"),
+            (_phase1_wrapper_for_test, "Focused Mindoro Phase 1 Provenance"),
+            (_phase1_advanced_wrapper_for_test, "Focused Mindoro Phase 1 Provenance"),
+            (_phase4_wrapper_for_test, "Mindoro Oil-Type and Shoreline Support/Context"),
+            (_home_export_wrapper_for_test, "Overview / Final Manuscript Alignment"),
+            (_phase1_export_wrapper_for_test, "Focused Mindoro Phase 1 Provenance"),
         ):
             at = AppTest.from_function(wrapper, default_timeout=60)
             at.run()
@@ -338,13 +338,13 @@ class UiAppSmokeTests(unittest.TestCase):
         self.assertEqual(self._gallery_tile_count(at), expected_count)
         text_blocks = self._visible_text(at, "markdown", "subheader")
         self.assertNotIn("keyboard_double", text_blocks)
-        self.assertIn("Defense Path", text_blocks)
+        self.assertIn("Final-Paper Evidence Order", text_blocks)
         self.assertIn("Panel Answers In 90 Seconds", text_blocks)
         self.assertIn("Open The Evidence Pages", text_blocks)
         self.assertIn("Mindoro B1 primary validation package", text_blocks)
-        self.assertIn("THESIS-FACING", text_blocks)
-        self.assertIn("COMPARATOR SUPPORT", text_blocks)
-        self.assertIn("LEGACY / ARCHIVE SUPPORT", text_blocks)
+        self.assertIn("Primary evidence", text_blocks)
+        self.assertIn("Comparator support", text_blocks)
+        self.assertIn("Secondary support", text_blocks)
         self.assertNotIn("Legacy 2016 support triptychs first", text_blocks)
 
     def test_home_panel_gallery_excludes_mindoro_march3_to_march6_tiles(self):
@@ -352,7 +352,7 @@ class UiAppSmokeTests(unittest.TestCase):
         at.run()
         self.assertFalse(at.exception)
         text_blocks = self._visible_text(at, "markdown", "subheader", "caption")
-        self.assertIn("Preserved for audit and historical context only", text_blocks)
+        self.assertIn("Legacy and debug routes remain inspectable", text_blocks)
         self.assertIn("Archive and legacy figures remain on their own pages.", text_blocks)
         self.assertNotIn("Mindoro March 3 -> March 6", text_blocks)
         self.assertNotIn("Mindoro March 6", text_blocks)

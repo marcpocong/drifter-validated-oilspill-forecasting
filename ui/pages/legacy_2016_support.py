@@ -19,10 +19,10 @@ ensure_repo_root_on_path(__file__)
 
 import streamlit as st
 
-from ui.evidence_contract import ROLE_LEGACY
+from ui.evidence_contract import ROLE_LEGACY, ROLE_SECONDARY
 from ui.pages.common import (
-    render_archive_notice,
     render_badge_strip,
+    render_comparator_banner,
     render_export_note,
     render_feature_grid,
     render_figure_gallery,
@@ -93,11 +93,11 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     render_modern_hero(
-        "Archive — Legacy 2016 Support",
-        "This page surfaces the authoritative curated prototype_2016 package. It is support-only legacy material and should be read as historical pipeline context rather than as the main Mindoro or DWH validation evidence.",
-        badge=ROLE_LEGACY,
-        eyebrow="Legacy / archive support",
-        meta=["Prototype 2016 package", "Support only", "Read-only artifacts"],
+        "Secondary 2016 Support",
+        "This page surfaces the authoritative curated prototype_2016 package as secondary drifter-track and legacy FSS support. It is not public-spill validation and does not replace Mindoro B1 or DWH.",
+        badge=ROLE_SECONDARY,
+        eyebrow="Secondary support lane",
+        meta=["2016 drifter-track support", "Legacy FSS support", "Read-only artifacts"],
         tone="legacy",
     )
 
@@ -110,31 +110,33 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     render_key_takeaway(
-        "Legacy 2016 material is historical support only.",
+        "Secondary 2016 material is support only.",
         "These prototype cases preserve workflow provenance and comparator context, but they do not replace B1 or the DWH external-transfer validation.",
         tone="legacy",
-        badge=ROLE_LEGACY,
+        badge=ROLE_SECONDARY,
     )
-    render_archive_notice(
-        "Legacy boundary",
-        "The prototype_2016 lane has no thesis-facing B1 or DWH validation claim. Phase 3A is comparator-only support, Phase 4 is legacy weathering/fate context, and Phase 5 is packaging.",
+    render_status_callout(
+        "Secondary support boundary",
+        "Secondary 2016 outputs support drifter-track and legacy OpenDrift-PyGNOME FSS context only. They are not public-spill validation and do not replace Mindoro B1 or DWH.",
+        "legacy",
     )
+    render_comparator_banner()
     render_feature_grid(
         [
             {
                 "title": "Three prototype cases",
                 "body": "2016-09-01, 2016-09-06, and 2016-09-17 remain grouped as a preserved legacy support package.",
-                "badge": ROLE_LEGACY,
+                "badge": ROLE_SECONDARY,
                 "tone": "legacy",
             },
             {
                 "title": "Comparator scope",
                 "body": "OpenDrift versus deterministic PyGNOME material is comparator support only, not observation truth.",
-                "badge": ROLE_LEGACY,
+                "badge": ROLE_SECONDARY,
                 "tone": "legacy",
             },
             {
-                "title": "Panel posture",
+                "title": "Legacy/debug posture",
                 "body": "Panel-friendly mode shows a broad support gallery; Advanced mode exposes case filtering and deeper registries.",
                 "badge": ROLE_LEGACY,
                 "tone": "legacy",
@@ -144,7 +146,7 @@ def render(state: dict, ui_state: dict) -> None:
         export_mode=export_mode,
     )
 
-    render_status_callout("ARCHIVE / SUPPORT ONLY — not part of the main Mindoro validation claim.", "ARCHIVE / SUPPORT ONLY — not part of the main Mindoro validation claim.", "warning")
+    render_status_callout("SECONDARY SUPPORT ONLY - not public-spill validation.", "SECONDARY SUPPORT ONLY - not public-spill validation.", "warning")
     render_status_callout(
         "Visible support flow",
         "The thesis-facing legacy flow is Phase 1 -> Phase 2 -> Phase 3A -> Phase 4 -> Phase 5. Phase 3A is comparator-only OpenDrift vs deterministic PyGNOME support, Phase 4 is legacy weathering/fate, and Phase 5 is this read-only packaging layer.",
@@ -246,7 +248,7 @@ def render(state: dict, ui_state: dict) -> None:
     scenario_text = ", ".join(scenario_keys) if scenario_keys else "no comparator scenarios"
 
     def _package_overview() -> None:
-        render_badge_strip([ROLE_LEGACY])
+        render_badge_strip([ROLE_SECONDARY])
         metrics = [
             ("Indexed artifacts", str(len(filtered_registry))),
             ("Phase 3A figures", str(len(phase3a_figures))),
@@ -279,7 +281,7 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     def _phase3a_publication() -> None:
-        render_badge_strip([ROLE_LEGACY])
+        render_badge_strip([ROLE_SECONDARY])
         render_figure_gallery(
             phase3a_figures,
             title="Phase 3A support-comparison figures",
@@ -299,7 +301,7 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     def _phase4_publication() -> None:
-        render_badge_strip([ROLE_LEGACY])
+        render_badge_strip([ROLE_SECONDARY])
         render_figure_gallery(
             phase4_figures,
             title="Phase 4 legacy-context figures",
@@ -319,7 +321,7 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     def _phase4_comparator() -> None:
-        render_badge_strip([ROLE_LEGACY])
+        render_badge_strip([ROLE_SECONDARY])
         render_status_callout(
             "Comparator scope",
             f"Budget-only deterministic PyGNOME comparator pilot. Currently packaged scenarios: {scenario_text}. Shoreline comparison is not packaged because matched PyGNOME shoreline outputs are not available.",
@@ -355,7 +357,7 @@ def render(state: dict, ui_state: dict) -> None:
         )
 
     def _summaries_and_manifests() -> None:
-        render_badge_strip([ROLE_LEGACY])
+        render_badge_strip([ROLE_SECONDARY])
         render_table(
             "Legacy final-output registry",
             filtered_registry,
@@ -378,7 +380,7 @@ def render(state: dict, ui_state: dict) -> None:
     render_section_header(
         "Legacy Details",
         "The grouped package views below remain secondary support surfaces, with raw registries and case-level rows kept behind the story summary.",
-        badge=ROLE_LEGACY,
+        badge=ROLE_SECONDARY,
     )
     render_section_stack(
         [
