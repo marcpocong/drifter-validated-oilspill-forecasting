@@ -6,29 +6,29 @@ Final manuscript title: Drifter-Validated 24–72 h Oil-Spill Forecasting for Ph
 
 This repository is the panel-ready reproducibility package for the final paper. It exposes stored outputs, launcher entries, registries, figures, and read-only review surfaces so panel reviewers can inspect the evidence without needing any uploaded manuscript file.
 
-Use [DATA_SOURCES.md](DATA_SOURCES.md) for data-source provenance and [ARCHIVE_GOVERNANCE.md](ARCHIVE_GOVERNANCE.md) for archive routing and claim boundaries.
+Use [DATA_SOURCES.md](DATA_SOURCES.md) for data-source provenance and [ARCHIVE_GOVERNANCE.md](ARCHIVE_GOVERNANCE.md) for archive routing and claim boundaries. The compact final submission source of truth for labels, values, and claim boundaries is [FINAL_SUBMISSION_ALIGNMENT_CONTRACT.md](FINAL_SUBMISSION_ALIGNMENT_CONTRACT.md).
 
 ## Final Evidence Order
 
 1. Focused Mindoro Phase 1 transport provenance.
 2. Phase 2 standardized deterministic and 50-member forecast products.
-3. Mindoro B1 March 13-14 primary public-observation validation.
-4. Mindoro same-case OpenDrift-PyGNOME comparator support.
+3. Primary Mindoro March 13–14 public-observation validation case.
+4. Mindoro same-case OpenDrift–PyGNOME comparator support.
 5. DWH external transfer validation.
 6. Mindoro oil-type and shoreline support/context.
 7. Secondary 2016 drifter-track and legacy FSS support.
-8. Reproducibility, governance, and read-only package layer.
+8. Reproducibility, governance, archive/provenance, and read-only package layer.
 
 ## Claim Boundaries
 
-- Mindoro B1 is the only main Philippine public-observation validation claim.
-- B1 supports coastal-neighborhood usefulness, not exact 1 km overlap and not universal operational accuracy.
+- The Primary Mindoro March 13–14 validation case is the only main Philippine public-observation validation claim. `B1` is an internal alias only.
+- The primary case supports coastal-neighborhood usefulness, not exact 1 km overlap and not universal operational accuracy.
 - March 13 public NOAA/NESDIS observation extent is the seed; March 14 public NOAA/NESDIS observation extent is the target.
 - March 13 and March 14 are independent day-specific public-observation products.
 - PyGNOME is comparator-only and never observation truth.
 - DWH is external transfer validation only, not Mindoro recalibration.
 - Mindoro oil-type and shoreline outputs are support/context only.
-- Secondary 2016 outputs support drifter-track and legacy OpenDrift-PyGNOME FSS context only; they are not public-spill validation and do not replace Mindoro B1 or DWH.
+- Secondary 2016 outputs support drifter-track and legacy OpenDrift–PyGNOME FSS context only; they are not public-spill validation and do not replace Mindoro or DWH.
 - Archived, experimental, legacy, and comparator-only outputs remain inspectable but are not promoted into the main paper claim.
 
 ## Phase 1 Ranking
@@ -47,9 +47,9 @@ Use [DATA_SOURCES.md](DATA_SOURCES.md) for data-source provenance and [ARCHIVE_G
 | `hycom_gfs` | `4.7027` | `4.9263` |
 | `hycom_era5` | `4.7561` | `5.0106` |
 
-## Mindoro B1 Metrics
+## Primary Mindoro Metrics
 
-Mindoro B1 is the March 13-14 primary public-observation validation row. It is interpreted as coastal-neighborhood usefulness, not exact 1 km overlap.
+The Primary Mindoro March 13–14 validation case is the public-observation validation row. It is interpreted as coastal-neighborhood usefulness, not exact 1 km overlap.
 
 | Metric | Value |
 | --- | ---: |
@@ -67,9 +67,9 @@ Mindoro B1 is the March 13-14 primary public-observation validation row. It is i
 
 The row survives to the target date and is scoreable. The zero IoU and Dice values mean it must not be described as exact-grid success.
 
-## Track A Comparator Metrics
+## Mindoro Same-Case Comparator Metrics
 
-Track A is same-case comparator support against the March 14 public mask. It is comparator-only and is not an independent truth source.
+The Mindoro same-case OpenDrift–PyGNOME comparator is support against the March 14 public mask. `Track A` is an internal alias only; the comparator is not an independent truth source.
 
 | Branch | Forecast cells | Nearest distance | FSS values | Mean FSS |
 | --- | ---: | ---: | --- | ---: |
@@ -110,7 +110,7 @@ These values are support/context only, not primary validation.
 
 ## Secondary 2016 Support Role
 
-The 2016 material provides direct drifter-track and legacy OpenDrift-PyGNOME FSS support only. It is not public-spill validation and is not a replacement for Mindoro B1 or DWH.
+The 2016 material provides direct drifter-track and legacy OpenDrift–PyGNOME FSS support only. It is not public-spill validation and is not a replacement for Mindoro or DWH.
 
 ## Launcher Entries By Role
 
